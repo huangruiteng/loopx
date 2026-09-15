@@ -10,9 +10,8 @@ function over an already-collected status/goal payload: it reads no files,
 writes no state, and creates no new authority. Milestones and lifecycle phases
 are projections, never stored fields.
 
-Milestone reachability starts from markers the Goal declares, and falls back to
-evidence the run history already recorded. Guards are open owner decisions and
-unmet evidence preconditions. Next transitions come from the existing
+Milestone reachability uses evidence the run history already recorded. Guards
+are open owner decisions and unmet evidence preconditions. Next transitions come from the existing
 frontier/lane derivation instead of a second state machine.
 """
 
@@ -23,7 +22,9 @@ from typing import Any
 
 from ...public_safe_text import find_private_text_match
 from ..runtime.public_safety import public_safe_compact_text, validate_public_safe_value
+from ..runtime.session_runtime import session_runtime_work_observation
 from .acceptance_observation import build_goal_acceptance_observation
+from ..work_items.work_lane import WorkLaneObservation
 from ..work_items.delivery_outcome import (
     MATERIAL_DELIVERY_OUTCOMES,
     PROGRESS_DELIVERY_OUTCOMES,
@@ -218,13 +219,13 @@ def _lifecycle_phase(
     guards: list[dict[str, Any]],
     milestones: list[dict[str, Any]],
     agent_summary: dict[str, Any],
-    work_lane: dict[str, Any],
+    work: WorkLaneObservation | None,
 ) -> str:
     if _is_closed(goal):
         return PHASE_CLOSED
     if any(guard["kind"] == GUARD_KIND_OWNER_DECISION for guard in guards):
         return PHASE_WAITING_OWNER
-    if guards or work_lane.get("must_attempt_work") is True:
+    if guards or (work is not None and work.must_attempt):
         return PHASE_QUALIFYING
     open_count = agent_summary.get("open_count")
     if not isinstance(open_count, int) or isinstance(open_count, bool):
@@ -248,7 +249,7 @@ def _next_transitions(
     phase: str,
     guards: list[dict[str, Any]],
     milestones: list[dict[str, Any]],
-    work_lane: dict[str, Any],
+    work: WorkLaneObservation | None,
     observation: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Reuse the existing lane/frontier derivation instead of a second machine."""
@@ -256,8 +257,8 @@ def _next_transitions(
     blocking = [guard for guard in guards if guard["blocked"]]
     if _is_closed(goal):
         return []
-    lane = _compact_text(work_lane.get("lane"), limit=120)
-    obligation = _compact_text(work_lane.get("obligation"), limit=120)
+    lane = _compact_text(work.lane, limit=120) if work else None
+    obligation = _compact_text(work.next_action) if work else None
     if blocking:
         return [
             {
@@ -328,7 +329,7 @@ def build_goal_artifact_lifecycle_projection(
     user_todo_summary: dict[str, Any] | None = None,
     agent_todo_summary: dict[str, Any] | None = None,
     run_history: dict[str, Any] | None = None,
-    work_lane_contract: dict[str, Any] | None = None,
+    work_observation: WorkLaneObservation | None = None,
     acceptance_gaps: list[Any] | None = None,
     agent_id: str | None = None,
     attention_item: dict[str, Any] | None = None,
@@ -355,7 +356,6 @@ def build_goal_artifact_lifecycle_projection(
         record for record in runs
         if _mapping(record) and record.get("goal_id") in (None, goal_id)
     ]}
-    lane = _mapping(work_lane_contract)
     observation = build_goal_acceptance_observation(
         {**goal_record, "id": goal_id, **history},
         attention_item if attention_item is not None else {"user_todos": user_summary},
@@ -367,7 +367,7 @@ def build_goal_artifact_lifecycle_projection(
     guards = _guards(observation, gaps, agent_id=agent_id)
     phase = _lifecycle_phase(
         goal_record, guards=guards, milestones=milestones, agent_summary=agent_summary,
-        work_lane=lane,
+        work=work_observation,
     )
     return {
         "schema_version": GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
@@ -380,7 +380,7 @@ def build_goal_artifact_lifecycle_projection(
             phase=phase,
             guards=guards,
             milestones=milestones,
-            work_lane=lane,
+            work=work_observation,
             observation=observation,
         ),
     }
@@ -421,9 +421,9 @@ def attach_goal_artifact_lifecycle_projections(
                 attention.get("agent_todos") or asset.get("agent_todos")
             ),
             run_history=source,
-            work_lane_contract=_mapping(
-                attention.get("work_lane_contract") or asset.get("work_lane_contract")
-                or source.get("work_lane_contract")
+            work_observation=session_runtime_work_observation(
+                attention.get("session_runtime_projection") or asset.get("session_runtime_projection"),
+                goal_id=goal_id,
             ),
             acceptance_gaps=frontier.get("acceptance_gaps") if "acceptance_gaps" in frontier else None,
             attention_item=attention,

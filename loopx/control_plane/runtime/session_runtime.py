@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import AbstractSet, Any, Callable, Optional
 
 from ...session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION
+from ..work_items.work_lane import WorkLaneObservation, observe_work_lane
 from .public_safety import (
     public_safe_compact_list as _default_public_safe_compact_list,
     public_safe_compact_text as _default_public_safe_compact_text,
@@ -264,6 +265,27 @@ def compact_session_runtime_projection_from_run(
         run,
         public_safe_compact_text=public_safe_compact_text,
         public_safe_compact_list=public_safe_compact_list,
+    )
+
+
+def session_runtime_work_observation(
+    projection: Any, *, goal_id: str,
+) -> WorkLaneObservation | None:
+    """Read work facts from this Goal's existing session-runtime projection.
+
+    The adapter owns the legacy payload shape. Callers receive only the facts
+    needed for a readout, with no copy of the protocol or new decision rule.
+    """
+    if (
+        not isinstance(projection, dict)
+        or projection.get("schema_version") != SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION
+        or projection.get("goal_id") != goal_id
+    ):
+        return None
+    first_screen = projection.get("first_screen")
+    return observe_work_lane(
+        projection.get("work_lane_contract"),
+        next_action=first_screen.get("recommended_action") if isinstance(first_screen, dict) else None,
     )
 
 

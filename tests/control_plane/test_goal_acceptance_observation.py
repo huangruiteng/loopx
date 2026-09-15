@@ -329,7 +329,9 @@ def test_lifecycle_evidence_survives_real_display_trimming(tmp_path):
 
 def test_lifecycle_cannot_close_over_canonical_mandatory_lane():
     from loopx.control_plane.goals.artifact_lifecycle import build_goal_artifact_lifecycle_projection
-    from loopx.control_plane.work_items.work_lane import lark_inbox_reply_due_work_lane_contract
+    from loopx.control_plane.work_items.work_lane import (
+        lark_inbox_reply_due_work_lane_contract, observe_work_lane,
+    )
     lane = lark_inbox_reply_due_work_lane_contract(
         {"capabilities": {"lark_event_inbox": {"urgency": {"reply_due": True}}}},
         current_contract=None,
@@ -338,7 +340,7 @@ def test_lifecycle_cannot_close_over_canonical_mandatory_lane():
         goal_id="demo", goal={"status": "active"},
         agent_todo_summary={"open_count": 0},
         run_history={"latest_runs": [{"delivery_outcome": "primary_goal_outcome", "run_id": "run-evidence"}]},
-        work_lane_contract=lane,
+        work_observation=observe_work_lane(lane),
     )
     assert projection["lifecycle_phase"] == "qualifying"
     assert projection["next_transitions"][0]["target_phase"] == "qualifying"

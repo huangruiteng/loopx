@@ -27,6 +27,7 @@ from loopx.control_plane.goals.artifact_lifecycle import (  # noqa: E402 - sourc
     _compact_text,
     build_goal_artifact_lifecycle_projection,
 )
+from loopx.control_plane.work_items.work_lane import WorkLaneObservation  # noqa: E402
 
 GOAL_ID = "artifact-lifecycle-fixture"
 
@@ -158,7 +159,9 @@ def assert_open_owner_gate_blocks_the_next_transition() -> None:
                 }
             ]
         },
-        work_lane_contract={"lane": "advancement_task", "obligation": "advance_one_bounded_segment"},
+        work_observation=WorkLaneObservation(
+            lane="advancement_task", must_attempt=True, next_action="advance_one_bounded_segment",
+        ),
     )
     assert projection["lifecycle_phase"] == PHASE_WAITING_OWNER, projection
     guard = projection["guards"][0]
