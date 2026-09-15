@@ -311,19 +311,39 @@ the accumulated mechanism.
 
 ### Semantic alignment and CI constraint recovery
 
-Every code review plan carries `semantic_alignment`. It is a lightweight
-orientation block, not a demand for whole-program semantic analysis. The agent
-must state whether the change has no semantic contract impact or whether it
-reuses an existing vocabulary, extends one, creates one, is an external or
-compatibility value, or remains `unknown`. A normal code PR may use
-`not_applicable` only with a reason that names the checked boundary.
+Policy revision 5 replaces the universal detailed semantic review with bounded
+triage for code and behavior-bearing policy changes. The required row starts
+with `checked_scope`, `impact_reason`, and `verdict` (plus the standard evidence
+`status`). Review the full diff and relevant definitions/callers, then stop at
+`not_applicable` if no shared contract is affected. No candidate value, separate
+report subsection, full RFC read, or hypothetical repair is needed on this path.
+A changed-file preview or an unchanged registry alone cannot establish no impact.
 
-For semantic or constraint-related changes, read the exact base and head of the
-RFC, registry, smoke, and relevant CI files. The current required checks are
-`Sign-off` and `merge-gate`; the semantic smoke is currently executed through
-the default Python test path, while Full Public Smokes is a post-merge/scheduled
-confirmation surface rather than a PR-required check. Green CI proves only the
-checks that ran and does not prove whole-program semantic convergence.
+| Verdict | Additional evidence | Approval effect |
+| --- | --- | --- |
+| `not_applicable` | None; scope and reason explain the absence of shared contract impact | No semantic blocker |
+| `aligned` / `new_semantics_justified` | `candidate_decision`, `affected_contract`, `evidence_refs` to existing review evidence | No semantic blocker |
+| `advisory` | `candidate_decision`, `analysis_limit`; the impact reason explains why no affected current obligation lacks required evidence | Reports a bounded-analysis gap, without claiming safety or blocking on that gap alone |
+| `not_yet_proven` / `violated` | `candidate_decision`, `affected_contract`, `trigger`, `observed_evidence`, `minimum_repair`, `validation_commands` | Blocks approval for an affected current obligation with missing required evidence or a concrete violation |
+
+For shared states, owners, consumer domains, projections or persistence changes,
+read only the affected base/head contracts. Reuse `repository_reuse`,
+`observable_semantics`, and `validation_matrix` evidence instead of repeating
+it. Docs-only reviews may supply the same row when they find contract impact;
+a supplied row is checked even when not required by the plan. A generated
+inventory change alone does not require a detailed semantic review.
+
+The generic capability does not infer impact from repository-specific paths or
+inject a repository's check names into another repository's packet. Resolve
+obligations from the target repository's current policy and use the existing
+validation matrix. Observed check runs do not establish which checks are required.
+Green CI proves only the checks that ran, not whole-program convergence.
+
+The repair map below is a **LoopX repository example**, not a policy for every
+`--repo`. In LoopX, verify required checks against `.github/GOVERNANCE.md` and the
+current CI configuration: `Sign-off` and `merge-gate` are the documented checks;
+the semantic smoke runs through Python tests. Full Public Smokes is a
+post-merge/scheduled surface. These facts are not copied into generic packets.
 
 Use this repair map when a check fails:
 
@@ -337,12 +357,29 @@ Use this repair map when a check fails:
 | semantic smoke: budget/anchor | Measured debt grew or the guard was weakened | Fix the underlying duplicate/coverage issue and lower a budget only when the measured debt really fell | Raising the budget, narrowing the scan root, or renaming to hide drift |
 | `merge-gate` | A required upstream CI job failed, was skipped unexpectedly, or has incomplete qualification | Inspect `needs` and the failing job, fix the owning path, and rerun at the same head | Treating a local smoke as proof that the remote gate is complete |
 
-For every failure, publish the exact head, affected constraint, observed output,
-minimum repair, non-repair that would only hide the signal, rerun command, and
-remaining unknown boundary. A dynamic producer or consumer that the bounded
-scanner cannot classify is `unknown`; it is not evidence that the value is
-absent or safe. Missing semantic evidence is `not_yet_proven` and blocks an
-approval for an applicable semantic-alignment row.
+A blocker must connect the exact-head change to an existing obligation and a
+replayable failure or missing required validation. An untraceable dynamic value
+alone is an `advisory`, not `not_yet_proven` and not proof of safety. Removing a
+persisted value without required old-state readback is `not_yet_proven`; a failed
+required projection check is `violated`. Neither can be downgraded to advisory
+to bypass CI or a concrete blocking finding. Do not turn future or advisory RFC
+properties into current merge obligations. Result checking validates declared
+consistency, not the truth of a reviewer's classification.
+
+**中文边界：** 普通改动只填检查范围、影响理由与结论，无共享契约影响时用
+`not_applicable` 结束，无需虚构候选值或补齐整张证据表。影响共享状态、owner、
+消费者、投影或持久化时，按受影响契约检查并引用已有证据。扫描器能力不足用
+`advisory` 报告；本次修改缺少现行契约要求的验证用 `not_yet_proven`，明确违规用
+`violated`，后二者阻断批准并给出契约、触发修改、观察证据、最小修复与复验命令。
+其他仓库使用自己的 CI 与契约规则，不能继承 LoopX 的检查名。
+
+A matched model evaluation should preselect ordinary edits, legal contract
+extensions, and real contract defects; fix tasks, model/version, tools, seeds
+where supported, and total budgets across policies. Count review and repair
+within that budget. Compare independently accepted completions, tokens, elapsed
+time, false blocks and missed defects; report uncertainty and repeat stochastic
+runs. Deterministic consistency fixtures establish the boundary, not model
+benchmark uplift or non-regression.
 
 The per-actionable-PR `pull_request_review_plan_v1` records the exact target,
 applicability, required evidence ids, and an initially `unverified`

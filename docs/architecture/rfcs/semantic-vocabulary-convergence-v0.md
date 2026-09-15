@@ -674,6 +674,19 @@ after its false-negative boundary is documented and mutation tests cover the
 recognised forms. This keeps the contract strict about silent corruption while
 allowing incomplete analyses to remain useful without blocking unrelated work.
 
+PR review preserves these lanes. Ordinary changes record their checked scope and
+reason, then exit semantic review when no shared contract is affected. Detailed
+evidence is limited to affected contracts and may reference existing review
+evidence. A scanner blind spot is advisory; missing required validation for a
+contract affected by this PR, or a concrete violation, blocks approval with the
+contract, triggering change, observed evidence, minimum repair and rerun command.
+The global F6 proof gap does not itself block unrelated work or excuse a missing
+compatibility check required by the changed contract. See the
+[review evidence contract](../../../loopx/capabilities/pr_review_queue/README.md#semantic-alignment-and-ci-constraint-recovery)
+for the executable verdict shapes. Model performance remains an empirical
+question: compare matched tasks/model/budgets, counting tokens, time, independently
+accepted completions, false blocks and missed defects before claiming a benefit.
+
 The phases are therefore:
 
 1. **M0:** keep the current structural guard and make its proof boundary
