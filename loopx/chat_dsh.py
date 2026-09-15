@@ -1,0 +1,199 @@
+"""The steward channel's managed-host transport: one bounded segment per turn.
+
+The managed host runs one bounded DeepSeek Harness work segment per request and
+does not promise an interactive or cross-turn host session, so this adapter does
+not pretend to hold one. Every Chat turn starts one segment on the resolved
+managed execution profile, hands it the channel's bounded history plus the
+current message, and returns the final assistant message as the answer.
+
+What this transport deliberately does **not** claim, because a caller must not
+infer it:
+
+* no partial streaming: the answer arrives as one final message;
+* no cross-turn host session: the visible history is Chat-side context, and each
+  segment is a fresh one;
+* no tool authority: the segment is pinned read-only (see
+  ``STEWARD_SEGMENT_ENV``), so a model that reaches for a tool is refused by the
+  dsh sandbox itself, and the answer must come from the evidence LoopX supplies.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+import threading
+from pathlib import Path
+from typing import Any
+import uuid
+
+from .chat import parse_agent_response
+from .chat_agent import CodexChatAgentError, CodexChatTimeoutError, _turn_prompt
+from .dsh_goal_mode.turn_host_adapter import resolve_dsh_home, run_dsh_turn
+
+EventSink = Callable[[str, dict[str, Any]], None]
+
+# The visible history a segment may see. It is Chat context, never a host
+# session: the adapter sends the same bounded window the CLI endpoints send.
+HISTORY_LIMIT = 12
+
+# An interactive channel answers from the evidence LoopX supplies and delegates
+# work; it does not get write or shell authority of its own. dsh composes its
+# sandbox from `DSH_PERMISSION_MODE` (its `read-only` preset), so pinning that
+# variable is what makes the boundary machine-enforced instead of polite. A
+# segment that tries a write is refused by the sandbox, exactly like the
+# read-only Codex steward the channel ran on before it had this transport.
+STEWARD_SEGMENT_ENV = {"DSH_PERMISSION_MODE": "read-only"}
+
+MANAGED_HOST_CHAT_TIMEOUT = "managed_host_chat_timeout"
+MANAGED_HOST_CHAT_FAILED = "managed_host_chat_failed"
+
+
+@dataclass
+class DshChatAdapter:
+    """Chat transport for the managed host, one bounded segment per turn."""
+
+    objective: str
+    work_dir: Path
+    provider: str
+    model: str
+    reasoning_effort: str
+    session_id: str = field(default_factory=lambda: "dsh-chat-" + uuid.uuid4().hex)
+    history: list[dict[str, Any]] = field(default_factory=list)
+    timeout_sec: float = 600.0
+    max_tokens: int | None = None
+    cordis: Path | None = None
+    runtime_bin: str | None = None
+    runner: Callable[..., Any] | None = None
+
+    @property
+    def upstream_thread_id(self) -> str:
+        return self.session_id
+
+    def capabilities(self) -> dict[str, Any]:
+        return {
+            "adapter_kind": "deepseek_harness_segment",
+            "streaming": False,
+            "resume": True,
+            "interrupt": False,
+            # No tool authority is granted by the channel. The segment answers
+            # from the evidence LoopX supplies and delegates work back.
+            "tool_calls": False,
+            "trust_scope": "read_only",
+        }
+
+    def _prompt(self, message: str) -> str:
+        """Compose the segment input: objective, visible history, Turn prompt.
+
+        A segment is fresh, so the visible history is part of its input rather
+        than something the host remembers. Only the bounded window is sent.
+        """
+
+        history_lines = [
+            f"{item.get('role', 'user')}: {str(item.get('content') or '').strip()}"
+            for item in self.history[-HISTORY_LIMIT:]
+            if str(item.get("content") or "").strip()
+        ]
+        history_block = (
+            "\nPrevious visible Chat messages:\n" + "\n".join(history_lines)
+            if history_lines
+            else ""
+        )
+        return f"{self.objective.strip()}{history_block}\n\n{_turn_prompt(message)}"
+
+    def _run_segment(self, prompt: str) -> dict[str, Any]:
+        runner = self.runner or run_dsh_turn
+        outcome = runner(
+            prompt=prompt,
+            session_id=self.session_id,
+            workspace=self.work_dir,
+            session_root=resolve_dsh_home(self.work_dir),
+            provider=self.provider,
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
+            max_tokens=self.max_tokens,
+            cordis=self.cordis,
+            runtime_bin=self.runtime_bin,
+            request_timeout_seconds=self.timeout_sec,
+            env=dict(STEWARD_SEGMENT_ENV),
+        )
+        if isinstance(outcome, str):
+            return {"final_response": outcome, "finish_reason": None, "events": []}
+        if not isinstance(outcome, dict):
+            raise CodexChatAgentError(
+                "The managed host returned an unreadable segment result.",
+                gate=None,
+                error_code=MANAGED_HOST_CHAT_FAILED,
+            )
+        return outcome
+
+    def start_turn(self, message: str, event_sink: EventSink) -> dict[str, Any]:
+        event_sink("turn.started", {"upstream_turn_id": self.session_id})
+        event_sink(
+            "agent.phase",
+            {"phase": "managed_host_segment", "label": "正在托管宿主上处理"},
+        )
+        prompt = self._prompt(message)
+        outcome: dict[str, Any] = {}
+        failure: list[BaseException] = []
+
+        def run() -> None:
+            try:
+                outcome.update(self._run_segment(prompt))
+            except BaseException as exc:  # noqa: BLE001 - re-raised on the caller thread
+                failure.append(exc)
+
+        worker = threading.Thread(
+            target=run, name="loopx-dsh-chat-segment", daemon=True
+        )
+        worker.start()
+        worker.join(self.timeout_sec)
+        if worker.is_alive():
+            # The segment is bounded by the caller's deadline, not by the host's
+            # willingness to stop: the channel reports a typed timeout instead of
+            # waiting on the steward forever.
+            raise CodexChatTimeoutError(
+                "The managed host did not finish this segment within the channel timeout.",
+                gate=None,
+                error_code=MANAGED_HOST_CHAT_TIMEOUT,
+            )
+        if failure:
+            error = failure[0]
+            if isinstance(error, CodexChatAgentError):
+                raise error
+            raise CodexChatAgentError(
+                "The managed host failed to run this segment.",
+                gate=None,
+                error_code=MANAGED_HOST_CHAT_FAILED,
+            ) from error
+        raw = str(outcome.get("final_response") or "").strip()
+        if not raw:
+            # An empty final message after a terminal provider error is the
+            # provider's verdict, not an answer: the channel fails closed.
+            raise CodexChatAgentError(
+                "The managed host returned no answer for this segment.",
+                gate=None,
+                error_code=MANAGED_HOST_CHAT_FAILED,
+            )
+        response = parse_agent_response(raw, protected_paths=[self.work_dir])
+        self.history.extend(
+            [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": str(response.get("message") or "")},
+            ]
+        )
+        del self.history[:-HISTORY_LIMIT]
+        event_sink("answer.delta", {"text": str(response.get("message") or "")})
+        event_sink("answer.final", {"response": response})
+        return response
+
+    def interrupt_turn(self, turn_id: str | None = None) -> None:
+        # The segment owns its own runtime and exits on its request timeout, so
+        # there is no retained session to interrupt. The Chat runtime still
+        # discards a cancelled turn's result.
+        del turn_id
+
+    def close_session(self) -> None:
+        return None
+
+    def healthcheck(self) -> bool:
+        return True

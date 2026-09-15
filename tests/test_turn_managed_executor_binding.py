@@ -15,6 +15,14 @@ from loopx.control_plane.turn_driver.host_binding import (
     managed_executor_binding,
     resolve_default_turn_host,
 )
+from loopx.control_plane.turn_driver.execution_profile import (
+    INVALID_REASONING_EFFORT,
+    MANAGED_MODEL_DEFAULT,
+    MANAGED_PROVIDER_DEFAULT,
+    MANAGED_REASONING_EFFORT_DEFAULT,
+    managed_execution_profile,
+    managed_execution_profile_line,
+)
 
 _NO_RUNTIME = lambda _module: False  # noqa: E731 - tiny probe fixture
 _RUNTIME = lambda _module: True  # noqa: E731 - tiny probe fixture
@@ -36,6 +44,11 @@ def test_managed_executor_reports_the_operator_credential_and_endpoint():
         "executor_kind": EXECUTOR_KIND_MANAGED,
         "credential_env": "DEEPSEEK_API_KEY",
         "endpoint_env": "DEEPSEEK_BASE_URL",
+        # The agent-facing payload names what would run, not the shipped
+        # constants it agrees with.
+        "execution_profile": (
+            f"{MANAGED_MODEL_DEFAULT}@{MANAGED_REASONING_EFFORT_DEFAULT}"
+        ),
         "operator_credential_bound": True,
         "available": True,
         "unavailable_reason": None,
@@ -176,3 +189,93 @@ def test_endpoint_without_credential_is_reported_but_does_not_switch_host():
 
     assert resolve_default_turn_host(environ) == MANAGED_TURN_HOST
     assert binding["endpoint_env"] is None
+
+
+def test_managed_binding_projects_the_execution_profile_and_its_source():
+    binding = managed_executor_binding(
+        "dsh",
+        environ={
+            "DEEPSEEK_API_KEY": "sk-operator",
+            "LOOPX_TURN_MODEL": "fixture-model",
+            "LOOPX_TURN_REASONING_EFFORT": "max",
+        },
+        module_probe=_RUNTIME,
+    )
+
+    # An owner-set value appears as itself, so it is never read as the shipped
+    # default; the shipped provider is not restated.
+    assert binding["execution_profile"] == "fixture-model@max"
+    # An explicit argument outranks the environment and says so.
+    overridden = managed_executor_binding(
+        "dsh",
+        environ={"DEEPSEEK_API_KEY": "sk-operator", "LOOPX_TURN_MODEL": "fixture-model"},
+        module_probe=_RUNTIME,
+        model="cli-model",
+    )["execution_profile"]
+    assert overridden == "cli-model@high"
+
+
+def test_a_deviating_provider_is_named_in_the_profile_line():
+    # Dropping the provider unconditionally would let the line claim a profile
+    # this Turn would not use, so a non-shipped provider is spelled out.
+    binding = managed_executor_binding(
+        "dsh",
+        environ={
+            "DEEPSEEK_API_KEY": "sk-operator",
+            "LOOPX_TURN_PROVIDER": "fixture-provider",
+        },
+        module_probe=_RUNTIME,
+    )
+
+    assert binding["execution_profile"] == "fixture-provider/deepseek-v4-flash@high"
+
+
+def test_non_managed_hosts_carry_no_execution_profile():
+    for host in ("codex-cli", "generic-cli"):
+        binding = managed_executor_binding(
+            host, environ={"DEEPSEEK_API_KEY": "sk-operator"}, module_probe=_RUNTIME
+        )
+
+        assert binding["execution_profile"] is None, binding
+
+
+def test_an_unsupported_effort_fails_closed_before_launch():
+    # The endpoint rejects an effort outside its vocabulary, so the readback
+    # refuses instead of letting a bounded Turn spend itself on that request.
+    binding = managed_executor_binding(
+        "dsh",
+        environ={
+            "DEEPSEEK_API_KEY": "sk-operator",
+            "LOOPX_TURN_REASONING_EFFORT": "turbo",
+        },
+        module_probe=_RUNTIME,
+    )
+
+    # The refused effort is visible next to the typed verdict, so a reader does
+    # not have to re-derive which configured value the endpoint rejected.
+    assert binding["execution_profile"] == "deepseek-v4-flash@turbo"
+    assert binding["available"] is False
+    assert binding["unavailable_reason"] == INVALID_REASONING_EFFORT
+
+
+def test_a_missing_launch_fact_still_outranks_the_profile_verdict():
+    binding = managed_executor_binding(
+        "dsh",
+        environ={"LOOPX_TURN_REASONING_EFFORT": "turbo"},
+        module_probe=_RUNTIME,
+    )
+
+    # One typed reason per readback: the missing credential is the fact that
+    # decides whether this executor launches at all.
+    assert binding["unavailable_reason"] == OPERATOR_CREDENTIAL_UNCONFIGURED
+    assert binding["execution_profile"] == "deepseek-v4-flash@turbo"
+
+
+def test_the_agent_facing_profile_line_stays_one_bounded_line():
+    shipped = managed_execution_profile_line(managed_execution_profile({}))
+
+    assert shipped == f"{MANAGED_MODEL_DEFAULT}@{MANAGED_REASONING_EFFORT_DEFAULT}"
+    assert MANAGED_PROVIDER_DEFAULT not in shipped
+    # The budget this line has to fit is per planned Turn, so it must stay far
+    # below the object form's ~360 characters.
+    assert len(shipped) < 64

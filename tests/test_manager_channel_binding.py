@@ -1,4 +1,4 @@
-"""The steward channel selects its executor explicitly; a credential only authenticates."""
+"""The steward channel resolves one disclosed default for its executor and model."""
 
 from __future__ import annotations
 
@@ -6,16 +6,18 @@ import json
 
 import pytest
 
-from loopx.chat_agent import (
-    MANAGED_HOST_CHAT_TRANSPORT_UNSUPPORTED,
-    CodexChatAgentError,
-)
+from loopx.chat_agent import CodexChatAgentError
 from loopx.capabilities.manager_runtime import manager_runtime_capability_projection
 from loopx.chat_manager import (
+    MANAGER_ENDPOINT_DEFAULT_MANAGED,
+    MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT,
+    MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED,
     MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
     MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT,
+    MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
     MANAGER_MODEL_SOURCE_ENV_OVERRIDE,
     MANAGER_MODEL_SOURCE_VENDOR_DEFAULT,
+    manager_endpoint_default_reason,
     manager_channel_binding,
     manager_executor_endpoint_default,
     manager_model_config,
@@ -26,7 +28,9 @@ from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_store import ChatSessionStore
 
 
-def test_the_shipped_steward_channel_defaults_to_the_cli_endpoint():
+def test_without_the_operator_credential_the_channel_stays_on_the_cli_endpoint():
+    """A machine with only a personal login must keep a reachable steward."""
+
     binding = manager_channel_binding({})
 
     assert (
@@ -35,33 +39,66 @@ def test_the_shipped_steward_channel_defaults_to_the_cli_endpoint():
     assert (
         binding["executor_endpoint_source"] == MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT
     )
+    assert (
+        binding["executor_endpoint_default_reason"]
+        == manager_endpoint_default_reason({})
+        == MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT
+    )
     assert binding["executor_kind"] == "individual"
     assert binding["credential_env_var"] == ""
     assert binding["operator_credential_configured"] is False
+    assert binding["execution_profile"] is None
     assert binding["available"] is None
     assert binding["unavailable_reason"] is None
     assert binding["model"] == "gpt-6-astra"
     assert binding["model_source"] == MANAGER_MODEL_SOURCE_VENDOR_DEFAULT
 
 
-def test_a_configured_credential_never_re_points_the_steward_channel():
-    """Discovering a provider key must not change the executor or the model."""
+def test_the_shipped_default_follows_the_operator_credential_it_reports():
+    """One reported local fact decides the default, and the readback names it."""
 
     without = manager_channel_binding({})
     with_credential = manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})
 
-    assert with_credential["executor_endpoint"] == without["executor_endpoint"]
+    assert without["executor_endpoint"] == "codex"
+    assert (
+        with_credential["executor_endpoint"]
+        == MANAGER_ENDPOINT_DEFAULT_MANAGED
+        == manager_executor_endpoint_default({"DEEPSEEK_API_KEY": "fixture"})
+    )
     assert (
         with_credential["executor_endpoint_source"]
         == without["executor_endpoint_source"]
         == MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT
     )
-    assert with_credential["model"] == without["model"] == "gpt-6-astra"
-    assert with_credential["model_source"] == MANAGER_MODEL_SOURCE_VENDOR_DEFAULT
-    # The credential stays a reported fact, not a selection signal.
+    assert (
+        with_credential["executor_endpoint_default_reason"]
+        == MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED
+    )
+    # The model follows the executor: the managed host runs the same execution
+    # profile a governed Turn runs, so the channel and its workers agree.
+    assert with_credential["model"] == "deepseek-v4-flash"
+    assert with_credential["model_source"] == MANAGER_MODEL_SOURCE_MANAGED_PROFILE
+    # One line, the same shape the governed Turn readback publishes, so the
+    # channel and its workers cannot report two different managed profiles.
+    assert with_credential["execution_profile"] == "deepseek-v4-flash@high"
     assert with_credential["operator_credential_configured"] is True
-    assert with_credential["credential_env_var"] == ""
+    assert with_credential["credential_env_var"] == "DEEPSEEK_API_KEY"
     assert "fixture" not in json.dumps(with_credential)
+
+
+def test_an_explicit_endpoint_selection_reports_no_default_reason():
+    binding = manager_channel_binding(
+        {"LOOPX_MANAGER_ENDPOINT": "codex", "DEEPSEEK_API_KEY": "fixture"}
+    )
+
+    # The operator overruled the conditional default, so the projection must not
+    # claim a shipped-default reason for the endpoint it resolved.
+    assert binding["executor_endpoint"] == "codex"
+    assert binding["executor_endpoint_source"] == MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG
+    assert binding["executor_endpoint_default_reason"] == ""
+    assert binding["model"] == "gpt-6-astra"
+    assert binding["execution_profile"] is None
 
 
 def test_an_explicit_endpoint_selection_wins_over_the_shipped_default():
@@ -76,15 +113,20 @@ def test_an_explicit_endpoint_selection_wins_over_the_shipped_default():
     assert manager_executor_endpoint_default({"LOOPX_MANAGER_ENDPOINT": " "}) == "codex"
 
 
-def test_selecting_the_managed_host_reports_the_missing_chat_transport():
-    """The managed host is a bounded Turn host, so the channel fails closed."""
+def test_selecting_the_managed_host_quotes_the_turn_executor_verdict():
+    """The channel cannot advertise an executor the Turn driver would refuse."""
 
     binding = manager_channel_binding({"LOOPX_MANAGER_ENDPOINT": "dsh"})
 
     assert binding["executor_endpoint"] == "dsh"
     assert binding["executor_kind"] == "managed"
     assert binding["available"] is False
-    assert binding["unavailable_reason"] == MANAGED_HOST_CHAT_TRANSPORT_UNSUPPORTED
+    # The blocking fact is the credential or a missing runtime, and either way
+    # the channel fails closed instead of running on an unauthenticated host.
+    assert binding["unavailable_reason"] in {
+        "operator_credential_unconfigured",
+        "dsh_runtime_unavailable",
+    }
     # An operator-billed endpoint names the credential it authenticates with.
     assert binding["credential_env_var"] == ""
     assert (
@@ -117,11 +159,15 @@ def test_explicit_model_override_wins_with_and_without_credential():
         "model": "gpt-6-astra",
         "reasoning_effort": "low",
     }
+    # The managed effort is the same field the governed Turn surface resolves.
+    assert manager_model_config(
+        {"DEEPSEEK_API_KEY": "fixture", "LOOPX_TURN_REASONING_EFFORT": "max"}
+    ) == {"model": "deepseek-v4-flash", "reasoning_effort": "max"}
 
 
 def test_manager_model_config_reads_the_process_environment(monkeypatch):
     monkeypatch.delenv("LOOPX_MANAGER_MODEL", raising=False)
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "fixture")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
     assert manager_model_config()["model"] == "gpt-6-astra"
 
@@ -147,7 +193,13 @@ def test_open_manager_session_resolves_the_endpoint_only_when_unset(tmp_path):
     assert calls[-1]["agent_id"] == "claude-code"
 
 
-def test_managed_host_without_a_chat_transport_raises_a_typed_gate(tmp_path):
+def test_a_managed_host_that_cannot_launch_raises_a_typed_gate(
+    tmp_path, monkeypatch
+):
+    # No operator credential and no injected runner: the managed endpoint is a
+    # listed capability that cannot serve this machine, which must be a typed
+    # refusal with a next step rather than an unknown-endpoint error.
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     runtime = ChatRuntimeController(
         store=ChatSessionStore(tmp_path / "store"), codex_bin="fixture-codex"
     )
@@ -163,9 +215,9 @@ def test_managed_host_without_a_chat_transport_raises_a_typed_gate(tmp_path):
     finally:
         runtime.close()
 
-    assert raised.value.error_code == MANAGED_HOST_CHAT_TRANSPORT_UNSUPPORTED
+    assert raised.value.error_code == "agent_endpoint_unavailable"
     assert raised.value.gate["kind"] == "host_tool_gate"
-    assert "loopx turn" in raised.value.gate["next_action"]
+    assert "DEEPSEEK_API_KEY" in raised.value.gate["next_action"]
 
 
 def test_unknown_endpoint_keeps_the_untyped_lookup_error(tmp_path):

@@ -221,6 +221,9 @@ def handle_turn_command(
         payload["managed_executor"] = managed_executor_binding(
             args.host,
             dsh_runner_configured=bool(getattr(args, "dsh_runner", None)),
+            provider=getattr(args, "dsh_provider", None),
+            model=getattr(args, "dsh_model", None),
+            reasoning_effort=getattr(args, "dsh_reasoning_effort", None),
         )
         if (
             args.turn_command == "run-once"

@@ -65,8 +65,9 @@ serializer omits the duplicate HTTP status. Its hard-quota `QUOTA` code remains
 non-retryable, while its explicitly retryable `EMPTY_RESPONSE` code maps to the
 closest LoopX transient bucket, `transport_lost`.
 
-CLI flags: `--dsh-provider`, `--dsh-model`, `--dsh-max-tokens`,
-`--dsh-home`, `--dsh-cordis`, `--dsh-runtime-bin`, and `--dsh-runner`.
+CLI flags: `--dsh-provider`, `--dsh-model`, `--dsh-reasoning-effort`,
+`--dsh-max-tokens`, `--dsh-home`, `--dsh-cordis`, `--dsh-runtime-bin`, and
+`--dsh-runner`.
 Against the current SDK config surface the home maps to `dsh_home`, the runtime
 binary maps to `dsh_bin`, and a cordis file rides as one `patches` entry.
 Home precedence is explicit CLI value, then `DSH_HOME`, then
@@ -90,8 +91,15 @@ contract failure instead of collapsing into `unknown`.
   `--dsh-runner`.
 - A dsh `cordis.yml` plus any `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`
   settings for the real runtime.
-- Defaults come from `DSH_MODEL` / `DSH_PROVIDER` when set. `DSH_HOME` may
-  override the workspace-local home when no CLI home is supplied.
+- Provider, model and reasoning effort come from the managed execution profile
+  (`loopx/control_plane/turn_driver/execution_profile.py`): product defaults
+  `deepseek-official` / `deepseek-v4-flash` / `high`, overridden by
+  `LOOPX_TURN_PROVIDER` / `LOOPX_TURN_MODEL` / `LOOPX_TURN_REASONING_EFFORT` and,
+  at lower precedence, by the legacy `DSH_PROVIDER` / `DSH_MODEL`. An explicit CLI
+  value wins over both, and the resolved profile reports its own source. A
+  reasoning effort this adapter cannot honour is a typed
+  `dsh_execution_profile_rejected` failure instead of a silent coercion.
+  `DSH_HOME` may override the workspace-local home when no CLI home is supplied.
 
 ## Boundary
 

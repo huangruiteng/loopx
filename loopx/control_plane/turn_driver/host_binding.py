@@ -14,9 +14,11 @@ what makes the selected managed host authenticated.
 ``managed_executor_binding`` turns the selection plus the operator environment
 into the readback a caller can act on before a Turn runs: which executor the
 plan would use, how that executor is billed and bounded, whether it can launch
-here, and -- when it cannot -- one typed reason naming the missing fact. The
+here, which execution profile (provider, model, reasoning effort) runs on it,
+and -- when it cannot launch -- one typed reason naming the missing fact. The
 Turn executor fails closed on that verdict, so a bounded Turn never drifts onto
-a host the operator did not select.
+a host the operator did not select, nor onto a profile the endpoint is known to
+reject.
 """
 
 from __future__ import annotations
@@ -29,6 +31,11 @@ from ..operator_credential import (
     OPERATOR_ENDPOINT_ENV_VAR,
     configured_operator_credential,
     env_text,
+)
+from .execution_profile import (
+    managed_execution_profile,
+    managed_execution_profile_line,
+    managed_profile_unavailable_reason,
 )
 
 # Explicit selection surfaces. The default is a product decision recorded here
@@ -108,6 +115,9 @@ def managed_executor_binding(
     environ: Mapping[str, str] | None = None,
     dsh_runner_configured: bool = False,
     module_probe: Callable[[str], bool] | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Project the executor one planned Turn would run on.
 
@@ -115,6 +125,11 @@ def managed_executor_binding(
     cannot launch here, which is what a caller has to fail closed on. ``None``
     records that this projection does not probe that executor kind, so it makes
     no claim rather than an unproven ``True``.
+
+    ``execution_profile`` is the managed profile this executor would run -- and,
+    with it, the provider claims to authenticate. It is ``None`` for every
+    non-managed executor because neither the profile nor the credential belongs
+    to an individual or generic host.
     """
 
     if host == MANAGED_HOST:
@@ -123,18 +138,26 @@ def managed_executor_binding(
             dsh_runner_configured or dsh_runtime_importable(module_probe)
         )
         operator_credential_bound = bool(credential_env or dsh_runner_configured)
+        profile = managed_execution_profile(
+            environ,
+            provider=provider,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
+        profile_reason = managed_profile_unavailable_reason(profile)
         if not runtime_available:
             unavailable_reason: str | None = DSH_RUNTIME_UNAVAILABLE
         elif not operator_credential_bound:
             unavailable_reason = OPERATOR_CREDENTIAL_UNCONFIGURED
         else:
-            unavailable_reason = None
+            unavailable_reason = profile_reason
         return {
             "schema_version": MANAGED_EXECUTOR_BINDING_SCHEMA_VERSION,
             "executor": host,
             "executor_kind": EXECUTOR_KIND_MANAGED,
             "credential_env": credential_env,
             "endpoint_env": _configured_env_name(OPERATOR_ENDPOINT_ENV_VAR, environ),
+            "execution_profile": managed_execution_profile_line(profile),
             # Billing boundary, stated instead of assumed: a managed executor is
             # operator-credential-bound only when the credential or an explicit
             # runner hook is configured here.
@@ -152,6 +175,7 @@ def managed_executor_binding(
         ),
         "credential_env": None,
         "endpoint_env": None,
+        "execution_profile": None,
         "operator_credential_bound": False,
         "available": None,
         "unavailable_reason": None,

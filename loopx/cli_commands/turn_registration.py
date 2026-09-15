@@ -215,11 +215,24 @@ def register_turn_commands(
     )
     run_once.add_argument(
         "--dsh-provider",
-        help="Provider for the built-in dsh host; defaults to DSH_PROVIDER.",
+        help=(
+            "Provider for the built-in dsh host; defaults to the managed "
+            "execution profile (LOOPX_TURN_PROVIDER)."
+        ),
     )
     run_once.add_argument(
         "--dsh-model",
-        help="Model for the built-in dsh host; defaults to DSH_MODEL.",
+        help=(
+            "Model for the built-in dsh host; defaults to the managed "
+            "execution profile (LOOPX_TURN_MODEL)."
+        ),
+    )
+    run_once.add_argument(
+        "--dsh-reasoning-effort",
+        help=(
+            "Reasoning effort for the built-in dsh host; defaults to the "
+            "managed execution profile (LOOPX_TURN_REASONING_EFFORT)."
+        ),
     )
     run_once.add_argument("--dsh-max-tokens", type=int)
     run_once.add_argument(
