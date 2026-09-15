@@ -118,6 +118,21 @@ and its source, whether an operator credential is configured, and
 serve this channel. `available` is `null` when the projection makes no claim. A
 frontend can show which executor and model the steward channel resolved, and why,
 without re-deriving the rule.
+
+The Personal Workspace manager header renders that binding as one compact chip
+(`executor · executor kind · model`). The chip is display-only: it reads the
+projected fields, keeps the executor kind in the same `individual`/`managed`
+vocabulary, and names an unrecognized kind as an unclaimed registered endpoint
+rather than guessing. When the projection proves the selected endpoint cannot
+serve the channel, the chip is marked unavailable and the header states why in
+the same row. A capabilities payload without `channel_binding` renders the
+previous header unchanged.
+
+| Surface, Chinese | Shipped selection | Managed host selected |
+| --- | --- | --- |
+| Desktop, 1512px | [Chip](../../assets/personal-workspace/steward-execution-chip-desktop.png) | [Unavailable](../../assets/personal-workspace/steward-execution-chip-unavailable-desktop.png) |
+| Mobile, 390px | -- | [Unavailable](../../assets/personal-workspace/steward-execution-chip-unavailable-mobile.png) |
+
 Legacy managed manager sessions retain their logical identity and bounded chat
 history but start a fresh executor thread in the same Codex home on first
 restore. This removes inherited project instructions without importing sessions

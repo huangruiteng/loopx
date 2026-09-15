@@ -57,6 +57,7 @@ import {
   type ChatSessionSummary,
   type ChatImageAttachment,
   type ChatVisibleMessage,
+  type ManagerChannelBinding,
   type ManagerRuntimeSessionReadback,
   type ProtectedActionProposal,
   type TodoProposal,
@@ -1399,6 +1400,7 @@ function PersonalGoalHome({
   }>>([]);
   const [goalSubagentConfigurationEnabled, setGoalSubagentConfigurationEnabled] = useState(false);
   const [managerRuntime, setManagerRuntime] = useState<ManagerRuntimeSessionReadback | null>(null);
+  const [managerChannelBinding, setManagerChannelBinding] = useState<ManagerChannelBinding | null>(null);
   const model = useMemo(() => {
     const base = buildPersonalHomeModel(payload, rows, t, goalSubagentConfigurationEnabled);
     if (!progress) return base;
@@ -1636,6 +1638,7 @@ function PersonalGoalHome({
       setRuntimeAgents([]);
       setGoalSubagentConfigurationEnabled(false);
       setManagerRuntime(null);
+      setManagerChannelBinding(null);
       return;
     }
     let cancelled = false;
@@ -1644,6 +1647,7 @@ function PersonalGoalHome({
         if (!cancelled) {
           setRuntimeAgents(capabilities.adapters ?? []);
           const runtime = capabilities.manager?.runtime;
+          setManagerChannelBinding(capabilities.manager?.channel_binding ?? null);
           setManagerRuntime(runtime ? {
             schema_version: "manager_runtime_session_readback_v0",
             runtime_profile: runtime.runtime_profile,
@@ -2831,6 +2835,7 @@ function PersonalGoalHome({
           onStartNewRunSession: startNewManagerSession,
         }}
         goalArchiveLoadState={goalArchiveLoadState}
+        managerChannelBinding={managerChannelBinding}
         managerRuntime={managerRuntime}
         model={workspaceModel}
         readOnly={readOnly}
