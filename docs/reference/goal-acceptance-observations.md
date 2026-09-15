@@ -30,8 +30,19 @@ The proposed [Goal direction baseline](../architecture/rfcs/goal-direction-basel
 material declarations and revision-bound usage receipts are not implemented here;
 historical progress does not establish that current direction materials were read.
 
+Status also exposes a separate `run_history.goals[].artifact_lifecycle` readout
+and Markdown summary: observed phase, evidence milestones, guards and next steps.
+It consumes the current Goal's session-runtime work observation before display
+trimming. Outstanding required work keeps the phase `qualifying` even when
+Todos are complete and historical progress is reached. An absent work observation
+does not invent a work requirement. `closing` still does not certify acceptance
+or recommend `closed` without an acceptance verdict. This readout grants no
+execution or completion authority; the Dashboard card above keeps its separate
+acceptance-observation contract.
+
 Validation: `python -m pytest tests/control_plane/test_goal_acceptance_observation.py`
-and `node examples/dashboard-goal-acceptance-browser-smoke.mjs`. The browser
+and `python -m pytest tests/control_plane/test_goal_artifact_work_observation.py`,
+plus `node examples/dashboard-goal-acceptance-browser-smoke.mjs`. The browser
 check consumes real status collection over a disposable synthetic Goal; set
 `LOOPX_GOAL_ACCEPTANCE_PACKAGED=1` after the Dashboard build to check shipped assets.
 
@@ -54,5 +65,10 @@ check consumes real status collection over a disposable synthetic Goal; set
 不保留把完整协议误认作该观察结构的别名。此切片不增加里程碑声明入口、统一阶段序列、完整证据审计、
 新的合法迁移或完成判定。Goal direction baseline 提案中的材料声明和绑定版本的阅读回执
 不在此次实现范围；历史进展不能证明已阅读当前方向材料。旧来源不提供投影时显示不可用。
+status 同时在独立的 `run_history.goals[].artifact_lifecycle` 和 Markdown 摘要中展示
+观测阶段、证据里程碑、门禁和下一步。它在展示截断前读取当前 Goal 的 session-runtime
+工作观察：即使 Todo 全部完成且历史进展已达成，只要仍有必须执行的工作，阶段就保持
+`qualifying`。缺少工作观察不会凭空产生执行要求；`closing` 不代表验收通过，未取得验收结论
+时也不会建议 `closed`。此读出不授予执行或完成权威，Dashboard 卡片仍使用独立的验收观察合同。
 上面的测试命令覆盖合成 Goal 的生产 refresh-state 写入、
 真实 status 收集和浏览器入口；打包验证使用 `LOOPX_GOAL_ACCEPTANCE_PACKAGED=1`。
