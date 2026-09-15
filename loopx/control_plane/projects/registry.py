@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ...bootstrap import build_goal_entry
+from ...bootstrap import build_goal_entry, render_objective_markdown
 from ...control_plane.runtime.time import now_local_iso
 from ...file_lock import exclusive_cross_runtime_file_lock as exclusive_file_lock
 from ...paths import resolve_runtime_root
@@ -142,7 +142,7 @@ adapter_id: {goal_id}
 
 ## Objective
 
-{objective}
+{render_objective_markdown(objective)}
 
 ## Acceptance
 

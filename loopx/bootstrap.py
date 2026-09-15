@@ -465,6 +465,22 @@ def apply_onboarding_todos_to_state(
     return "\n".join(lines) + "\n"
 
 
+def render_objective_markdown(objective: str) -> str:
+    """Render objective prose as an isolated Markdown blockquote.
+
+    Generated state grammar owns fences, comments, and headings. Raw
+    objective text is quoted line by line so a start-goal-collapsed or
+    unclosed fence, comment, or heading example inside the objective can
+    never open machine grammar and hide the generated Todo sections below.
+    The frontmatter ``objective`` field keeps the raw text; readers of the
+    body section strip the quote prefix to recover it.
+    """
+    lines = str(objective or "").splitlines()
+    if not lines:
+        return ""
+    return "\n".join(f"> {line}" if line.strip() else ">" for line in lines)
+
+
 def render_state_markdown(
     *,
     project: Path,
@@ -516,7 +532,7 @@ adapter_id: {goal_id}
 
 ## Objective
 
-{objective}
+{render_objective_markdown(objective)}
 
 ## Authority Sources
 
