@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..control_plane.quota.effective_action import EffectiveAction
 
 import argparse
 import json
@@ -202,7 +203,7 @@ def handle_turn_command(
             args.turn_command == "run-once"
             and args.host == "codex-cli"
             and not resume_requested
-            and turn_envelope.get("effective_action") != "governed_capability_intent"
+            and turn_envelope.get("effective_action") != EffectiveAction.GOVERNED_CAPABILITY_INTENT.value
         ):
             session_binding = codex_cli_session_binding(runtime_root, turn_envelope)
         payload = build_loopx_turn_plan(

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 import json
 from collections.abc import Callable, Iterable
@@ -606,13 +607,13 @@ def build_quota_slot_preview_for_decision(
         (
             before.get("state") == "operator_gate"
             or before.get("recovery_delivery_allowed") is True
-            or before.get("effective_action") == "outcome_floor_recovery"
+            or before.get("effective_action") == EffectiveAction.OUTCOME_FLOOR_RECOVERY.value
         )
         and before.get("safe_bypass_allowed") is True
     )
     self_repair_spend = before.get("effective_action") in self_repair_spend_actions
     capability_repair_spend = (
-        before.get("effective_action") == "capability_bridge_repair"
+        before.get("effective_action") == EffectiveAction.CAPABILITY_BRIDGE_REPAIR.value
         and before.get("capability_repair_allowed") is True
     )
     delivery_completion_run = delivery_completion_run or (
@@ -715,7 +716,7 @@ def build_quota_slot_preview_for_decision(
         }
     delivery_workspace_validated = bool(delivery_workspace)
     workspace_repair_no_spend = (
-        before.get("effective_action") == "agent_workspace_repair"
+        before.get("effective_action") == EffectiveAction.AGENT_WORKSPACE_REPAIR.value
         and before.get("workspace_repair_allowed") is True
         and not delivery_workspace_validated
     )
@@ -745,13 +746,13 @@ def build_quota_slot_preview_for_decision(
         and (
             settlement_identity is not None
             or not before.get("should_run")
-            or before.get("effective_action") == "external_evidence_observe"
+            or before.get("effective_action") == EffectiveAction.EXTERNAL_EVIDENCE_OBSERVE.value
             or (
-                before.get("effective_action") == "agent_workspace_repair"
+                before.get("effective_action") == EffectiveAction.AGENT_WORKSPACE_REPAIR.value
                 and delivery_workspace_validated
             )
         )
-        and before.get("effective_action") != "automation_prompt_upgrade_required"
+        and before.get("effective_action") != EffectiveAction.AUTOMATION_PROMPT_UPGRADE_REQUIRED.value
         and not safe_bypass_spend
         and str(before.get("state") or "") in {"waiting", "focus_wait", "operator_gate", "eligible"}
     )

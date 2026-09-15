@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 import json
 from collections.abc import Mapping
@@ -462,7 +463,7 @@ def fail_heartbeat_receipt(
             "ok": False,
             "decision": "skip",
             "should_run": False,
-            "effective_action": "heartbeat_receipt_write_failed",
+            "effective_action": EffectiveAction.HEARTBEAT_RECEIPT_WRITE_FAILED.value,
             "state": "blocked_health",
             "waiting_on": "codex",
             "reason": reason,

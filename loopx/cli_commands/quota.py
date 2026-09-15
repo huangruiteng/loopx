@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..control_plane.quota.effective_action import EffectiveAction
 
 import argparse
 from collections.abc import Callable, Mapping
@@ -226,7 +227,7 @@ def _apply_requested_quota_action_selection_preflight(
     pending_selection_workspace_repair_qualified = (
         selection_binding == "pending_action_selection"
         and payload.get("workspace_repair_allowed") is True
-        and payload.get("effective_action") == "agent_workspace_repair"
+        and payload.get("effective_action") == EffectiveAction.AGENT_WORKSPACE_REPAIR.value
         and execution_obligation.get("kind") == "agent_workspace_repair"
         and execution_obligation.get("must_attempt_work") is True
         and agent_channel.get("must_attempt") is True
@@ -562,7 +563,7 @@ def handle_quota_command(
                         turn_instance_id=heartbeat_turn_id,
                     )
                     if (
-                        payload.get("effective_action") == "monitor_quiet_skip"
+                        payload.get("effective_action") == EffectiveAction.MONITOR_QUIET_SKIP.value
                         or existing_stall is not None
                     ):
                         poll = record_quota_monitor_poll(

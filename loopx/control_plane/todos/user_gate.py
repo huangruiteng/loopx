@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..quota.effective_action import EffectiveAction
 
 from typing import Any
 
@@ -159,8 +160,8 @@ def apply_scoped_user_gate_fallback_projection(
     projected["should_run"] = True
     if projected.get("decision") == "skip":
         projected["decision"] = "safe_bypass_user_gate_fallback"
-    if projected.get("effective_action") in {"skip", "monitor_quiet_skip", None}:
-        projected["effective_action"] = "scoped_user_gate_fallback"
+    if projected.get("effective_action") in {EffectiveAction.SKIP.value, EffectiveAction.MONITOR_QUIET_SKIP.value, None}:
+        projected["effective_action"] = EffectiveAction.SCOPED_USER_GATE_FALLBACK.value
 
     raw_execution_obligation = projected.get("execution_obligation")
     execution_obligation = (

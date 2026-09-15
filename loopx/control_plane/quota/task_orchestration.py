@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from .effective_action import EffectiveAction
 from typing import Any
 
 from ..agents.agent_scope_frontier import AgentScopeFrontierAction
@@ -22,7 +22,7 @@ AGENT_SCOPE_NON_EXECUTION_ACTIONS = {
     AgentScopeFrontierAction.REASSIGNMENT_REQUIRED.value,
 }
 PEER_AGENT_ACTIVATION_CAPABILITY = "peer_agent_activation"
-PEER_COORDINATION_BLOCKED_ACTION = "peer_coordination_blocked"
+PEER_COORDINATION_BLOCKED_ACTION = EffectiveAction.PEER_COORDINATION_BLOCKED.value
 
 
 def task_orchestration_contract_is_actionable(
@@ -94,7 +94,7 @@ def payload_work_lane_contract(
     recovery_allowed: bool,
     agent_scope_frontier: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    if recovery_allowed and effective_action == "outcome_floor_recovery":
+    if recovery_allowed and effective_action == EffectiveAction.OUTCOME_FLOOR_RECOVERY.value:
         return None
     if not isinstance(work_lane_contract, dict):
         return work_lane_contract

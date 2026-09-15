@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..control_plane.quota.effective_action import EffectiveAction
 
 import argparse
 from collections.abc import Callable, Mapping
@@ -181,7 +182,7 @@ def build_scheduler_followup_payload(
         turn_instance_id
         and receipt_todo_id is None
         and receipt_replan_id is not None
-        and before_decision.get("effective_action") == "heartbeat_settled_skip"
+        and before_decision.get("effective_action") == EffectiveAction.HEARTBEAT_SETTLED_SKIP.value
     ):
         return {
             "ok": True,

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 from typing import Any, Protocol
 
@@ -77,7 +78,7 @@ def apply_settled_replay_route_precedence(
     route.capability_repair_allowed = False
     route.workspace_repair_allowed = False
     route.should_run = False
-    route.effective_action = "heartbeat_settled_skip"
+    route.effective_action = EffectiveAction.HEARTBEAT_SETTLED_SKIP.value
     route.reason = HEARTBEAT_SETTLED_REPLAY_REASON
     route.replan_decision_allowed = False
     route.receipt_bound_replan_decision = False
@@ -127,7 +128,7 @@ def apply_settled_replay_payload_precedence(
             "self_repair_allowed": False,
             "capability_repair_allowed": False,
             "workspace_repair_allowed": False,
-            "effective_action": "heartbeat_settled_skip",
+            "effective_action": EffectiveAction.HEARTBEAT_SETTLED_SKIP.value,
             "actionable_by_codex": False,
             "reason": reason,
             "requires_user_action": False,

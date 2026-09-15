@@ -18,6 +18,7 @@ inputs.
 """
 
 from __future__ import annotations
+from ..quota.effective_action import EffectiveAction
 
 from collections.abc import Mapping
 from enum import Enum
@@ -437,7 +438,7 @@ def _completion_disposition(
     continuation = str(completion.get("continuation") or "")
     if continuation == "no_followup":
         if (
-            decision.get("effective_action") != "terminal_no_followup"
+            decision.get("effective_action") != EffectiveAction.TERMINAL_NO_FOLLOWUP.value
             or decision.get("state") != "terminal_no_followup"
         ):
             raise ValueError(
@@ -529,7 +530,7 @@ def decide_loop_disposition(
         )
 
     if turn_receipt is None:
-        if str(quota_decision.get("effective_action") or "") == "terminal_no_followup":
+        if str(quota_decision.get("effective_action") or "") == EffectiveAction.TERMINAL_NO_FOLLOWUP.value:
             if quota_decision.get("state") != "terminal_no_followup":
                 raise ValueError(
                     "terminal no-follow-up requires fresh Goal frontier state"

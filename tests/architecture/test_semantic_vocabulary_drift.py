@@ -63,3 +63,88 @@ def test_literal_scan_rejects_unknown_value_with_either_quote(suffix: str, quote
     sources = [smoke["SourceFile"]("loopx/probe" + suffix, suffix, text)]
     with pytest.raises(smoke["Drift"], match="unregistered_action"):
         smoke["check_literal_vocabularies"](smoke["load_registry"](), sources)
+
+
+def test_bounded_producer_scan_rejects_unregistered_write() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    source = smoke["SourceFile"](
+        "loopx/control_plane/quota/probe.py",
+        ".py",
+        'def produce():\n    return {"effective_action": "unregistered_action"}\n',
+    )
+    with pytest.raises(smoke["Drift"], match="unregistered_action"):
+        smoke["check_producers"](
+            {
+                "vocabularies": {
+                    "effective_action": {
+                        "tier": "kernel",
+                        "owners": {"python": None, "typescript": None},
+                        "values": ["registered_action"],
+                        "producers": ["loopx/control_plane/quota/probe.py::produce"],
+                        "literal_scan": {"field": "effective_action", "roots": ["loopx"], "suffixes": [".py"]},
+                    }
+                }
+            },
+            [source],
+        )
+
+
+def test_bounded_producer_scan_does_not_treat_consumer_reads_as_writes() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    source = smoke["SourceFile"](
+        "loopx/control_plane/quota/probe.py",
+        ".py",
+        'def consume(payload):\n    return payload.get("effective_action") == "registered_action"\n',
+    )
+    assert smoke["_producer_literals"]("effective_action", source) == set()
+
+
+def test_bounded_context_scope_excludes_only_declared_multi_value_fork() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    registry = smoke["load_registry"]()
+    sources = smoke["load_sources"](REPO_ROOT)
+    inventory = smoke["build_inventory"](REPO_ROOT, sources=sources)
+    assert smoke["check_scope_declarations"](registry, inventory) == 3
+
+
+def test_bounded_context_scope_requires_every_distinct_defining_module() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    registry = copy.deepcopy(smoke["load_registry"]())
+    registry["scope_declarations"]["SOURCE_SURFACES"]["contexts"] = registry["scope_declarations"]["SOURCE_SURFACES"]["contexts"][:-1]
+    sources = smoke["load_sources"](REPO_ROOT)
+    inventory = smoke["build_inventory"](REPO_ROOT, sources=sources)
+    with pytest.raises(smoke["Drift"], match="every defining module"):
+        smoke["check_scope_declarations"](registry, inventory)
+
+
+@pytest.mark.parametrize("text, expected", [
+    ('payload["effective_action"] = "new_action"', {"new_action"}),
+    ('route.effective_action: str = "new_action"', {"new_action"}),
+    ('Packet(effective_action="new_action")', {"new_action"}),
+    ('payload = {"effective_action":\n "left" if flag == "condition" else "right"}', {"left", "right"}),
+    ('effective_action = payload.get("effective_action", "fallback")', set()),
+    ('effective_action == "not_produced"', set()),
+    ('# effective_action = "comment"', set()),
+    ('example = \'effective_action = "example"\'', set()),
+])
+def test_python_production_forms_separate_result_from_context(text, expected) -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    source = smoke["SourceFile"]("loopx/control_plane/quota/probe.py", ".py", text)
+    assert smoke["_producer_literals"]("effective_action", source) == expected
+
+
+def test_return_producer_scope_cannot_be_removed_from_registry():
+    smoke = runpy.run_path(str(SMOKE))
+    registry = copy.deepcopy(smoke['load_registry']())
+    registry['vocabularies']['effective_action']['return_producers'] = []
+    with pytest.raises(smoke['Drift'], match='RETURN_PRODUCER_ANCHOR'):
+        smoke['check_coverage_floor'](registry)
+
+
+@pytest.mark.parametrize('name', ['turn_route', 'loop_disposition', 'agent_scope_frontier_action'])
+def test_registered_kernel_producer_coverage_cannot_be_removed(name):
+    smoke = runpy.run_path(str(SMOKE))
+    registry = copy.deepcopy(smoke['load_registry']())
+    registry['vocabularies'][name].pop('producers')
+    with pytest.raises(smoke['Drift'], match='PRODUCER_VOCABULARY_ANCHOR'):
+        smoke['check_coverage_floor'](registry)

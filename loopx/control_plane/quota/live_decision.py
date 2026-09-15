@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 import shlex
 from collections.abc import Callable, Mapping, Sequence
@@ -191,7 +192,7 @@ def _apply_pending_capability_intent_precedence(
             "decision": "run",
             "should_run": True,
             "state": "eligible",
-            "effective_action": "governed_capability_intent",
+            "effective_action": EffectiveAction.GOVERNED_CAPABILITY_INTENT.value,
             "actionable_by_codex": True,
             "normal_delivery_allowed": False,
             "recovery_delivery_allowed": False,

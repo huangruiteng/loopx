@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from .effective_action import EffectiveAction
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -349,7 +349,7 @@ def _apply_agent_monitor_only_precedence(
                 "self_repair_allowed": False,
                 "capability_repair_allowed": False,
                 "workspace_repair_allowed": False,
-                "effective_action": "monitor_due" if monitor_due else "monitor_quiet_skip",
+                "effective_action": EffectiveAction.MONITOR_DUE.value if monitor_due else EffectiveAction.MONITOR_QUIET_SKIP.value,
                 "actionable_by_codex": monitor_due,
                 "reason": reason,
                 "blocked_action_scope": "advancement_work",
@@ -397,7 +397,7 @@ def _apply_agent_monitor_only_precedence(
                 "self_repair_allowed": False,
                 "capability_repair_allowed": False,
                 "workspace_repair_allowed": False,
-                "effective_action": "agent_monitor_only",
+                "effective_action": EffectiveAction.AGENT_MONITOR_ONLY.value,
                 "actionable_by_codex": False,
                 "reason": reason,
                 "blocked_action_scope": "advancement_work",
@@ -745,7 +745,7 @@ def _planning_projections(
         and prepared.workspace_guard
         and prepared.normal_delivery_allowed
     ) or bool(
-        route.effective_action == "boundary_projection_repair"
+        route.effective_action == EffectiveAction.BOUNDARY_PROJECTION_REPAIR.value
         and prepared.boundary_projection_repair
     )
     projection_enabled = bool(
@@ -893,7 +893,7 @@ def _resolve_quota_should_run_route(
             "spend_policy": external_evidence_observation.get("spend_policy")
             or heartbeat_recommendation.get("spend_policy"),
         }
-        effective_action = "external_evidence_observe"
+        effective_action = EffectiveAction.EXTERNAL_EVIDENCE_OBSERVE.value
         reason = "external evidence monitor requires read-only observation before quiet no-op"
     receipt_bound_monitor_settled = (
         work_lane_contract_is_receipt_bound_monitor_settled(
@@ -905,7 +905,7 @@ def _resolve_quota_should_run_route(
         recovery_allowed = False
         self_repair_allowed = False
         should_run = False
-        effective_action = "heartbeat_settled_skip"
+        effective_action = EffectiveAction.HEARTBEAT_SETTLED_SKIP.value
         reason = (
             "the receipt-bound monitor poll and required settlement receipts are "
             "complete for this heartbeat turn; defer successor selection to a new turn"
@@ -934,7 +934,7 @@ def _resolve_quota_should_run_route(
     if monitor_quiet_skip:
         normal_delivery_allowed = False
         should_run = False
-        effective_action = "monitor_quiet_skip"
+        effective_action = EffectiveAction.MONITOR_QUIET_SKIP.value
         reason = str(
             heartbeat_recommendation.get("reason")
             or "monitor-only polling has no material transition; skip delivery compute"
@@ -1040,7 +1040,7 @@ def _resolve_quota_should_run_route(
                 prepared.task_orchestration_contract,
                 effective_action=effective_action,
             ):
-                effective_action = PEER_COORDINATION_BLOCKED_ACTION
+                effective_action = EffectiveAction.PEER_COORDINATION_BLOCKED.value
                 reason = (
                     "the explicitly selected peer task bundle is blocked and the "
                     "coordinator has no in-scope runnable fallback; return control "

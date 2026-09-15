@@ -1,5 +1,6 @@
 """Legacy input codec for the single typed decision-dependency rule owner."""
 from __future__ import annotations
+from ..quota.effective_action import EffectiveAction
 
 from typing import Any
 
@@ -235,7 +236,7 @@ def build_required_decision_scope_repair_hint(
             "source": "quota.should-run",
             "trigger": "user_gate_scope_projection_drift",
             "recommended_mode": "repair_user_gate_scope_projection",
-            "effective_action": "todo_decision_scope_projection_repair",
+            "effective_action": EffectiveAction.TODO_DECISION_SCOPE_PROJECTION_REPAIR.value,
             "blocked_action_scope": "todo_user_gate_scope_projection",
             "allowed": True,
             "notify": "DONT_NOTIFY",
@@ -257,7 +258,7 @@ def build_required_decision_scope_repair_hint(
         "source": "quota.should-run",
         "trigger": "required_decision_scope_projection_drift",
         "recommended_mode": "repair_required_decision_scope_projection",
-        "effective_action": "todo_decision_scope_projection_repair",
+        "effective_action": EffectiveAction.TODO_DECISION_SCOPE_PROJECTION_REPAIR.value,
         "blocked_action_scope": "todo_decision_scope_projection",
         "allowed": True,
         "notify": "DONT_NOTIFY",

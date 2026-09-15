@@ -1,6 +1,7 @@
 """CLI rollout helpers for heartbeat settlement identity and receipt wiring."""
 
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 import argparse
 from collections.abc import Mapping
@@ -193,7 +194,7 @@ def quota_rollout_settlement_binding(
     packet is only a diagnostic fallback when no concrete Todo is selected.
     """
 
-    if payload.get("effective_action") == "unsettled_host_turn_recovery":
+    if payload.get("effective_action") == EffectiveAction.UNSETTLED_HOST_TURN_RECOVERY.value:
         # This Turn only repairs the preceding Turn's closeout.  A concurrently
         # projected Todo or autonomous replan belongs to the post-recovery
         # decision and must not become this receipt's settlement identity.
