@@ -11,7 +11,12 @@ import re
 from dataclasses import dataclass
 
 from .contract import TODO_TASK_PATTERN, parse_todo_metadata_line
-from ..goals.active_state_metadata import TODO_ARCHIVE_HEADER_MARKERS, todo_role_for_heading
+from ..goals.active_state_metadata import (
+    OBJECTIVE_REGION_BEGIN,
+    OBJECTIVE_REGION_END,
+    TODO_ARCHIVE_HEADER_MARKERS,
+    todo_role_for_heading,
+)
 
 
 TODO_REGION_PREFIX = "<!-- loopx:todo-region-v0 "
@@ -49,6 +54,7 @@ def visible_markdown_lines(lines: list[str]) -> frozenset[int]:
     visible: set[int] = set()
     fence: str | None = None
     in_comment = False
+    in_objective = False
     index = 0
     if lines and lines[0].strip() == "---":
         end = next((i for i in range(1, len(lines)) if lines[i].strip() in {"---", "..."}), None)
@@ -57,6 +63,17 @@ def visible_markdown_lines(lines: list[str]) -> frozenset[int]:
         index = end + 1
     while index < len(lines):
         line = lines[index].rstrip("\r\n")
+        if in_objective:
+            # Generated objective prose is isolated: its fences and comments are
+            # text, not document structure. Real fences below still parse.
+            if line.strip() == OBJECTIVE_REGION_END:
+                in_objective = False
+            index += 1
+            continue
+        if line.strip() == OBJECTIVE_REGION_BEGIN:
+            in_objective = True
+            index += 1
+            continue
         if fence is not None:
             if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*", line):
                 fence = None
