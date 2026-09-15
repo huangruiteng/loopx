@@ -18,8 +18,8 @@ from loopx.self_update import (
     build_update_plan,
     execute_update_plan,
     resolve_update_action,
-    restart_managed_loopx_services,
 )
+from loopx.runtime_activation import restart_managed_loopx_services
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -325,7 +325,7 @@ def test_python_distribution_apply_uses_the_owning_interpreter_pip() -> None:
             side_effect=[passed, passed, passed, passed, passed],
         ) as run,
         mock.patch(
-            "loopx.self_update.restart_managed_loopx_services",
+            "loopx.runtime_activation.restart_managed_loopx_services",
             return_value=["com.loopx.status"],
         ),
     ):
@@ -373,7 +373,7 @@ def test_pipx_distribution_apply_preserves_the_pipx_environment() -> None:
             side_effect=[passed, passed, passed, passed, passed],
         ) as run,
         mock.patch(
-            "loopx.self_update.restart_managed_loopx_services",
+            "loopx.runtime_activation.restart_managed_loopx_services",
             return_value=[],
         ),
     ):
@@ -381,6 +381,78 @@ def test_pipx_distribution_apply_preserves_the_pipx_environment() -> None:
 
     assert result["ok"] is True
     assert run.call_args_list[0].args[0] == ["pipx", "upgrade", "loopx-preview"]
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="archive snapshot updates require the POSIX installer path",
+)
+def test_archive_apply_restarts_managed_services_when_only_extensions_are_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = build_update_plan(action="apply", doctor_payload=doctor_payload())
+
+    assert payload["install_lifecycle"]["execution_driver"] == "archive_snapshot"
+
+    installed = subprocess.CompletedProcess([], 0, "", "")
+    blocked = subprocess.CompletedProcess([], 1, '{"blocked_count": 1}', "")
+    monkeypatch.setenv("LOOPX_PYTHON", sys.executable)
+    monkeypatch.setattr(
+        "loopx.self_update.run_archive_installer",
+        lambda *_args, **_kwargs: (installed, {"stage": "installer_execution"}),
+    )
+    monkeypatch.setattr(
+        "loopx.self_update.subprocess.run",
+        mock.Mock(side_effect=[installed, blocked]),
+    )
+    monkeypatch.setattr(
+        "loopx.runtime_activation.restart_managed_loopx_services",
+        lambda: ["com.loopx.chat"],
+    )
+
+    result = execute_update_plan(payload)
+
+    # The runtime is installed and serving, so the managed services must move
+    # onto it even though an unrelated enabled extension provider is blocked.
+    assert result["changes_applied"] is True
+    assert result["execution"]["restarted_services"] == ["com.loopx.chat"]
+    assert result["execution"]["restart_status"] == "restarted"
+    assert result["ok"] is False
+    assert result["next_action"]["kind"] == "repair_blocked_extensions"
+    assert result["next_action"]["mutating"] is False
+    assert "rollback" not in result["recommended_action"]
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="archive snapshot updates require the POSIX installer path",
+)
+def test_archive_apply_skips_managed_service_restart_when_the_runtime_is_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = build_update_plan(action="apply", doctor_payload=doctor_payload())
+
+    failed_install = subprocess.CompletedProcess([], 1, "", "installer failed")
+    monkeypatch.setenv("LOOPX_PYTHON", sys.executable)
+    monkeypatch.setattr(
+        "loopx.self_update.run_archive_installer",
+        lambda *_args, **_kwargs: (failed_install, {"stage": "installer_execution"}),
+    )
+    monkeypatch.setattr(
+        "loopx.self_update.subprocess.run",
+        mock.Mock(return_value=failed_install),
+    )
+    restarted = mock.Mock(return_value=["com.loopx.chat"])
+    monkeypatch.setattr("loopx.runtime_activation.restart_managed_loopx_services", restarted)
+
+    result = execute_update_plan(payload)
+
+    assert result["changes_applied"] is False
+    assert result["ok"] is False
+    assert result["execution"]["restarted_services"] == []
+    assert result["execution"]["restart_status"] == "skipped_runtime_not_activated"
+    assert result["next_action"]["kind"] == "review_or_rollback"
+    restarted.assert_not_called()
 
 
 def test_live_checkout_apply_never_mutates_git_or_switches_install_channels() -> None:
@@ -478,7 +550,7 @@ def test_restart_managed_loopx_services_restarts_only_loopx_launchagents(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("loopx.self_update.sys.platform", "darwin")
+    monkeypatch.setattr("loopx.runtime_activation.sys.platform", "darwin")
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     agents = tmp_path / "Library" / "LaunchAgents"
     agents.mkdir(parents=True)
@@ -496,7 +568,7 @@ def test_restart_managed_loopx_services_restarts_only_loopx_launchagents(
         calls.append(list(args))
         return subprocess.CompletedProcess(args, 0, "", "")
 
-    monkeypatch.setattr("loopx.self_update.subprocess.run", fake_run)
+    monkeypatch.setattr("loopx.runtime_activation.subprocess.run", fake_run)
 
     restarted = restart_managed_loopx_services()
     assert set(restarted) == {
@@ -541,7 +613,7 @@ def test_successful_update_revalidates_enabled_extensions(
         "loopx.self_update._installer_env_for_source",
         lambda *_args, **_kwargs: {},
     )
-    monkeypatch.setattr("loopx.self_update.subprocess.run", fake_run)
+    monkeypatch.setattr("loopx.runtime_activation.subprocess.run", fake_run)
 
     updated = execute_update_plan(payload)
 
