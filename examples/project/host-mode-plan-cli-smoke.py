@@ -66,11 +66,16 @@ def test_cli_selects_headless_turn_and_scopes_agent_id() -> None:
     assert payload["selected_capability_ready"] is True, payload
     command = payload["next_preview_command"]
     assert "loopx turn plan" in command, command
-    assert "--host generic-cli" in command, command
+    # The preview keeps the shipped host resolution instead of pinning the
+    # compatibility adapter host; the pinned variant stays available as the
+    # mode's rollback command.
+    assert "--host" not in command, command
     assert "--execution-mode isolated-headless" in command, command
     assert "--scheduler-owner outer_controller" in command, command
     assert "--agent-id codex-main-control" in command, command
     assert "--available-capability shell" in command, command
+    rollback = payload["selected_turn_mapping"]["plan_command_rollback"]
+    assert "--host generic-cli" in rollback, rollback
     assert payload["selected_missing_host_capabilities"] == [], payload
     assert payload["selected_blocking_reasons"] == [], payload
     assert payload["operator_next_steps"][0]["kind"] == "state_preview", payload

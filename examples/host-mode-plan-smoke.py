@@ -108,15 +108,20 @@ def test_headless_maps_to_loopx_turn_plan_not_parallel_runner() -> None:
     plan = build_full_plan("continue_without_ui")
     selected = plan["selected_turn_mapping"]
     assert selected["host"] == "generic-cli", selected
+    assert selected["host_selection"] == "resolved_default", selected
     assert selected["execution_mode"] == "isolated-headless", selected
     assert selected["scheduler_owner"] == "outer_controller", selected
     command = selected["plan_command"]
     assert "loopx turn plan" in command, command
-    assert "--host generic-cli" in command, command
+    # The preview keeps the shipped host resolution, so a lane without an
+    # operator credential does not land on the compatibility adapter path.
+    assert "--host" not in command, command
     assert "--execution-mode isolated-headless" in command, command
     assert "--scheduler-owner outer_controller" in command, command
     assert "--agent-id codex-main-control" in command, command
     assert "--available-capability shell" in command, command
+    rollback = selected["plan_command_rollback"]
+    assert "--host generic-cli" in rollback, rollback
     assert plan["turn_contract"]["schema_version"] == "loopx_turn_v0", plan
     assert plan["turn_contract"]["independent_validation_required"] is True, plan
     assert plan["turn_contract"]["writeback_before_quota_spend"] is True, plan
