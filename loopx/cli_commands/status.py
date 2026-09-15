@@ -28,7 +28,11 @@ from ..diagnose import collect_diagnosis, render_diagnosis_markdown
 from ..handoff_budget import build_handoff_interface_budget
 from ..presentation.renderers.status_markdown import render_status_markdown
 from ..quota import build_quota_should_run
-from ..review_packet import build_review_packet, render_review_packet_markdown
+from ..review_packet import (
+    build_review_packet,
+    render_handoff_only_text,
+    render_review_packet_markdown,
+)
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from .status_registration import register_status_commands as register_status_commands
 
@@ -136,6 +140,12 @@ def review_packet_handoff_only_payload(payload: dict[str, object]) -> dict[str, 
             "within_budget": handoff_budget.get("within_budget"),
         }
     )
+    fragment_texts = payload.get("project_agent_handoff_fragments")
+    if isinstance(fragment_texts, list) and fragment_texts:
+        result["project_agent_handoff_fragments"] = fragment_texts
+        result["handoff_fragment_manifest"] = payload.get(
+            "handoff_fragment_manifest"
+        )
     return result
 
 
@@ -885,7 +895,14 @@ def handle_review_packet_command(
     if args.handoff_only:
         payload = review_packet_handoff_only_payload(payload)
     if args.handoff_only and selected_format != "json" and payload.get("ok"):
-        print(str(payload.get("handoff_text") or ""))
+        fragment_texts = payload.get("project_agent_handoff_fragments")
+        if not isinstance(fragment_texts, list):
+            fragment_texts = []
+        print(
+            render_handoff_only_text(
+                str(payload.get("handoff_text") or ""), fragment_texts
+            )
+        )
     else:
         print_payload(payload, selected_format, render_review_packet_markdown)
     return 0 if payload.get("ok") else 1

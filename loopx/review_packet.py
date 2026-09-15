@@ -20,6 +20,10 @@ from .control_plane.handoff.delivery_contract import (
     handoff_delivery_contract,
     handoff_delivery_contract_summary,
 )
+from .control_plane.handoff.handoff_fragments import (
+    build_handoff_shard_manifest,
+    split_handoff_text,
+)
 from .handoff_budget import build_handoff_interface_budget
 
 
@@ -73,30 +77,41 @@ def compact_last_bash_command_block(text: str) -> str:
     return "\n".join([*lines[: start + 1], compact_command, *lines[end:]])
 
 
-def fit_project_agent_handoff_budget(text: str) -> str:
+def normalize_project_agent_handoff_text(text: str) -> str:
+    """Apply the lossless bash-block compaction normalization when oversized.
+
+    Unlike the former prefix-dropping fit pass, this never removes content:
+    if the normalized text still exceeds the interface budget, the caller
+    fragments it into verifiable continuation shards instead.
+    """
+
     if build_handoff_interface_budget(text)["within_budget"]:
         return text
+    return compact_last_bash_command_block(text)
 
-    candidate = compact_last_bash_command_block(text)
-    if build_handoff_interface_budget(candidate)["within_budget"]:
-        return candidate
 
-    lines = candidate.splitlines()
-    for prefixes in (
-        ("Agent 待办候选 ",),
-        ("材料上下文：",),
-        ("交付观测：",),
-        ("交付合同：",),
-    ):
-        lines = [
-            line
-            for line in lines
-            if not any(line.startswith(prefix) for prefix in prefixes)
-        ]
-        candidate = "\n".join(lines)
-        if build_handoff_interface_budget(candidate)["within_budget"]:
-            return candidate
-    return candidate
+def prepare_project_agent_handoff_shards(text: str) -> list[str]:
+    """Return the handoff as one in-budget text or multiple verified shards."""
+
+    normalized = normalize_project_agent_handoff_text(text)
+    return split_handoff_text(normalized)
+
+
+def handoff_shard_section_header(index: int, total: int) -> str:
+    return (
+        f"【给项目 Agent · 交接分片 {index + 1}/{total}：整段转发，收齐全部 {total} 片"
+        "并按序号校验通过后再执行；缺片、乱序或内容改动都会明确报错】"
+    )
+
+
+def render_handoff_only_text(project_agent_handoff: str, continuation_shards: list[str]) -> str:
+    """Render the handoff-only relay text: shard 0 plus continuation shards."""
+
+    parts = [project_agent_handoff]
+    total = len(continuation_shards) + 1
+    for offset, shard in enumerate(continuation_shards, start=1):
+        parts.append(handoff_shard_section_header(offset, total) + "\n" + shard)
+    return "\n\n".join(parts)
 
 
 def build_status_command(status_payload: dict[str, Any]) -> str:
@@ -610,7 +625,7 @@ def project_agent_section(
             "",
             command_block(command),
         ]
-    return fit_project_agent_handoff_budget("\n".join(line for line in lines if line))
+    return normalize_project_agent_handoff_text("\n".join(line for line in lines if line))
 
 
 def build_review_packet(
@@ -678,7 +693,7 @@ def build_review_packet(
         reply = "转发下方【给项目 Agent】即可。"
         boundary = "这只是执行已批准的只读/dry-run agent_command；如需写入或更高权限，项目 Agent 必须再次停下。"
     owner_blocker_text = user_todo_text if kind == "focus_wait" else None
-    agent_text = project_agent_section(
+    prepared_agent_text = project_agent_section(
         kind,
         command,
         goal_id,
@@ -692,6 +707,15 @@ def build_review_packet(
         required_reads=required_reads,
         approved_operator_gate=approved_handoff,
         connected_delivery=delivery_handoff,
+    )
+    handoff_shards = split_handoff_text(prepared_agent_text)
+    agent_text = handoff_shards[0]
+    continuation_shards = handoff_shards[1:]
+    fragmented_handoff = bool(continuation_shards)
+    handoff_fragment_manifest = (
+        build_handoff_shard_manifest(prepared_agent_text, handoff_shards)
+        if fragmented_handoff
+        else None
     )
     handoff_interface_budget = build_handoff_interface_budget(agent_text)
     type_label = {
@@ -736,11 +760,29 @@ def build_review_packet(
             "",
             "【给项目 Agent】",
             agent_text,
+        ]
+    )
+    if fragmented_handoff:
+        total_shards = len(handoff_shards)
+        lines.append(
+            f"交接分片提示：本段为第 1/{total_shards} 片（信封在首行 HTML 注释中）；"
+            f"请收齐并按序号校验全部 {total_shards} 片后再执行，缺片、乱序或内容改动都会报错。"
+        )
+        for shard_index, shard_text in enumerate(continuation_shards, start=1):
+            lines.extend(
+                [
+                    "",
+                    handoff_shard_section_header(shard_index, total_shards),
+                    shard_text,
+                ]
+            )
+    lines.extend(
+        [
             "",
             "回报：用中文说明 changed files、validation 和 next safe action。",
         ]
     )
-    return {
+    result = {
         "ok": True,
         "goal_id": goal_id,
         "kind": effective_kind,
@@ -772,6 +814,10 @@ def build_review_packet(
         "project_asset_source": asset_source,
         "packet": "\n".join(line for line in lines if line),
     }
+    if fragmented_handoff:
+        result["project_agent_handoff_fragments"] = continuation_shards
+        result["handoff_fragment_manifest"] = handoff_fragment_manifest
+    return result
 
 
 def render_review_packet_markdown(payload: dict[str, Any]) -> str:
