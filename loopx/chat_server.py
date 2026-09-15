@@ -33,6 +33,7 @@ from .chat_runtime import ChatRuntimeController, TERMINAL_TURN_STATES
 from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, is_manager_channel,
     manager_channel_binding, manager_workspace, manager_model_config,
+    open_manager_session,
 )
 from .chat_ssh_source_api import SshSourceRequestMixin
 from .chat_store import ChatSessionStore
@@ -89,6 +90,9 @@ from .status_server import (
 DEFAULT_CHAT_HOST = "127.0.0.1"
 DEFAULT_CHAT_PORT = 8767
 DEFAULT_CHAT_PATH = "/chat/"
+# The executor a Goal-scoped session runs on when the caller makes no explicit
+# pick. The steward channel does not use this: it resolves its own default.
+DEFAULT_GOAL_AGENT_ID = "codex"
 DEFAULT_CHAT_STATUS_PATH = "/status.json"
 CHAT_CAPABILITIES_PATH = "/api/chat/capabilities"
 CHAT_ENDPOINTS_PATH = "/api/chat/endpoints"
@@ -545,7 +549,11 @@ class ChatRequestHandler(
             if unknown:
                 raise ValueError("unknown session field")
             goal_id = _compact_text(body.get("goal_id"), limit=160) or self.server.selected_goal_id or ""
-            agent_id = _compact_text(body.get("agent_id"), limit=80) or "codex"
+            # ``agent_id`` is the caller's explicit executor pick and stays empty
+            # when the caller does not make one. Each channel then resolves its
+            # own default through its own owner instead of inheriting whatever
+            # executor this client happens to ship with.
+            requested_endpoint = _compact_text(body.get("agent_id"), limit=80)
             mode = _compact_text(body.get("mode"), limit=40) or "resume_latest"
             context_kind = _compact_text(body.get("context_kind"), limit=40) or "goal"
             if context_kind not in {"goal", "manager"}:
@@ -567,15 +575,26 @@ class ChatRequestHandler(
                         "next_action": "Reconnect the Goal from its project root, then retry.",
                     },
                 )
-            session, resumed = self.server.runtime_controller.open_session(
-                goal_id=goal_id,
-                agent_id=agent_id,
-                work_dir=project,
-                objective=runtime_objective,
-                mode=mode,
-                channel_id="manager" if context_kind == "manager" else f"goal.{goal_id}",
-                agent_goal_id=MANAGER_AGENT_GOAL_ID if context_kind == "manager" else goal_id,
-            )
+            if context_kind == "manager":
+                # The steward channel owns its executor and model defaults; the
+                # Chat server is an entry point, never a second owner.
+                session, resumed = open_manager_session(
+                    controller=self.server.runtime_controller,
+                    goal_id=goal_id,
+                    work_dir=project,
+                    executor_endpoint_id=requested_endpoint or None,
+                    mode=mode,
+                )
+            else:
+                session, resumed = self.server.runtime_controller.open_session(
+                    goal_id=goal_id,
+                    agent_id=requested_endpoint or DEFAULT_GOAL_AGENT_ID,
+                    work_dir=project,
+                    objective=runtime_objective,
+                    mode=mode,
+                    channel_id=f"goal.{goal_id}",
+                    agent_goal_id=goal_id,
+                )
         except CodexChatAgentError as exc:
             self._send_error(str(exc), status=424, gate=exc.gate, error_code=exc.error_code)
             return
@@ -589,7 +608,7 @@ class ChatRequestHandler(
                 "schema_version": "loopx_chat_session_v1",
                 "session_id": public["session_id"],
                 "goal_id": public["goal_id"],
-                "agent_id": agent_id,
+                "agent_id": public.get("executor_endpoint_id") or requested_endpoint,
                 "context_kind": context_kind,
                 "resumed": resumed,
                 "session": public,

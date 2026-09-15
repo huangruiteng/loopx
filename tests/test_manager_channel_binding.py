@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import urllib.request
 
 import pytest
 
@@ -25,6 +27,7 @@ from loopx.chat_manager import (
     selected_manager_executor_endpoint,
 )
 from loopx.chat_runtime import ChatRuntimeController
+from loopx.chat_server import ChatHTTPServer, ChatRequestHandler
 from loopx.chat_store import ChatSessionStore
 from loopx.control_plane.turn_driver import host_binding
 
@@ -184,6 +187,7 @@ def test_open_manager_session_resolves_the_endpoint_only_when_unset(tmp_path):
     controller = Controller()
     open_manager_session(controller=controller, goal_id="g", work_dir=tmp_path)
     assert calls[-1]["agent_id"] == manager_executor_endpoint_default()
+    assert calls[-1]["mode"] == "resume_latest"
 
     open_manager_session(
         controller=controller,
@@ -192,6 +196,107 @@ def test_open_manager_session_resolves_the_endpoint_only_when_unset(tmp_path):
         executor_endpoint_id="claude-code",
     )
     assert calls[-1]["agent_id"] == "claude-code"
+
+    open_manager_session(
+        controller=controller, goal_id="g", work_dir=tmp_path, mode="new"
+    )
+    assert calls[-1]["mode"] == "new"
+
+
+def test_chat_entry_point_never_lets_a_client_default_pick_the_steward_executor(
+    tmp_path, monkeypatch
+):
+    """The Codex App Chat server is an entry point, not the channel's owner.
+
+    A client that ships with its own silent executor default must not be able to
+    re-point the steward channel: only an explicit pick travels, and everything
+    else resolves through the channel's own default. The Goal-scoped path keeps
+    its own unchanged default.
+    """
+
+    calls: list[dict[str, object]] = []
+
+    class Controller:
+        def close(self) -> None:
+            return None
+
+        def open_session(self, **kwargs):
+            calls.append(kwargs)
+            agent_id = str(kwargs["agent_id"])
+            return {
+                "session_id": f"session-{len(calls)}",
+                "goal_id": kwargs["goal_id"],
+                "agent_id": agent_id,
+                "executor_endpoint_id": agent_id,
+                "adapter_kind": "fixture",
+                "status": "ready",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "last_activity_at": "2026-01-01T00:00:00Z",
+                "session_mode": "managed_runtime",
+                "channel_id": str(kwargs.get("channel_id") or ""),
+            }, False
+
+    store = ChatSessionStore(tmp_path / "runtime")
+    (tmp_path / "active.md").write_text(
+        "# Fixture Goal\n\n## Objective\nFixture objective\n\n## Agent Todo\n\n## User Todo\n",
+        encoding="utf-8",
+    )
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "goals": [
+                    {
+                        "id": "fixture-goal",
+                        "repo": str(tmp_path),
+                        "state_file": "active.md",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    server = ChatHTTPServer(("127.0.0.1", 0), ChatRequestHandler)
+    server.registry_path = registry
+    server.runtime_root_override = None
+    server.verbose = False
+    server.selected_goal_id = ""
+    server.chat_store = store
+    server.runtime_controller = Controller()
+    monkeypatch.setattr(
+        "loopx.chat_manager.manager_executor_endpoint_default",
+        lambda environ=None: MANAGER_ENDPOINT_DEFAULT_MANAGED,
+    )
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+
+    def create_session(body: dict[str, object]) -> dict[str, object]:
+        request = urllib.request.Request(
+            f"{origin}/api/chat/sessions",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json", "Origin": origin},
+        )
+        with urllib.request.urlopen(request) as response:
+            return json.load(response)
+
+    try:
+        resolved = create_session({"context_kind": "manager"})
+        assert calls[-1]["agent_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+        assert resolved["agent_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+        assert resolved["session"]["executor_endpoint_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+
+        explicit = create_session({"context_kind": "manager", "agent_id": "codex"})
+        assert calls[-1]["agent_id"] == "codex"
+        assert explicit["session"]["executor_endpoint_id"] == "codex"
+
+        goal = create_session({"context_kind": "goal", "goal_id": "fixture-goal"})
+        assert goal["agent_id"] == "codex"
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join()
 
 
 def _managed_endpoint_failure(tmp_path, monkeypatch, *, runtime_installed):

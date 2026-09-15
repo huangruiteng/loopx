@@ -281,9 +281,20 @@ def open_manager_session(
     goal_id: str,
     work_dir: Path,
     executor_endpoint_id: str | None = None,
+    mode: str = "resume_latest",
     provider: str = "",
     audience: str = "",
 ) -> tuple[dict[str, Any], bool]:
+    """Open the steward channel's Session through its own endpoint owner.
+
+    Every entry point that opens a steward Session -- the Codex App Chat
+    server, Lark and the managed-Turn driver -- calls this function instead of
+    choosing an executor itself. ``executor_endpoint_id`` is only the caller's
+    explicit pick; when it is unset the channel's own default decides, so a
+    client that ships with a silent executor default cannot re-point the
+    channel behind the readback.
+    """
+
     resolved_endpoint = (
         str(executor_endpoint_id).strip()
         if executor_endpoint_id
@@ -294,7 +305,7 @@ def open_manager_session(
         agent_id=resolved_endpoint,
         work_dir=work_dir,
         objective=MANAGER_AGENT_OBJECTIVE,
-        mode="resume_latest",
+        mode=mode,
         channel_id=manager_channel(provider=provider, audience=audience),
         agent_goal_id=MANAGER_AGENT_GOAL_ID,
     )
