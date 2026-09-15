@@ -15,7 +15,7 @@
     "schema_version": "loopx_semantic_formal_model_v0",
     "universes": {
       "vocabularies": "V: registered vocabulary identifiers",
-      "values": "Val(v): values admitted by vocabulary v",
+      "values": "U(v): ambient runtime values; S(v): registered admitted values",
       "sites": "S: source locations that define, produce, consume, interpret, pass through, project, or persist values",
       "scopes": "Scope: global or bounded_context(context_id)",
       "roles": "Roles assigned to sites; a site may have more than one role only when each edge is explicit"
@@ -64,8 +64,8 @@
     },
     "relations": {
       "defines": "D ⊆ S × V: a site defines a vocabulary carrier",
-      "produces": "P ⊆ S × V × Val: a site writes or returns a vocabulary value",
-      "consumes": "C ⊆ S × V × Val: a site accepts or branches on a value",
+      "produces": "P ⊆ S × V × U: a site writes or returns a runtime value; it is valid only when the value is in S(v)",
+      "consumes": "C ⊆ S × V × U: a site accepts or branches on a runtime value",
       "interprets": "I ⊆ S × V × V: a site maps one vocabulary into another",
       "passes_through": "T ⊆ S × V: a site serializes, persists, forwards, or displays without changing meaning",
       "projects": "G ⊆ V × V × (Val ⇀ Val ∪ {reject}): a declared partial or total projection",
@@ -74,7 +74,7 @@
     "invariants": [
       {
         "id": "F1_producer_closedness",
-        "statement": "Produced(v) ⊆ Val(v)",
+        "statement": "Produced(v) ⊆ S(v) ⊆ U(v)",
         "enforcement": "m0_5",
         "evidence": "bounded production-form AST scan; unknown dynamic producers are reported, not treated as proven safe"
       },
