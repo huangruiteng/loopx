@@ -194,7 +194,7 @@ def assert_evidence_guard_is_required_and_owned_by_the_agent() -> None:
     assert_no_public_leak(projection)
 
 
-def assert_closing_then_closed_phase() -> None:
+def assert_closing_advice_and_observed_terminal_status_stay_distinct() -> None:
     closing = build_goal_artifact_lifecycle_projection(
         goal_id=GOAL_ID,
         goal={"id": GOAL_ID, "status": "active"},
@@ -213,9 +213,8 @@ def assert_closing_then_closed_phase() -> None:
     transition = closing["next_transitions"][0]
     assert transition["target_phase"] == PHASE_CLOSING, closing
     assert transition["target_phase"] != PHASE_CLOSED, closing
-    # Closing is the todo-completion reading, not an acceptance verdict. The
-    # acceptance observation could not read agent vision here, so the closeout
-    # step names that source instead of implying a verified acceptance.
+    # Closing carries verification advice, never a terminal recommendation.
+    # Already-closed Goal status is still displayed without recommending a step.
     assert "no_open_agent_work" in transition["reason_codes"], closing
     assert "acceptance_unverified" in transition["reason_codes"], closing
     assert "agent_vision" in transition["precondition"], closing
@@ -248,11 +247,10 @@ def assert_projection_is_pure_and_reads_no_state() -> None:
 
 
 def assert_progress_evidence_alone_does_not_authorize_closeout() -> None:
-    """Evidence reaches the closing phase; only a verdict recommends closed.
+    """Evidence reaches closing; v0 never recommends a terminal transition.
 
     The canonical progress outcomes prove the Goal advanced. They do not prove
-    the declared acceptance was assessed, and the acceptance owner reports it
-    was not, so the step stays inside closing.
+    the declared acceptance was assessed. The step stays inside closing.
     """
 
     projection = build_goal_artifact_lifecycle_projection(
@@ -484,7 +482,7 @@ def main() -> int:
     assert_evidence_milestone_reached_from_run_history()
     assert_open_owner_gate_blocks_the_next_transition()
     assert_evidence_guard_is_required_and_owned_by_the_agent()
-    assert_closing_then_closed_phase()
+    assert_closing_advice_and_observed_terminal_status_stay_distinct()
     assert_projection_is_pure_and_reads_no_state()
     assert_progress_evidence_alone_does_not_authorize_closeout()
     assert_private_values_are_redacted_or_dropped()

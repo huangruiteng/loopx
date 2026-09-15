@@ -176,32 +176,12 @@ def _guards(
     return guards
 
 
-def _acceptance_supports_closeout(observation: dict[str, Any]) -> bool:
-    """Whether the acceptance owner has actually assessed the declared acceptance.
-
-    An empty `missing_sources` only means the bounded observation read every
-    source it knows about, never that acceptance was verified: this projection
-    reports `acceptance_assessed=False` and a coverage that is `partial` or
-    `unavailable`.  Treating "nothing left to name" as a verdict is what let a
-    fully observed Goal be recommended for closeout with no acceptance behind
-    it, so the verdict fields are read directly.
-    """
-
-    if not observation:
-        return False
-    if observation.get("acceptance_assessed") is not True:
-        return False
-    if observation.get("coverage") != "complete":
-        return False
-    return not _list(observation.get("missing_sources"))
-
-
 def _unobserved_acceptance_sources(observation: dict[str, Any]) -> list[str]:
     """Name the acceptance sources the bounded observation could not read.
 
     `goal_acceptance_observation_projection_v0` reports what it could not
     observe rather than an acceptance verdict, so this projection surfaces
-    those sources on the closeout step instead of deriving a second completion
+    those sources on the verification step instead of deriving a second completion
     rule from the same runs.
     """
 
@@ -234,9 +214,8 @@ def _lifecycle_phase(
     total_open = open_count
     if not milestones and total_open == 0:
         return PHASE_STARTING
-    # An unclaimed-acceptance Goal is never closing: running out of open agent
-    # work is not the same as having reached the acceptance markers, and a
-    # recorded gap is an unreached marker rather than progress.
+    # No open work and reached progress markers suggest closing, not accepted
+    # completion. A recorded gap is still an unreached marker.
     unreached = any(milestone["reached"] is not True for milestone in milestones)
     if total_open == 0 and not unreached:
         return PHASE_CLOSING
@@ -293,21 +272,11 @@ def _next_transitions(
             }
         ]
     if phase == PHASE_CLOSING:
-        # Closing is the todo-completion reading this RFC adopts; it is not an
-        # acceptance verdict. When the acceptance owner could not read some of
-        # its sources, the closeout step says so instead of implying a verified
-        # acceptance, and the reader keeps the decision.
-        if _acceptance_supports_closeout(observation):
-            return [
-                {
-                    "target_phase": PHASE_CLOSED,
-                    "precondition": "record the terminal no-follow-up outcome",
-                    "reason_codes": ["no_open_agent_work"],
-                }
-            ]
-        # Without that verdict the step stays inside closing: recommending a
-        # terminal outcome is the actionable error, and annotating the reason
-        # codes does not undo it.  Name the unread sources when there are any.
+        # This v0 readout never recommends a terminal transition. Its bounded
+        # acceptance input cannot provide a verdict, and a future producer
+        # expansion must not silently add completion advice to this contract.
+        # Machine consumers use acceptance_unverified; prose only explains the
+        # next verification step and any sources this observation did not read.
         unobserved = _unobserved_acceptance_sources(observation)
         precondition = "verify the declared acceptance with its existing owner"
         if unobserved:
