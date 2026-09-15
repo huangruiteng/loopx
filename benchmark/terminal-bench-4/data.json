@@ -1,0 +1,1863 @@
+{
+  "generated_at": "2026-09-15",
+  "bench": "terminal-bench-4",
+  "benchmark_version": "v4.0.0 (452bf305c6)",
+  "model": "openai/gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "reward_type": "binary",
+  "note": "pinned public-safe 聚合，与 README 结论对应；逐 trial 原始轨迹按 LoopX 契约私有。",
+  "arms": [
+    "plain",
+    "ssh-goal",
+    "codex-cli",
+    "heartbeat",
+    "goal"
+  ],
+  "arm_role": {
+    "plain": "baseline①：裸 codex（goals off），objective 固定；走 app-server 通道",
+    "goal": "baseline②：codex 原生 Goal（app-server），无 LoopX",
+    "ssh-goal": "LoopX：Codex App over SSH，visible Goal 续跑",
+    "codex-cli": "LoopX：Codex CLI 可见 /goal 续跑",
+    "heartbeat": "LoopX：心跳模式，外部 driver 拥有唤醒"
+  },
+  "n_trials": 260,
+  "denominator": 52,
+  "excluded_unresolvable": [
+    "freecad-impeller",
+    "freecad-platform-drawing",
+    "freecad-spring-clip",
+    "risk-scorer-replay"
+  ],
+  "excluded_note": "55 个跑过 xhigh 的任务减去环境不可解的 freecad×3（verifier vtk 构建冲突）与 risk-scorer-replay",
+  "tasks_matched": [
+    "atrx-vep-crispr",
+    "batched-eval-parity",
+    "biped-contact-dynamics",
+    "bun-sourcemap-leak",
+    "cad-model",
+    "cargo-flight-dispatch",
+    "coq-block-bound",
+    "ctr-optimization",
+    "cumulative-layout-shift",
+    "data-anonymization",
+    "distributed-dedup",
+    "embedding-drift-monitor",
+    "foodstuff-beta-activity",
+    "formal-crypto",
+    "freight-dispatch-shift",
+    "glycan-ms2-elucidation",
+    "gsea-proteomics",
+    "heat-pump-warranty",
+    "html-js-filter",
+    "interleaved-vigenere",
+    "intrastat-meldung",
+    "ks-solver-cpp",
+    "kv-live-surgery",
+    "lake-temp-glm",
+    "layout-config-recreation",
+    "layout-config-recreation2",
+    "legacy-utility-triage",
+    "live-database-cutover",
+    "medical-claims-processing",
+    "mp-checkpoint-consolidation",
+    "music-harmony",
+    "mvcc-lsm-compaction",
+    "nextjs-performance",
+    "ontology-kg-querying",
+    "payments-pipeline-fix",
+    "photonic-waveguide-routing",
+    "pretrain-shard-corruption",
+    "production-planning",
+    "protein-autointerp-disulfide",
+    "retro-console-soc",
+    "roy-polymorph-cn",
+    "rs-archive-clone",
+    "satb-audio-transcription",
+    "session-window-debug",
+    "sglang-qwen-burst",
+    "sound-change-cascade",
+    "takens-embedding-lean",
+    "uefi-bootkit",
+    "vba-userform-port",
+    "vf2-speedup-networkx",
+    "vllm-deepseek-streaming",
+    "wdm-design"
+  ],
+  "tasks_solved_by_any": [
+    "atrx-vep-crispr",
+    "biped-contact-dynamics",
+    "cumulative-layout-shift",
+    "embedding-drift-monitor",
+    "heat-pump-warranty",
+    "html-js-filter",
+    "interleaved-vigenere",
+    "intrastat-meldung",
+    "mp-checkpoint-consolidation",
+    "pretrain-shard-corruption",
+    "retro-console-soc",
+    "sound-change-cascade",
+    "vf2-speedup-networkx",
+    "wdm-design"
+  ],
+  "arm_summary": {
+    "plain": {
+      "n": 52,
+      "solved": 9,
+      "solve_rate": 0.173,
+      "mean_reward": 0.173,
+      "solved_tasks": [
+        "atrx-vep-crispr",
+        "biped-contact-dynamics",
+        "cumulative-layout-shift",
+        "heat-pump-warranty",
+        "html-js-filter",
+        "intrastat-meldung",
+        "pretrain-shard-corruption",
+        "retro-console-soc",
+        "vf2-speedup-networkx"
+      ],
+      "role": "baseline①：裸 codex（goals off），objective 固定；走 app-server 通道",
+      "partial_test_pass_rate": 0.633,
+      "partial_denominator": 42
+    },
+    "ssh-goal": {
+      "n": 52,
+      "solved": 4,
+      "solve_rate": 0.077,
+      "mean_reward": 0.077,
+      "solved_tasks": [
+        "biped-contact-dynamics",
+        "cumulative-layout-shift",
+        "embedding-drift-monitor",
+        "mp-checkpoint-consolidation"
+      ],
+      "role": "LoopX：Codex App over SSH，visible Goal 续跑",
+      "partial_test_pass_rate": 0.718,
+      "partial_denominator": 42
+    },
+    "codex-cli": {
+      "n": 52,
+      "solved": 4,
+      "solve_rate": 0.077,
+      "mean_reward": 0.077,
+      "solved_tasks": [
+        "atrx-vep-crispr",
+        "biped-contact-dynamics",
+        "interleaved-vigenere",
+        "sound-change-cascade"
+      ],
+      "role": "LoopX：Codex CLI 可见 /goal 续跑",
+      "partial_test_pass_rate": 0.64,
+      "partial_denominator": 42
+    },
+    "heartbeat": {
+      "n": 52,
+      "solved": 3,
+      "solve_rate": 0.058,
+      "mean_reward": 0.058,
+      "solved_tasks": [
+        "biped-contact-dynamics",
+        "cumulative-layout-shift",
+        "mp-checkpoint-consolidation"
+      ],
+      "role": "LoopX：心跳模式，外部 driver 拥有唤醒",
+      "partial_test_pass_rate": 0.668,
+      "partial_denominator": 42
+    },
+    "goal": {
+      "n": 52,
+      "solved": 2,
+      "solve_rate": 0.038,
+      "mean_reward": 0.038,
+      "solved_tasks": [
+        "cumulative-layout-shift",
+        "wdm-design"
+      ],
+      "role": "baseline②：codex 原生 Goal（app-server），无 LoopX",
+      "partial_test_pass_rate": 0.594,
+      "partial_denominator": 42
+    }
+  },
+  "cells": {
+    "atrx-vep-crispr": {
+      "plain": {
+        "task": "atrx-vep-crispr",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "atrx-vep-crispr",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.5625
+      },
+      "codex-cli": {
+        "task": "atrx-vep-crispr",
+        "arm": "codex-cli",
+        "reward": 1,
+        "test_pass_rate": 0.5625
+      },
+      "heartbeat": {
+        "task": "atrx-vep-crispr",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "goal": {
+        "task": "atrx-vep-crispr",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5625
+      }
+    },
+    "batched-eval-parity": {
+      "plain": {
+        "task": "batched-eval-parity",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.6
+      },
+      "ssh-goal": {
+        "task": "batched-eval-parity",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "codex-cli": {
+        "task": "batched-eval-parity",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "heartbeat": {
+        "task": "batched-eval-parity",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.4
+      },
+      "goal": {
+        "task": "batched-eval-parity",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.4
+      }
+    },
+    "biped-contact-dynamics": {
+      "plain": {
+        "task": "biped-contact-dynamics",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "biped-contact-dynamics",
+        "arm": "ssh-goal",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "biped-contact-dynamics",
+        "arm": "codex-cli",
+        "reward": 1,
+        "test_pass_rate": 0.0
+      },
+      "heartbeat": {
+        "task": "biped-contact-dynamics",
+        "arm": "heartbeat",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "goal": {
+        "task": "biped-contact-dynamics",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      }
+    },
+    "bun-sourcemap-leak": {
+      "plain": {
+        "task": "bun-sourcemap-leak",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "ssh-goal": {
+        "task": "bun-sourcemap-leak",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "codex-cli": {
+        "task": "bun-sourcemap-leak",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.6944
+      },
+      "heartbeat": {
+        "task": "bun-sourcemap-leak",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "goal": {
+        "task": "bun-sourcemap-leak",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      }
+    },
+    "cad-model": {
+      "plain": {
+        "task": "cad-model",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "ssh-goal": {
+        "task": "cad-model",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.25
+      },
+      "codex-cli": {
+        "task": "cad-model",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "heartbeat": {
+        "task": "cad-model",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.25
+      },
+      "goal": {
+        "task": "cad-model",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      }
+    },
+    "cargo-flight-dispatch": {
+      "plain": {
+        "task": "cargo-flight-dispatch",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.8889
+      },
+      "ssh-goal": {
+        "task": "cargo-flight-dispatch",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8148
+      },
+      "codex-cli": {
+        "task": "cargo-flight-dispatch",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.7037
+      },
+      "heartbeat": {
+        "task": "cargo-flight-dispatch",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.7037
+      },
+      "goal": {
+        "task": "cargo-flight-dispatch",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.8148
+      }
+    },
+    "coq-block-bound": {
+      "plain": {
+        "task": "coq-block-bound",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "ssh-goal": {
+        "task": "coq-block-bound",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "codex-cli": {
+        "task": "coq-block-bound",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "heartbeat": {
+        "task": "coq-block-bound",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      },
+      "goal": {
+        "task": "coq-block-bound",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      }
+    },
+    "ctr-optimization": {
+      "plain": {
+        "task": "ctr-optimization",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "ssh-goal": {
+        "task": "ctr-optimization",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "codex-cli": {
+        "task": "ctr-optimization",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "heartbeat": {
+        "task": "ctr-optimization",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "goal": {
+        "task": "ctr-optimization",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      }
+    },
+    "cumulative-layout-shift": {
+      "plain": {
+        "task": "cumulative-layout-shift",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": null
+      },
+      "ssh-goal": {
+        "task": "cumulative-layout-shift",
+        "arm": "ssh-goal",
+        "reward": 1,
+        "test_pass_rate": null
+      },
+      "codex-cli": {
+        "task": "cumulative-layout-shift",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "cumulative-layout-shift",
+        "arm": "heartbeat",
+        "reward": 1,
+        "test_pass_rate": null
+      },
+      "goal": {
+        "task": "cumulative-layout-shift",
+        "arm": "goal",
+        "reward": 1,
+        "test_pass_rate": null
+      }
+    },
+    "data-anonymization": {
+      "plain": {
+        "task": "data-anonymization",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "ssh-goal": {
+        "task": "data-anonymization",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "codex-cli": {
+        "task": "data-anonymization",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "heartbeat": {
+        "task": "data-anonymization",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "goal": {
+        "task": "data-anonymization",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      }
+    },
+    "distributed-dedup": {
+      "plain": {
+        "task": "distributed-dedup",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.5385
+      },
+      "ssh-goal": {
+        "task": "distributed-dedup",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.9231
+      },
+      "codex-cli": {
+        "task": "distributed-dedup",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5385
+      },
+      "heartbeat": {
+        "task": "distributed-dedup",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.5385
+      },
+      "goal": {
+        "task": "distributed-dedup",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5385
+      }
+    },
+    "embedding-drift-monitor": {
+      "plain": {
+        "task": "embedding-drift-monitor",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.9091
+      },
+      "ssh-goal": {
+        "task": "embedding-drift-monitor",
+        "arm": "ssh-goal",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "embedding-drift-monitor",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.9091
+      },
+      "heartbeat": {
+        "task": "embedding-drift-monitor",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.9091
+      },
+      "goal": {
+        "task": "embedding-drift-monitor",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.9091
+      }
+    },
+    "foodstuff-beta-activity": {
+      "plain": {
+        "task": "foodstuff-beta-activity",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.8462
+      },
+      "ssh-goal": {
+        "task": "foodstuff-beta-activity",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8462
+      },
+      "codex-cli": {
+        "task": "foodstuff-beta-activity",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8462
+      },
+      "heartbeat": {
+        "task": "foodstuff-beta-activity",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.8462
+      },
+      "goal": {
+        "task": "foodstuff-beta-activity",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.7692
+      }
+    },
+    "formal-crypto": {
+      "plain": {
+        "task": "formal-crypto",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.0526
+      },
+      "ssh-goal": {
+        "task": "formal-crypto",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8947
+      },
+      "codex-cli": {
+        "task": "formal-crypto",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.0526
+      },
+      "heartbeat": {
+        "task": "formal-crypto",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.0526
+      },
+      "goal": {
+        "task": "formal-crypto",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.0526
+      }
+    },
+    "freight-dispatch-shift": {
+      "plain": {
+        "task": "freight-dispatch-shift",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "freight-dispatch-shift",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "freight-dispatch-shift",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "heartbeat": {
+        "task": "freight-dispatch-shift",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "goal": {
+        "task": "freight-dispatch-shift",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      }
+    },
+    "glycan-ms2-elucidation": {
+      "plain": {
+        "task": "glycan-ms2-elucidation",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.9167
+      },
+      "ssh-goal": {
+        "task": "glycan-ms2-elucidation",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.9167
+      },
+      "codex-cli": {
+        "task": "glycan-ms2-elucidation",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.9167
+      },
+      "heartbeat": {
+        "task": "glycan-ms2-elucidation",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.9167
+      },
+      "goal": {
+        "task": "glycan-ms2-elucidation",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.9167
+      }
+    },
+    "gsea-proteomics": {
+      "plain": {
+        "task": "gsea-proteomics",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.625
+      },
+      "ssh-goal": {
+        "task": "gsea-proteomics",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.625
+      },
+      "codex-cli": {
+        "task": "gsea-proteomics",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.625
+      },
+      "heartbeat": {
+        "task": "gsea-proteomics",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.625
+      },
+      "goal": {
+        "task": "gsea-proteomics",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5625
+      }
+    },
+    "heat-pump-warranty": {
+      "plain": {
+        "task": "heat-pump-warranty",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": null
+      },
+      "ssh-goal": {
+        "task": "heat-pump-warranty",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "codex-cli": {
+        "task": "heat-pump-warranty",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "heat-pump-warranty",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "goal": {
+        "task": "heat-pump-warranty",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": null
+      }
+    },
+    "html-js-filter": {
+      "plain": {
+        "task": "html-js-filter",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "html-js-filter",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "codex-cli": {
+        "task": "html-js-filter",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "heartbeat": {
+        "task": "html-js-filter",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "goal": {
+        "task": "html-js-filter",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      }
+    },
+    "interleaved-vigenere": {
+      "plain": {
+        "task": "interleaved-vigenere",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "ssh-goal": {
+        "task": "interleaved-vigenere",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "codex-cli": {
+        "task": "interleaved-vigenere",
+        "arm": "codex-cli",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "heartbeat": {
+        "task": "interleaved-vigenere",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "goal": {
+        "task": "interleaved-vigenere",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      }
+    },
+    "intrastat-meldung": {
+      "plain": {
+        "task": "intrastat-meldung",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "intrastat-meldung",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "intrastat-meldung",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "heartbeat": {
+        "task": "intrastat-meldung",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "goal": {
+        "task": "intrastat-meldung",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      }
+    },
+    "ks-solver-cpp": {
+      "plain": {
+        "task": "ks-solver-cpp",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "ssh-goal": {
+        "task": "ks-solver-cpp",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "codex-cli": {
+        "task": "ks-solver-cpp",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "ks-solver-cpp",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "goal": {
+        "task": "ks-solver-cpp",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": null
+      }
+    },
+    "kv-live-surgery": {
+      "plain": {
+        "task": "kv-live-surgery",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.1667
+      },
+      "ssh-goal": {
+        "task": "kv-live-surgery",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "codex-cli": {
+        "task": "kv-live-surgery",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "heartbeat": {
+        "task": "kv-live-surgery",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.3333
+      },
+      "goal": {
+        "task": "kv-live-surgery",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      }
+    },
+    "lake-temp-glm": {
+      "plain": {
+        "task": "lake-temp-glm",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "ssh-goal": {
+        "task": "lake-temp-glm",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "codex-cli": {
+        "task": "lake-temp-glm",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "heartbeat": {
+        "task": "lake-temp-glm",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "goal": {
+        "task": "lake-temp-glm",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      }
+    },
+    "layout-config-recreation": {
+      "plain": {
+        "task": "layout-config-recreation",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "ssh-goal": {
+        "task": "layout-config-recreation",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "codex-cli": {
+        "task": "layout-config-recreation",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "heartbeat": {
+        "task": "layout-config-recreation",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "goal": {
+        "task": "layout-config-recreation",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      }
+    },
+    "layout-config-recreation2": {
+      "plain": {
+        "task": "layout-config-recreation2",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.1111
+      },
+      "ssh-goal": {
+        "task": "layout-config-recreation2",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8889
+      },
+      "codex-cli": {
+        "task": "layout-config-recreation2",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.1111
+      },
+      "heartbeat": {
+        "task": "layout-config-recreation2",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.8889
+      },
+      "goal": {
+        "task": "layout-config-recreation2",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.8889
+      }
+    },
+    "legacy-utility-triage": {
+      "plain": {
+        "task": "legacy-utility-triage",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "ssh-goal": {
+        "task": "legacy-utility-triage",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "codex-cli": {
+        "task": "legacy-utility-triage",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "legacy-utility-triage",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "goal": {
+        "task": "legacy-utility-triage",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": null
+      }
+    },
+    "live-database-cutover": {
+      "plain": {
+        "task": "live-database-cutover",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.9444
+      },
+      "ssh-goal": {
+        "task": "live-database-cutover",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "codex-cli": {
+        "task": "live-database-cutover",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8889
+      },
+      "heartbeat": {
+        "task": "live-database-cutover",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "goal": {
+        "task": "live-database-cutover",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.8889
+      }
+    },
+    "medical-claims-processing": {
+      "plain": {
+        "task": "medical-claims-processing",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "medical-claims-processing",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "medical-claims-processing",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "heartbeat": {
+        "task": "medical-claims-processing",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "goal": {
+        "task": "medical-claims-processing",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      }
+    },
+    "mp-checkpoint-consolidation": {
+      "plain": {
+        "task": "mp-checkpoint-consolidation",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "ssh-goal": {
+        "task": "mp-checkpoint-consolidation",
+        "arm": "ssh-goal",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "mp-checkpoint-consolidation",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "mp-checkpoint-consolidation",
+        "arm": "heartbeat",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "goal": {
+        "task": "mp-checkpoint-consolidation",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      }
+    },
+    "music-harmony": {
+      "plain": {
+        "task": "music-harmony",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "ssh-goal": {
+        "task": "music-harmony",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "codex-cli": {
+        "task": "music-harmony",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "music-harmony",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "goal": {
+        "task": "music-harmony",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": null
+      }
+    },
+    "mvcc-lsm-compaction": {
+      "plain": {
+        "task": "mvcc-lsm-compaction",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.7333
+      },
+      "ssh-goal": {
+        "task": "mvcc-lsm-compaction",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.7333
+      },
+      "codex-cli": {
+        "task": "mvcc-lsm-compaction",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.7333
+      },
+      "heartbeat": {
+        "task": "mvcc-lsm-compaction",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.7333
+      },
+      "goal": {
+        "task": "mvcc-lsm-compaction",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.7333
+      }
+    },
+    "nextjs-performance": {
+      "plain": {
+        "task": "nextjs-performance",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "ssh-goal": {
+        "task": "nextjs-performance",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.6
+      },
+      "codex-cli": {
+        "task": "nextjs-performance",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "heartbeat": {
+        "task": "nextjs-performance",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "goal": {
+        "task": "nextjs-performance",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      }
+    },
+    "ontology-kg-querying": {
+      "plain": {
+        "task": "ontology-kg-querying",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.6923
+      },
+      "ssh-goal": {
+        "task": "ontology-kg-querying",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.6923
+      },
+      "codex-cli": {
+        "task": "ontology-kg-querying",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5385
+      },
+      "heartbeat": {
+        "task": "ontology-kg-querying",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.6923
+      },
+      "goal": {
+        "task": "ontology-kg-querying",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.6923
+      }
+    },
+    "payments-pipeline-fix": {
+      "plain": {
+        "task": "payments-pipeline-fix",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.3333
+      },
+      "ssh-goal": {
+        "task": "payments-pipeline-fix",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "codex-cli": {
+        "task": "payments-pipeline-fix",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "heartbeat": {
+        "task": "payments-pipeline-fix",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "goal": {
+        "task": "payments-pipeline-fix",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": null
+      }
+    },
+    "photonic-waveguide-routing": {
+      "plain": {
+        "task": "photonic-waveguide-routing",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.9286
+      },
+      "ssh-goal": {
+        "task": "photonic-waveguide-routing",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.9286
+      },
+      "codex-cli": {
+        "task": "photonic-waveguide-routing",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8571
+      },
+      "heartbeat": {
+        "task": "photonic-waveguide-routing",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.9286
+      },
+      "goal": {
+        "task": "photonic-waveguide-routing",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.8571
+      }
+    },
+    "pretrain-shard-corruption": {
+      "plain": {
+        "task": "pretrain-shard-corruption",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "pretrain-shard-corruption",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.3333
+      },
+      "codex-cli": {
+        "task": "pretrain-shard-corruption",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      },
+      "heartbeat": {
+        "task": "pretrain-shard-corruption",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.3333
+      },
+      "goal": {
+        "task": "pretrain-shard-corruption",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      }
+    },
+    "production-planning": {
+      "plain": {
+        "task": "production-planning",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "ssh-goal": {
+        "task": "production-planning",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "codex-cli": {
+        "task": "production-planning",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.8
+      },
+      "heartbeat": {
+        "task": "production-planning",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.85
+      },
+      "goal": {
+        "task": "production-planning",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.05
+      }
+    },
+    "protein-autointerp-disulfide": {
+      "plain": {
+        "task": "protein-autointerp-disulfide",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "ssh-goal": {
+        "task": "protein-autointerp-disulfide",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "codex-cli": {
+        "task": "protein-autointerp-disulfide",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "heartbeat": {
+        "task": "protein-autointerp-disulfide",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      },
+      "goal": {
+        "task": "protein-autointerp-disulfide",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5
+      }
+    },
+    "retro-console-soc": {
+      "plain": {
+        "task": "retro-console-soc",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "retro-console-soc",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.375
+      },
+      "codex-cli": {
+        "task": "retro-console-soc",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "retro-console-soc",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "goal": {
+        "task": "retro-console-soc",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      }
+    },
+    "roy-polymorph-cn": {
+      "plain": {
+        "task": "roy-polymorph-cn",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      },
+      "ssh-goal": {
+        "task": "roy-polymorph-cn",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      },
+      "codex-cli": {
+        "task": "roy-polymorph-cn",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": null
+      },
+      "heartbeat": {
+        "task": "roy-polymorph-cn",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      },
+      "goal": {
+        "task": "roy-polymorph-cn",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      }
+    },
+    "rs-archive-clone": {
+      "plain": {
+        "task": "rs-archive-clone",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.9123
+      },
+      "ssh-goal": {
+        "task": "rs-archive-clone",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.7544
+      },
+      "codex-cli": {
+        "task": "rs-archive-clone",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5789
+      },
+      "heartbeat": {
+        "task": "rs-archive-clone",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.7895
+      },
+      "goal": {
+        "task": "rs-archive-clone",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.0351
+      }
+    },
+    "satb-audio-transcription": {
+      "plain": {
+        "task": "satb-audio-transcription",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.65
+      },
+      "ssh-goal": {
+        "task": "satb-audio-transcription",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.525
+      },
+      "codex-cli": {
+        "task": "satb-audio-transcription",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.4
+      },
+      "heartbeat": {
+        "task": "satb-audio-transcription",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.625
+      },
+      "goal": {
+        "task": "satb-audio-transcription",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.6
+      }
+    },
+    "session-window-debug": {
+      "plain": {
+        "task": "session-window-debug",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.5714
+      },
+      "ssh-goal": {
+        "task": "session-window-debug",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8571
+      },
+      "codex-cli": {
+        "task": "session-window-debug",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5714
+      },
+      "heartbeat": {
+        "task": "session-window-debug",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.5714
+      },
+      "goal": {
+        "task": "session-window-debug",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5714
+      }
+    },
+    "sglang-qwen-burst": {
+      "plain": {
+        "task": "sglang-qwen-burst",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.0769
+      },
+      "ssh-goal": {
+        "task": "sglang-qwen-burst",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.2308
+      },
+      "codex-cli": {
+        "task": "sglang-qwen-burst",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.2308
+      },
+      "heartbeat": {
+        "task": "sglang-qwen-burst",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.2308
+      },
+      "goal": {
+        "task": "sglang-qwen-burst",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.2308
+      }
+    },
+    "sound-change-cascade": {
+      "plain": {
+        "task": "sound-change-cascade",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.0
+      },
+      "ssh-goal": {
+        "task": "sound-change-cascade",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8571
+      },
+      "codex-cli": {
+        "task": "sound-change-cascade",
+        "arm": "codex-cli",
+        "reward": 1,
+        "test_pass_rate": 0.7143
+      },
+      "heartbeat": {
+        "task": "sound-change-cascade",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.7143
+      },
+      "goal": {
+        "task": "sound-change-cascade",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.7143
+      }
+    },
+    "takens-embedding-lean": {
+      "plain": {
+        "task": "takens-embedding-lean",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.5556
+      },
+      "ssh-goal": {
+        "task": "takens-embedding-lean",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.5556
+      },
+      "codex-cli": {
+        "task": "takens-embedding-lean",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.5556
+      },
+      "heartbeat": {
+        "task": "takens-embedding-lean",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.5556
+      },
+      "goal": {
+        "task": "takens-embedding-lean",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.5556
+      }
+    },
+    "uefi-bootkit": {
+      "plain": {
+        "task": "uefi-bootkit",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "ssh-goal": {
+        "task": "uefi-bootkit",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "codex-cli": {
+        "task": "uefi-bootkit",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "heartbeat": {
+        "task": "uefi-bootkit",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      },
+      "goal": {
+        "task": "uefi-bootkit",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.75
+      }
+    },
+    "vba-userform-port": {
+      "plain": {
+        "task": "vba-userform-port",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "vba-userform-port",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "codex-cli": {
+        "task": "vba-userform-port",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "heartbeat": {
+        "task": "vba-userform-port",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      },
+      "goal": {
+        "task": "vba-userform-port",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 1.0
+      }
+    },
+    "vf2-speedup-networkx": {
+      "plain": {
+        "task": "vf2-speedup-networkx",
+        "arm": "plain",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      },
+      "ssh-goal": {
+        "task": "vf2-speedup-networkx",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.9833
+      },
+      "codex-cli": {
+        "task": "vf2-speedup-networkx",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.9833
+      },
+      "heartbeat": {
+        "task": "vf2-speedup-networkx",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.9833
+      },
+      "goal": {
+        "task": "vf2-speedup-networkx",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.9833
+      }
+    },
+    "vllm-deepseek-streaming": {
+      "plain": {
+        "task": "vllm-deepseek-streaming",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.2
+      },
+      "ssh-goal": {
+        "task": "vllm-deepseek-streaming",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.2
+      },
+      "codex-cli": {
+        "task": "vllm-deepseek-streaming",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.2
+      },
+      "heartbeat": {
+        "task": "vllm-deepseek-streaming",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.2
+      },
+      "goal": {
+        "task": "vllm-deepseek-streaming",
+        "arm": "goal",
+        "reward": 0,
+        "test_pass_rate": 0.2
+      }
+    },
+    "wdm-design": {
+      "plain": {
+        "task": "wdm-design",
+        "arm": "plain",
+        "reward": 0,
+        "test_pass_rate": 0.1667
+      },
+      "ssh-goal": {
+        "task": "wdm-design",
+        "arm": "ssh-goal",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "codex-cli": {
+        "task": "wdm-design",
+        "arm": "codex-cli",
+        "reward": 0,
+        "test_pass_rate": 0.6667
+      },
+      "heartbeat": {
+        "task": "wdm-design",
+        "arm": "heartbeat",
+        "reward": 0,
+        "test_pass_rate": 0.8333
+      },
+      "goal": {
+        "task": "wdm-design",
+        "arm": "goal",
+        "reward": 1,
+        "test_pass_rate": 1.0
+      }
+    }
+  },
+  "partial_metric": {
+    "name": "pytest test_pass_rate",
+    "definition": "verifier(ctrf.json) 的 summary.passed / summary.tests，逐 (task,arm) 取 xhigh 运行",
+    "denominator": 42,
+    "denominator_note": "partial 用 5 臂都产出 pytest ctrf 的 matched 子集（42 题），与二值 Solve@1.0 的 52 分母不同",
+    "caveat": "TB4 官方分是二值 reward；测试通过率是从 pytest 报告派生的细粒度代理，部分任务的测试为全或无门禁，非按比例给分。",
+    "null_meaning": "test_pass_rate=null 表示该 (task,arm) 没有可提取的 pytest 逐测试明细（verifier 非 pytest，或该次 xhigh 运行未产出 ctrf.json）——是数据不存在，与 reward 是否为 1 无关，不等于 0 分。",
+    "non_pytest_tasks": [
+      "cumulative-layout-shift",
+      "heat-pump-warranty",
+      "ks-solver-cpp",
+      "legacy-utility-triage",
+      "music-harmony"
+    ],
+    "non_pytest_note": "52 个 matched 任务里 5 个用自定义（非 pytest）verifier、只落二值 reward、不写 ctrf.json，其 test_pass_rate 恒为 null 且不计入 partial 分母；另有个别臂缺 xhigh ctrf。partial 分母取 5 臂都有 pytest 明细的 42 题。"
+  }
+}

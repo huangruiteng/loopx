@@ -46,6 +46,13 @@ by itself establish a C2 uplift claim.
 
 - [`swe-marathon/README.md`](swe-marathon/README.md) links the published
   [SWE-Marathon research brief](https://huangruiteng.github.io/loopx/benchmarks/swe-marathon/).
+  It also owns the shared five-arm Harbor adapters, `tb4-five-arm` skill, and
+  LoopX runtime that the Terminal-Bench 4.0 packet reuses.
+- [`terminal-bench-4/README.md`](terminal-bench-4/README.md) records a
+  public-safe five-arm codex × LoopX comparison on Terminal-Bench 4.0 (binary
+  `Solve@1.0` plus a derived pytest test-pass-rate). It publishes only the
+  pinned `data.json` aggregate and the verdict/xhigh scoring code; the harness,
+  skill, and runtime stay single-owner under `swe-marathon/`.
 - [`deepswe/behavior-discovery/README.md`](deepswe/behavior-discovery/README.md)
   links the standalone
   [DeepSWE behavior-discovery article](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/).
