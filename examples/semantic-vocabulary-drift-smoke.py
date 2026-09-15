@@ -37,16 +37,24 @@ from loopx.semantics.inventory import (  # noqa: E402
 REGISTRY_PATH = REPO_ROOT / "loopx" / "semantics" / "vocabulary_v0.json"
 REGISTRY_SCHEMA_VERSION = "loopx_semantic_vocabulary_v0"
 VALUE_SHAPE = re.compile(r"^[a-z][a-z0-9_]*$")
+SYMBOL_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 OWNER_SHAPE = re.compile(r"^[A-Za-z0-9_./-]+\.(py|ts)::[A-Za-z_][A-Za-z0-9_]*$")
 QUOTED = re.compile(r'''["']([^"']*)["']''')
 
 REGISTRY_KEYS = {
     "schema_version", "rfc", "inventory", "policy", "coverage_floor", "vocabularies", "relations",
     "projections", "schema_versions", "retirement_ledger", "dual_runtime_twins", "inventory_ratchets",
-    "formal_model",
+    "formal_model", "scope_declarations",
 }
 VOCABULARY_KEYS = {"meaning", "tier", "status", "owners", "values"}
-VOCABULARY_OPTIONAL_KEYS = {"literal_scan", "variable_sourced_values", "value_notes", "deprecated_values"}
+VOCABULARY_OPTIONAL_KEYS = {
+    "literal_scan",
+    "variable_sourced_values",
+    "value_notes",
+    "deprecated_values",
+    "producers",
+    "compatibility_only",
+}
 TIERS = {"kernel", "cross_runtime", "cross_module"}
 STATUSES = {"canonical", "legacy", "merge_candidate"}
 FORMAL_MODEL_KEYS = {
@@ -96,6 +104,7 @@ BUDGET_ANCHOR = {
     "schema_version_same_runtime_forks": 7,
     "multi_value_twins": 19,
     "multi_value_forks": 4,
+    "multi_value_forks_semantic": 3,
     "multi_value_fork_definitions": 10,
     "same_runtime_forks_semantic": 18,
     "conflicting_values_semantic": 2,
@@ -103,12 +112,12 @@ BUDGET_ANCHOR = {
 # Budgets for the legacy should-run decision fields, anchored the same way so a
 # single diff cannot widen a retirement budget to keep a field alive.
 RETIREMENT_ANCHOR = {
-    "execution_obligation": (21, 1),
-    "heartbeat_recommendation": (18, 1),
-    "work_lane_contract": (32, 3),
-    "external_evidence_observation": (11, 1),
-    "goal_boundary": (35, 2),
-    "protocol_action_packet": (7, 2),
+    "execution_obligation": (20, 1),
+    "heartbeat_recommendation": (17, 1),
+    "work_lane_contract": (29, 3),
+    "external_evidence_observation": (8, 1),
+    "goal_boundary": (30, 2),
+    "protocol_action_packet": (5, 2),
 }
 RATCHET_KEYS = (
     "same_runtime_forks",
@@ -118,6 +127,7 @@ RATCHET_KEYS = (
     "schema_version_same_runtime_forks",
     "multi_value_twins",
     "multi_value_forks",
+    "multi_value_forks_semantic",
     "multi_value_fork_definitions",
     "same_runtime_forks_semantic",
     "conflicting_values_semantic",
@@ -183,6 +193,16 @@ def load_registry() -> dict[str, Any]:
             extra = set(vocabulary.get(key, {})) - set(values)
             require(not extra, f"{name}: {key} names unregistered values {sorted(extra)}")
         require(set(vocabulary.get("deprecated_values", [])) <= set(values), f"{name}: deprecated_values must be a subset of values")
+        producers = vocabulary.get("producers")
+        if producers is not None:
+            require(isinstance(producers, list) and producers, f"{name}: producers must be a non-empty list")
+            require(all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in producers), f"{name}: producers must be module::Symbol sites")
+        compatibility = vocabulary.get("compatibility_only")
+        if compatibility is not None:
+            require(isinstance(compatibility, dict), f"{name}: compatibility_only must be an object")
+            for value, metadata in compatibility.items():
+                require(isinstance(metadata, dict) and set(metadata) == {"reason", "retirement"}, f"{name}: compatibility_only.{value} needs reason and retirement")
+                require(all(isinstance(item, str) and item.strip() for item in metadata.values()), f"{name}: compatibility_only.{value} metadata must be non-empty text")
         scan = vocabulary.get("literal_scan")
         if scan is not None:
             require(set(scan) == {"field", "roots", "suffixes"}, f"{name}: literal_scan keys must be field, roots, suffixes")
@@ -352,6 +372,108 @@ def check_literal_vocabularies(registry: dict[str, Any], sources: list[SourceFil
         require(not unused, f"{name}: registry lists values no module carries: {unused}")
 
 
+# --- bounded producer scan ----------------------------------------------------------
+
+
+PRODUCER_ROOTS = (
+    "loopx/cli_commands",
+    "loopx/control_plane/agents",
+    "loopx/control_plane/quota",
+    "loopx/control_plane/todos",
+    "loopx/control_plane/turn_driver",
+    "loopx/control_plane/work_items",
+)
+PRODUCER_ASSIGNMENT = re.compile(
+    r"(?:[\"']{field}[\"']\s*:\s*|\b{field}\s*=(?!=)\s*)(?P<rhs>[^\n}}]+)"
+)
+
+
+def _producer_literals(field: str, source: SourceFile) -> set[str]:
+    """Return literal strings on bounded field-write forms in one source.
+
+    This intentionally does not follow variables or infer consumers. A value
+    assembled through a variable must remain in ``variable_sourced_values`` or
+    in the owner enum, so the unresolved boundary stays visible.
+    """
+
+    pattern = re.compile(PRODUCER_ASSIGNMENT.pattern.format(field=re.escape(field)))
+    values: set[str] = set()
+    for match in pattern.finditer(source.text):
+        values.update(QUOTED.findall(match.group("rhs")))
+    return {value for value in values if value and value != field}
+
+
+def _producer_site_exists(site: str, sources: list[SourceFile]) -> None:
+    require(OWNER_SHAPE.match(site) is not None, f"producer site must be module::Symbol: {site!r}")
+    module, symbol = site.split("::")
+    source_file = next((item for item in sources if item.path == module), None)
+    require(source_file is not None, f"producer site module does not exist: {site}")
+    if module.endswith(".py"):
+        definition = re.compile(rf"^\s*(?:async\s+)?def\s+{re.escape(symbol)}\s*\(", re.MULTILINE)
+    else:
+        definition = re.compile(rf"^\s*(?:export\s+)?(?:async\s+)?function\s+{re.escape(symbol)}\s*\(", re.MULTILINE)
+    require(definition.search(source_file.text) is not None, f"producer site symbol is not defined: {site}")
+
+
+def check_producers(registry: dict[str, Any], sources: list[SourceFile]) -> None:
+    """Enforce the bounded producer side of the formal model.
+
+    Owner carriers prove the finite value domain. Explicit producer metadata
+    identifies the control-plane sites covered by the structural write scan;
+    the scan rejects an unregistered literal even if no consumer compares it.
+    Dynamic producers remain outside this proof and stay in the formal boundary.
+    """
+
+    for name, vocabulary in registry["vocabularies"].items():
+        if vocabulary["tier"] != "kernel":
+            continue
+        owner_values_seen: set[str] = set()
+        for owner in vocabulary["owners"].values():
+            if owner:
+                owner_values_seen.update(owner_values(owner))
+        producers = vocabulary.get("producers", [])
+        if not producers:
+            require(owner_values_seen, f"{name}: kernel vocabularies need an owner or producer sites")
+            continue
+        for site in producers:
+            _producer_site_exists(site, sources)
+        declared_modules = {site.split("::", 1)[0] for site in producers}
+        scan = vocabulary.get("literal_scan")
+        if not scan:
+            continue
+        observed: dict[str, list[str]] = {}
+        for item in sources:
+            if item.suffix not in set(scan["suffixes"]):
+                continue
+            if not any(item.path.startswith(root + "/") for root in PRODUCER_ROOTS):
+                continue
+            for value in _producer_literals(scan["field"], item):
+                observed.setdefault(value, []).append(item.path)
+        unregistered = {
+            value: sorted(paths)
+            for value, paths in observed.items()
+            if value not in vocabulary["values"]
+        }
+        require(not unregistered, f"{name}: producer writes unregistered values: {unregistered}")
+        observed_modules = {path for paths in observed.values() for path in paths}
+        undeclared_modules = sorted(observed_modules - declared_modules)
+        require(not undeclared_modules, f"{name}: producer modules are missing from registry: {undeclared_modules}")
+        compatibility = vocabulary.get("compatibility_only", {})
+        require(set(compatibility) <= set(vocabulary["values"]), f"{name}: compatibility_only contains unregistered values")
+        require(
+            not set(compatibility).intersection(observed),
+            f"{name}: compatibility_only values are produced: {sorted(set(compatibility).intersection(observed))}",
+        )
+        uncovered = (
+            set(vocabulary["values"])
+            - owner_values_seen
+            - set(observed)
+            - set(vocabulary.get("variable_sourced_values", {}))
+            - set(compatibility)
+        )
+        require(not uncovered, f"{name}: values have no bounded producer or owner evidence: {sorted(uncovered)}")
+
+
 # --- relations, projections, schema versions ----------------------------------------
 
 
@@ -412,6 +534,47 @@ def check_schema_version_owners(registry: dict[str, Any], sources: list[SourceFi
         require(values == {entry["value"]}, f"schema version {name} carries {sorted(values)}; registry says {entry['value']}")
 
 
+def check_scope_declarations(registry: dict[str, Any], inventory: dict[str, Any]) -> int:
+    """Validate explicit bounded-context exceptions and return semantic fork count.
+
+    The raw inventory remains unchanged. A declaration can remove a known,
+    reviewed bounded-context reuse from the semantic budget only when every
+    defining module is named explicitly. Spelling or directory proximity never
+    infers a scope.
+    """
+    declarations = registry["scope_declarations"]
+    forks = {entry["name"]: entry for entry in inventory["duplicate_definitions"]["multi_value_forks"]}
+    for name, declaration in declarations.items():
+        require(SYMBOL_NAME.match(name) is not None, f"scope declaration name must be an identifier: {name}")
+        require(set(declaration) == {"kind", "contexts"}, f"{name}: scope declaration keys must be kind and contexts")
+        require(declaration["kind"] == "bounded_context", f"{name}: only bounded_context is supported")
+        require(name in forks, f"{name}: scope declaration does not resolve to a multi-value fork")
+        contexts = declaration["contexts"]
+        require(isinstance(contexts, list) and contexts, f"{name}: contexts must be a non-empty list")
+        context_ids: set[str] = set()
+        owner_modules: set[str] = set()
+        for context in contexts:
+            require(set(context) == {"id", "owner"}, f"{name}: each context must have id and owner")
+            context_id = context["id"]
+            require(isinstance(context_id, str) and VALUE_SHAPE.match(context_id) is not None,
+                    f"{name}: context id must be lower snake_case: {context_id!r}")
+            require(context_id not in context_ids, f"{name}: duplicate context id {context_id}")
+            context_ids.add(context_id)
+            owner = context["owner"]
+            require(isinstance(owner, str) and OWNER_SHAPE.match(owner) is not None,
+                    f"{name}: context owner must be module::Symbol: {owner!r}")
+            module, symbol = owner.split("::")
+            require(symbol == name, f"{name}: context owner symbol must be {name}, got {symbol}")
+            owner_modules.add(module)
+        require(len(owner_modules) == len(contexts), f"{name}: each context must have a distinct owner module")
+        defining_modules = {item["module"] for item in forks[name]["definitions"]}
+        require(owner_modules == defining_modules,
+                f"{name}: contexts must name every defining module exactly once; "
+                f"declared={sorted(owner_modules)} actual={sorted(defining_modules)}")
+    undeclared = set(forks) - set(declarations)
+    return len(undeclared)
+
+
 # --- ratchets -----------------------------------------------------------------------
 
 
@@ -424,7 +587,7 @@ def check_retirement_budgets(registry: dict[str, Any], sources: list[SourceFile]
             (".py", "python_module_budget", RETIREMENT_ANCHOR[field][0]),
             (".ts", "typescript_module_budget", RETIREMENT_ANCHOR[field][1]),
         ):
-            actual = sum(1 for file in sources if file.suffix == suffix and field in file.text)
+            actual = count_identifier_modules(field, suffix, sources)
             require(actual <= budgets[key], f"legacy field {field} grew to {actual} {suffix} modules; budget is {budgets[key]}")
             require(
                 budgets[key] == anchored,
@@ -433,6 +596,23 @@ def check_retirement_budgets(registry: dict[str, Any], sources: list[SourceFile]
             )
             report.append(f"{field}{suffix}={actual}/{budgets[key]}")
     return report
+
+
+def count_identifier_modules(field: str, suffix: str, sources: list[SourceFile]) -> int:
+    """Count modules containing the standalone field token.
+
+    This is intentionally a conservative lexical metric. It removes the known
+    ``goal_boundary_repair`` false positive without claiming to prove that every
+    remaining occurrence is a reader or that computed accesses are absent.
+    """
+    pattern = re.compile(
+        rf"(?<![A-Za-z0-9_]){re.escape(field)}(?![A-Za-z0-9_])"
+    )
+    return sum(
+        1
+        for file in sources
+        if file.suffix == suffix and pattern.search(file.text)
+    )
 
 
 def check_dual_runtime_twins(registry: dict[str, Any]) -> str:
@@ -451,17 +631,19 @@ def check_inventory(registry: dict[str, Any], sources: list[SourceFile]) -> tupl
     inventory = build_inventory(REPO_ROOT, sources=sources)
     require(inventory["schema_version"] == INVENTORY_SCHEMA_VERSION, "inventory schema drift")
     require(render_inventory(inventory) == committed, f"{registry['inventory']} is stale; run python3.11 scripts/generate_semantic_inventory.py and commit the result")
+    semantic_multi_value_forks = check_scope_declarations(registry, inventory)
     ratchets = registry["inventory_ratchets"]
     summary = inventory["summary"]
     parts = []
     for key in RATCHET_KEYS:
-        require(summary[key] <= ratchets[key], f"inventory {key} grew to {summary[key]}; budget is {ratchets[key]}")
+        actual = semantic_multi_value_forks if key == "multi_value_forks_semantic" else summary[key]
+        require(actual <= ratchets[key], f"inventory {key} grew to {actual}; budget is {ratchets[key]}")
         require(
             ratchets[key] == BUDGET_ANCHOR[key],
             f"inventory {key} budget is {ratchets[key]} but BUDGET_ANCHOR pins {BUDGET_ANCHOR[key]}; "
             "the registry and the anchor move together in one diff (see BUDGET_ANCHOR in this smoke)",
         )
-        parts.append(f"{key}={summary[key]}/{ratchets[key]}")
+        parts.append(f"{key}={actual}/{ratchets[key]}")
     return inventory, " ".join(parts)
 
 
@@ -472,6 +654,7 @@ def main() -> int:
     inventory, ratchets = check_inventory(registry, sources)
     check_owned_vocabularies(registry, inventory)
     check_literal_vocabularies(registry, sources)
+    check_producers(registry, sources)
     check_relations(registry)
     check_projections(registry)
     check_schema_version_owners(registry, sources)
