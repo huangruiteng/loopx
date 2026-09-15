@@ -18,7 +18,6 @@ from ..capabilities.reward_memory import (
     run_configured_turn_outcome_ingest_fail_open,
 )
 from ..capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
-from ..capabilities.periodic_report.pending_intent import periodic_report_pending_intent_interaction_hook
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.agents.workspace_guard import capture_delivery_workspace
 from ..control_plane.quota.heartbeat_receipt import (
@@ -29,7 +28,6 @@ from ..control_plane.quota.settlement import (
     SettlementStepKind,
     read_heartbeat_settlement,
 )
-from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.runtime.status_projection_cache import (
     resolve_status_projection_cache_runtime_root,
 )
@@ -39,9 +37,6 @@ from ..control_plane.todos.durable_completion import (
     project_durable_terminal_completion_readback,
     read_persisted_todo_record,
     read_persisted_todo_record_with_source,
-)
-from ..control_plane.scheduler.execution_context import (
-    scheduler_execution_context_for_turn,
 )
 from ..control_plane.turn_driver import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
@@ -63,7 +58,7 @@ from .lark_inbox import (
     build_lark_operator_inbox_urgency_projector,
     dispatch_goal_lark_turn_start_hooks,
 )
-from .turn_decision import apply_controller_advisory_primary
+from .turn_decision import build_fresh_turn_decision
 from .turn_dsh_host import build_dsh_host_runner
 from .turn_registration import register_turn_commands as register_turn_commands
 from .turn_inspection import handle_turn_journal_inspection
@@ -151,53 +146,21 @@ def handle_turn_command(
         operator_inbox_urgency_projector = build_lark_operator_inbox_urgency_projector(
             runtime_root_arg=runtime_root,
         )
-        status_payload = collect_status(
-            registry_path=registry_path,
-            runtime_root_override=runtime_root_arg,
-            scan_roots=scan_roots,
-            limit=max(max(0, args.limit), AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK),
-            goal_id=args.goal_id,
-            available_capabilities=args.available_capabilities,
-        )
-        scheduler_context = scheduler_execution_context_for_turn(
-            host=args.host,
-            execution_mode=args.execution_mode,
-            scheduler_owner=args.scheduler_owner,
-        )
-        def build_turn_decision(
-            *, requested_action_todo_id: str | None = None
-        ) -> dict[str, Any]:
-            return build_live_quota_should_run_decision(
-                status_payload,
-                goal_id=args.goal_id,
-                agent_id=args.agent_id,
-                available_capabilities=args.available_capabilities,
-                include_scheduler_detail=False,
-                codex_app_current_rrule=None,
-                registry_path=registry_path,
-                runtime_root=runtime_root,
-                route_source="loopx_turn_plan",
-                scheduler_execution_context=scheduler_context,
-                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-                bounded_research_frontier_projector=(
-                    project_live_explore_composition_frontier
-                ),
-                requested_action_todo_id=requested_action_todo_id,
-                turn_start_hook_dispatch=turn_start_hook_dispatch,
-                interaction_projection_hooks=(periodic_report_pending_intent_interaction_hook(
-                    registry_path=registry_path, runtime_root=runtime_root,
-                    goal_id=args.goal_id, agent_id=args.agent_id),),
-            )
-
         # `run-once` and `managed-step` must resolve the same governing decision,
-        # so the advisory-primary rebinding lives in the shared decision owner
-        # instead of being repeated per subcommand.
-        decision = apply_controller_advisory_primary(build_turn_decision)
-        resume_requested, session_binding = resolve_turn_resume_session_binding(args)
-        turn_envelope = build_turn_envelope(
-            decision,
-            scheduler_execution_context=scheduler_context,
+        # so this subcommand builds no decision of its own: the whole chain -
+        # live status, scheduler context, capability-hook projection, the
+        # advisory-primary rebinding and the signed envelope - lives in the
+        # shared decision owner.
+        fresh_decision = build_fresh_turn_decision(
+            args,
+            registry_path=registry_path,
+            runtime_root=runtime_root,
+            runtime_root_arg=runtime_root_arg,
+            turn_start_hook_dispatch=turn_start_hook_dispatch,
         )
+        decision = fresh_decision.decision
+        turn_envelope = fresh_decision.envelope
+        resume_requested, session_binding = resolve_turn_resume_session_binding(args)
         if (
             args.turn_command == "run-once"
             and args.host == "codex-cli"
