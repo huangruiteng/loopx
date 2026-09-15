@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -28,6 +29,39 @@ SELF_REPAIR_PATTERNS = (
 def require(text: str, snippets: list[str], *, source: Path) -> None:
     missing = [snippet for snippet in snippets if snippet not in text]
     assert not missing, f"{source}: missing {missing}"
+
+
+def require_catalog_structure(text: str, *, source: Path) -> None:
+    table_ids = re.findall(r"^\| P\d \| (IP-\d{3}) \| ", text, re.MULTILINE)
+    duplicated = sorted({pid for pid in table_ids if table_ids.count(pid) > 1})
+    assert not duplicated, f"{source}: pattern ids own more than one table row: {duplicated}"
+
+    detail_ids = re.findall(r"^#### (IP-\d{3}) ", text, re.MULTILINE)
+    missing_detail = sorted(set(table_ids) - set(detail_ids))
+    assert not missing_detail, f"{source}: pattern rows without a detail heading: {missing_detail}"
+    orphan_detail = sorted(set(detail_ids) - set(table_ids))
+    assert not orphan_detail, f"{source}: detail headings without a pattern row: {orphan_detail}"
+
+    matrix_block = re.search(
+        r"^\| Family \| P0/P1 Pattern Coverage \|[^\n]*\n\|[^\n]*\|\n(.*?)\n\n",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert matrix_block, f"{source}: Pattern-To-Canary matrix block not found"
+    family_cells = re.findall(
+        r"^\| [^|]+ \| ((?:IP-\d{3}, )*IP-\d{3}) \|",
+        matrix_block.group(1),
+        re.MULTILINE,
+    )
+    family_ids = [pid for cell in family_cells for pid in cell.split(", ")]
+    split_families = sorted({pid for pid in family_ids if family_ids.count(pid) > 1})
+    assert not split_families, (
+        f"{source}: pattern ids listed under more than one family: {split_families}"
+    )
+    unknown_matrix_ids = sorted(set(family_ids) - set(table_ids))
+    assert not unknown_matrix_ids, (
+        f"{source}: family matrix lists ids without a pattern row: {unknown_matrix_ids}"
+    )
 
 
 def main() -> int:
@@ -104,6 +138,11 @@ def main() -> int:
             "browser_open_allowed_before_gate: false",
             "message-list or\nmessage-detail APIs",
             "UI display limit must not become the control-plane reasoning window",
+            "IP-032 | Completed Work Archive With Durable Decision Retention",
+            "Archive is a storage move, not a decision loss.",
+            "retained_standing_decision_count",
+            "The role defaults to `agent`",
+            "examples/control_plane/todo-archive-completed-smoke.py",
             "## Catalog Maintenance And Validation Design",
             "Do not add\na new IP merely because a maintainer needs a validation technique",
             "Those are uses of the\ncatalog, not catalog patterns by themselves.",
@@ -163,6 +202,8 @@ def main() -> int:
         ],
         source=SELF_REPAIR_PATTERNS,
     )
+
+    require_catalog_structure(catalog, source=CATALOG)
 
     # Every registered built-in machine-configuration namespace must be
     # discoverable from the catalog, so a new capability cannot land as a

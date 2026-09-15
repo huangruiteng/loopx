@@ -88,7 +88,7 @@ Map P0/P1 catalog rows to canary archetypes before picking commands:
 | --- | --- | --- | --- | --- | --- |
 | Work Routing | IP-001, IP-002, IP-003, IP-007, IP-008, IP-021, IP-029 | Hot-path route canary; Planning governance canary when cadence or repair is involved | `quota should-run`, `interaction_contract`, `work_lane_contract`, scheduler hint, handoff todo state | one eligible delivery fixture, one blocked/fallback fixture, one quiet or monitor fixture | agent turn routing is unsafe: it may spend, wait, notify, or choose fallback incorrectly |
 | Human Decision | IP-004, IP-014, IP-017, IP-027, IP-030 | Scoped decision canary; Product/readiness canary when first-screen human copy changes | user todos, decision scope, operator-gate/reward preview, deferred resume candidates | one concrete user ask, one scoped non-blocking gate, one preview-or-append dry run | humans may be asked the wrong question, or an agent may continue without the needed decision |
-| State And Boundary | IP-005, IP-006, IP-011, IP-016, IP-019, IP-020, IP-022, IP-023, IP-025, IP-026, IP-028, IP-031 | Projection and boundary canary; Hot-path route canary when the projection feeds quota/status | active state, todo metadata, task graph, authority source, claim lease, connector runtime policy, public/private scan | fixture state plus structured projection check; boundary scan for touched public files | compact state and executable truth diverge, so dashboards and agents may trust stale or unsafe authority |
+| State And Boundary | IP-005, IP-006, IP-011, IP-016, IP-019, IP-020, IP-022, IP-023, IP-025, IP-026, IP-028, IP-031, IP-032 | Projection and boundary canary; Hot-path route canary when the projection feeds quota/status | active state, todo metadata, task graph, authority source, claim lease, completed-work archive, connector runtime policy, public/private scan | fixture state plus structured projection check; boundary scan for touched public files | compact state and executable truth diverge, so dashboards and agents may trust stale or unsafe authority |
 | Evidence Lifecycle | IP-012, IP-015 | Evidence lifecycle canary; Product/readiness canary when evidence is rendered | external handle observation, benchmark lifecycle reducer, compact result projection | compact public-safe evidence fixture with raw-material exclusion assertions | progress evidence may be missing, double-counted, or represented with unsafe raw material |
 | Planning Governance | IP-010, IP-013, IP-018, IP-024 | Planning governance canary; Hot-path route canary when cadence changes affect execution | stalled run history, autonomous replan obligation, repair delta, cadence hint, plan-to-todo writeback | two-turn stalled fixture plus repair/writeback delta assertion | the agent may keep planning in prose while the machine-visible frontier stays unchanged |
 
@@ -341,6 +341,7 @@ Projection, authority, write scope, and lease integrity.
 | P1 | IP-025 | Experimental Diagnostic Sidecar Boundary | Runtime/protocol owners | no interruption unless an opt-in proof asks for user action | keep proof/debug verdicts as sidecar diagnostics until a product-general schema is validated |
 | P1 | IP-028 | Connector Runtime Boundary | Connector/runtime owners | notify only if the required owner decision is missing | enforce runtime allow/deny policy before browser or API connector reads can autoload raw material |
 | P1 | IP-031 | Manager Context Is Not Turn Authority | Manager connection owner | no interruption; retention is silent | retain group context only and act only on a provider-native mention, verified reply, or existing typed authority |
+| P1 | IP-032 | Completed Work Archive With Durable Decision Retention | Archive selector plus controller | no interruption; preview-then-execute readback | treat archived done work as history, keep durable decisions authoritative, and never move another role's lane |
 
 ### Evidence Lifecycle
 
@@ -2254,6 +2255,90 @@ request database.
 - `tests/extensions/test_lark_turn_start_sync.py`;
 - `tests/extensions/test_lark_goal_topic_runtime.py`;
 - `tests/extensions/test_lark_goal_topic_connections.py`.
+
+#### IP-032 Completed Work Archive With Durable Decision Retention
+
+**Trigger**
+
+- a role-scoped todo lane holds more done todos than the active window allows,
+  so `loopx todo archive-completed --max-active-done <n>` has something to move;
+- a done todo carries a durable decision receipt, so later turns still depend on
+  it even though the todo itself is finished; and
+- the caller picks a lane with `--role user` or `--role agent`, and omits
+  `--execute` for a preview.
+
+**Expected behavior**
+
+Archive is a storage move, not a decision loss. The command moves finished work
+out of the active lane into the `Completed Work Archive` section, and three
+rules bound what that move may do.
+
+1. **Retention.** A done todo carrying a durable standing decision is not a move
+   candidate. The payload reports `retained_standing_decision_count`, and after
+   the move the decision still resolves as active standing authority under
+   `standing_decision_authority_v0`. Archiving completed work must never be the
+   reason a settled policy has to be re-decided.
+2. **Role scope.** The archive only touches the section for the requested role.
+   `--role user` moves out of `User Todo / Owner Review Reading Queue` and must
+   leave `Agent Todo` untouched. The role defaults to `agent`, so a caller that
+   means the user lane has to say so. A todo whose role contradicts its active
+   section is rejected rather than silently relocated.
+3. **Preview.** Without `--execute` the command is a dry run. The preview must
+   not change the state file, and the preview payload must describe exactly what
+   the execute run would move.
+
+Moved blocks keep their role identity with a `<!-- loopx:todo role=... -->`
+marker inside the mixed archive section, so the archive stays readable by lane
+instead of collapsing ownership into one undifferentiated list.
+
+IP-020 owns claim, supersede, and successor lifecycle, and IP-014 owns how a
+decision is written. Neither owns what happens to a durable decision when the
+todo carrying it leaves the active window, which is the gap this pattern fills.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  A["done todos exceed --max-active-done"] --> P{"--execute?"}
+  P -->|"no"| V["preview payload, state file unchanged"]
+  P -->|"yes"| R{"requested --role"}
+  R -->|"user"| U["scan User Todo section only"]
+  R -->|"agent"| G["scan Agent Todo section only"]
+  U --> S{"todo carries durable standing decision?"}
+  G --> S
+  S -->|"yes"| K["retain in active lane<br/>retained_standing_decision_count += 1"]
+  S -->|"no"| M["move to Completed Work Archive<br/>preserve role marker"]
+  K --> Z["authority still resolves as active"]
+  M --> Z
+```
+
+**Bad smell**
+
+An agent tidies the active lane, the durable policy decision is compressed away
+with the todo that carried it, and two turns later the agent re-asks a question
+the user already answered or re-litigates an approved policy. The archive
+"cleaned up" the only durable record of the decision.
+
+The opposite bad smell is ownership bleed: an operator runs `--role user`
+expecting to tidy the user lane and the agent lane moves too, so the archive
+section mixes decisions nobody can attribute later. A third bad smell is
+treating a dry-run preview as applied, after which status and projection
+quietly disagree with what the operator believes happened.
+
+**Validation**
+
+- `examples/control_plane/todo-archive-completed-smoke.py` owns the CLI-level
+  archive move, preview, and payload metadata.
+- `examples/control_plane/todo-standing-decision-authority-smoke.py` owns
+  standing-decision retention and authority, including
+  `assert_archive_retains_standing_receipt`.
+- `loopx/control_plane/todos/completed_archive.py` and
+  `loopx/control_plane/coordination/todo_archive_selection.ts` own the typed
+  selector behind the command.
+- `examples/interaction-pattern-catalog-smoke.py` protects this entry.
+- Future smoke: role isolation is currently proven at helper level; a CLI-level
+  assertion that `--role user` leaves `Agent Todo` byte-identical is proposed
+  and not yet landed.
 
 ### Evidence Lifecycle
 
