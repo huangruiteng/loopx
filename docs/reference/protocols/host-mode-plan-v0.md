@@ -121,9 +121,11 @@ as an executor.
   "selected_connector_id": "loopx_turn",
   "selected_turn_mapping": {
     "host": "generic-cli",
+    "host_selection": "resolved_default",
     "execution_mode": "isolated-headless",
     "scheduler_owner": "outer_controller",
-    "plan_command": "loopx turn plan --goal-id loopx-meta --agent-id codex-main-control --host generic-cli --execution-mode isolated-headless --scheduler-owner outer_controller"
+    "plan_command": "loopx turn plan --goal-id loopx-meta --agent-id codex-main-control --execution-mode isolated-headless --scheduler-owner outer_controller",
+    "plan_command_rollback": "loopx turn plan --goal-id loopx-meta --agent-id codex-main-control --host generic-cli --execution-mode isolated-headless --scheduler-owner outer_controller"
   },
   "next_preview_command": "loopx turn plan ...",
   "mode_options": [],
@@ -161,8 +163,11 @@ A fixture or implementation is acceptable when:
 
 1. `schema_version=host_mode_plan_v0` and `mode=dry_run_host_mode_selector`;
 2. the five canonical modes are present and intent selects the expected mode;
-3. `isolated_headless_turn` maps to `loopx turn plan --host generic-cli
-   --execution-mode isolated-headless --scheduler-owner outer_controller`;
+3. `isolated_headless_turn` maps to the shipped host resolution: the preview
+   command is `loopx turn plan --execution-mode isolated-headless
+   --scheduler-owner outer_controller` with no pinned `--host`, and the pinned
+   compatibility variant is reported as `plan_command_rollback`
+   (`--host generic-cli`);
 4. scoped identity flows into Turn and quota preview commands as `--agent-id`;
 5. the no-spend policy covers selector previews, Turn plan previews, quiet
    monitors, cadence-only changes, and final/readiness checks;
