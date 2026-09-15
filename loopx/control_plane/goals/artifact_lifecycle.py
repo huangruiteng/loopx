@@ -85,40 +85,15 @@ def _is_closed(goal: dict[str, Any]) -> bool:
     return _goal_status(goal) in _TERMINAL_GOAL_STATUSES
 
 
-def _declared_milestones(goal: dict[str, Any]) -> list[dict[str, Any]]:
-    """Read Goal-declared acceptance markers, if the Goal records any."""
-
-    acceptance = _mapping(goal.get("acceptance"))
-    raw = _list(acceptance.get("milestones")) or _list(goal.get("milestones"))
-    milestones: list[dict[str, Any]] = []
-    for index, item in enumerate(raw):
-        record = _mapping(item)
-        if not isinstance(item, str) and not record:
-            continue
-        milestone_id = (
-            _compact_text(item, limit=120) if isinstance(item, str)
-            else _compact_text(record.get("id") or record.get("milestone_id"), limit=120)
-        )
-        if not milestone_id:
-            milestone_id = f"milestone_{index + 1}"
-        label = (
-            None if isinstance(item, str)
-            else _compact_text(record.get("label") or record.get("summary"))
-        )
-        milestones.append(
-            {
-                "id": milestone_id,
-                "label": label or milestone_id,
-                "reached": False,
-                "reached_evidence_refs": [],
-                "source": "declared",
-            }
-        )
-    return milestones
-
-
 def _evidence_milestones(run_history: dict[str, Any]) -> list[dict[str, Any]]:
-    """Fall back to material evidence the run history already recorded."""
+    """Markers this readout can evidence from material run history.
+
+    Goal-declared acceptance markers are deliberately not read: no authoring
+    or collection path records `goal.acceptance.milestones` or
+    `goal.milestones`, so reading them promised a readout that no user
+    declaration could reach, while carrying the only guard able to hold back a
+    closeout.  Add them back together with the producer that writes them.
+    """
 
     milestones: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -157,23 +132,6 @@ def _evidence_milestones(run_history: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return milestones
-
-
-def _milestones(
-    goal: dict[str, Any],
-    run_history: dict[str, Any],
-) -> list[dict[str, Any]]:
-    declared = _declared_milestones(goal)
-    evidence = _evidence_milestones(run_history)
-    if not declared:
-        return evidence
-    # A declared marker is a claim about what the Goal intends to reach, not
-    # proof that it did. It counts as reached only when evidence already
-    # records that outcome.
-    reached_outcomes = {item["id"] for item in evidence if item["reached"]}
-    for milestone in declared:
-        milestone["reached"] = milestone["id"] in reached_outcomes
-    return declared + [item for item in evidence if item["id"] not in {m["id"] for m in declared}]
 
 
 def _guards(
@@ -215,6 +173,26 @@ def _guards(
             }
         )
     return guards
+
+
+def _acceptance_supports_closeout(observation: dict[str, Any]) -> bool:
+    """Whether the acceptance owner has actually assessed the declared acceptance.
+
+    An empty `missing_sources` only means the bounded observation read every
+    source it knows about, never that acceptance was verified: this projection
+    reports `acceptance_assessed=False` and a coverage that is `partial` or
+    `unavailable`.  Treating "nothing left to name" as a verdict is what let a
+    fully observed Goal be recommended for closeout with no acceptance behind
+    it, so the verdict fields are read directly.
+    """
+
+    if not observation:
+        return False
+    if observation.get("acceptance_assessed") is not True:
+        return False
+    if observation.get("coverage") != "complete":
+        return False
+    return not _list(observation.get("missing_sources"))
 
 
 def _unobserved_acceptance_sources(observation: dict[str, Any]) -> list[str]:
@@ -318,17 +296,26 @@ def _next_transitions(
         # acceptance verdict. When the acceptance owner could not read some of
         # its sources, the closeout step says so instead of implying a verified
         # acceptance, and the reader keeps the decision.
+        if _acceptance_supports_closeout(observation):
+            return [
+                {
+                    "target_phase": PHASE_CLOSED,
+                    "precondition": "record the terminal no-follow-up outcome",
+                    "reason_codes": ["no_open_agent_work"],
+                }
+            ]
+        # Without that verdict the step stays inside closing: recommending a
+        # terminal outcome is the actionable error, and annotating the reason
+        # codes does not undo it.  Name the unread sources when there are any.
         unobserved = _unobserved_acceptance_sources(observation)
-        precondition = "record the terminal no-follow-up outcome"
-        reason_codes = ["no_open_agent_work"]
+        precondition = "verify the declared acceptance with its existing owner"
         if unobserved:
             precondition += "; this readout could not observe " + ", ".join(unobserved)
-            reason_codes.append("acceptance_unverified")
         return [
             {
-                "target_phase": PHASE_CLOSED,
+                "target_phase": PHASE_CLOSING,
                 "precondition": precondition,
-                "reason_codes": reason_codes,
+                "reason_codes": ["no_open_agent_work", "acceptance_unverified"],
             }
         ]
     return []
@@ -376,7 +363,7 @@ def build_goal_artifact_lifecycle_projection(
     gaps = [gap for gap in _list(acceptance_gaps) if _mapping(gap)]
     if acceptance_gaps is None:
         gaps = _list(observation.get("acceptance_gaps"))
-    milestones = _milestones(goal_record, history)
+    milestones = _evidence_milestones(history)
     guards = _guards(observation, gaps, agent_id=agent_id)
     phase = _lifecycle_phase(
         goal_record, guards=guards, milestones=milestones, agent_summary=agent_summary,

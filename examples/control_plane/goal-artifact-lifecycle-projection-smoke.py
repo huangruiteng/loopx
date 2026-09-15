@@ -65,28 +65,6 @@ def assert_starting_phase_without_work() -> None:
     assert_no_public_leak(projection)
 
 
-def assert_declared_milestone_stays_unreached_while_gapped() -> None:
-    """A declared marker with an open acceptance gap is not reached."""
-
-    projection = build_goal_artifact_lifecycle_projection(
-        goal_id=GOAL_ID,
-        goal={
-            "id": GOAL_ID,
-            "status": "active",
-            "acceptance": {"milestones": ["environment_ready", "baseline_pass"]},
-        },
-        agent_todo_summary={"open_count": 2},
-        run_history={"latest_runs": []},
-        acceptance_gaps=[
-            {"kind": "vision_acceptance_gap", "agent_id": "agent-a"},
-        ],
-    )
-    reached = {item["id"]: item["reached"] for item in projection["milestones"]}
-    assert reached == {"environment_ready": False, "baseline_pass": False}, projection
-    assert projection["lifecycle_phase"] == PHASE_QUALIFYING, projection
-    assert_no_public_leak(projection)
-
-
 def assert_outcome_gap_is_material_but_not_reached() -> None:
     """A recorded gap is retained history, never a reached marker.
 
@@ -230,7 +208,8 @@ def assert_closing_then_closed_phase() -> None:
     )
     assert closing["lifecycle_phase"] == PHASE_CLOSING, closing
     transition = closing["next_transitions"][0]
-    assert transition["target_phase"] == PHASE_CLOSED, closing
+    assert transition["target_phase"] == PHASE_CLOSING, closing
+    assert transition["target_phase"] != PHASE_CLOSED, closing
     # Closing is the todo-completion reading, not an acceptance verdict. The
     # acceptance observation could not read agent vision here, so the closeout
     # step names that source instead of implying a verified acceptance.
@@ -265,37 +244,17 @@ def assert_projection_is_pure_and_reads_no_state() -> None:
     assert first["lifecycle_phase"] == PHASE_QUALIFYING, first
 
 
-def assert_unreached_milestone_blocks_closeout() -> None:
-    """An unclaimed-acceptance Goal must not be told to close."""
+def assert_progress_evidence_alone_does_not_authorize_closeout() -> None:
+    """Evidence reaches the closing phase; only a verdict recommends closed.
+
+    The canonical progress outcomes prove the Goal advanced. They do not prove
+    the declared acceptance was assessed, and the acceptance owner reports it
+    was not, so the step stays inside closing.
+    """
 
     projection = build_goal_artifact_lifecycle_projection(
         goal_id=GOAL_ID,
-        goal={
-            "id": GOAL_ID,
-            "status": "active",
-            "acceptance": {"milestones": ["baseline_pass"]},
-        },
-        user_todo_summary={"gate_open_items": []},
-        agent_todo_summary={"open_count": 0},
-        run_history={"latest_runs": []},
-    )
-    assert projection["lifecycle_phase"] == PHASE_QUALIFYING, projection
-    transitions = projection["next_transitions"]
-    assert transitions, projection
-    assert transitions[0]["target_phase"] != PHASE_CLOSED, projection
-    assert transitions[0]["reason_codes"] == ["milestone_unreached"], projection
-
-
-def assert_reached_milestones_still_allow_closeout() -> None:
-    """The same inputs with evidence present do reach the closing phase."""
-
-    projection = build_goal_artifact_lifecycle_projection(
-        goal_id=GOAL_ID,
-        goal={
-            "id": GOAL_ID,
-            "status": "active",
-            "acceptance": {"milestones": ["primary_goal_outcome"]},
-        },
+        goal={"id": GOAL_ID, "status": "active"},
         user_todo_summary={"gate_open_items": []},
         agent_todo_summary={"open_count": 0},
         run_history={
@@ -307,8 +266,13 @@ def assert_reached_milestones_still_allow_closeout() -> None:
             ]
         },
     )
+    reached = {item["id"]: item["reached"] for item in projection["milestones"]}
+    assert reached == {"primary_goal_outcome": True}, projection
     assert projection["lifecycle_phase"] == PHASE_CLOSING, projection
-    assert projection["next_transitions"][0]["target_phase"] == PHASE_CLOSED, projection
+    transition = projection["next_transitions"][0]
+    assert transition["target_phase"] == PHASE_CLOSING, projection
+    assert transition["target_phase"] != PHASE_CLOSED, projection
+    assert "acceptance_unverified" in transition["reason_codes"], projection
 
 
 def assert_private_values_are_redacted_or_dropped() -> None:
@@ -414,7 +378,6 @@ def assert_status_collection_attaches_a_readable_readout() -> None:
                 {
                     "id": GOAL_ID,
                     "status": "active",
-                    "acceptance": {"milestones": ["baseline_pass"]},
                 }
             ]
         },
@@ -513,7 +476,6 @@ def assert_control_plane_imports_no_presentation_module() -> None:
 
 def main() -> int:
     assert_starting_phase_without_work()
-    assert_declared_milestone_stays_unreached_while_gapped()
     assert_outcome_gap_is_material_but_not_reached()
     assert_gap_only_evidence_blocks_closeout()
     assert_evidence_milestone_reached_from_run_history()
@@ -521,8 +483,7 @@ def main() -> int:
     assert_evidence_guard_is_required_and_owned_by_the_agent()
     assert_closing_then_closed_phase()
     assert_projection_is_pure_and_reads_no_state()
-    assert_unreached_milestone_blocks_closeout()
-    assert_reached_milestones_still_allow_closeout()
+    assert_progress_evidence_alone_does_not_authorize_closeout()
     assert_private_values_are_redacted_or_dropped()
     assert_batch_scale_never_promotes_an_outcome()
     assert_status_collection_attaches_a_readable_readout()

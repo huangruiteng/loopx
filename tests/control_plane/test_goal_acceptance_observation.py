@@ -355,13 +355,14 @@ def test_lifecycle_public_safety_covers_all_emitted_text():
     ]
     for value in unsafe_values:
         projection = build_goal_artifact_lifecycle_projection(
-            goal_id="demo", goal={"acceptance": {"milestones": [{"id": "baseline", "label": value}]}},
+            goal_id="demo", goal={},
             agent_id=value, acceptance_gaps=[{"kind": "gap"}],
             run_history={"latest_runs": [{"delivery_outcome": "outcome_progress", "recommended_action": value, "evidence_ref": value}]},
         )
         validate_public_safe_value(projection)
-        assert projection["milestones"][0]["label"] == "baseline"
-        evidence = projection["milestones"][1]
+        # An unsafe label and locator are both dropped, so the marker falls
+        # back to its canonical outcome id and publishes no evidence ref.
+        evidence = projection["milestones"][0]
         assert evidence["label"] == "outcome_progress"
         assert evidence["reached_evidence_refs"] == []
         assert projection["guards"][0]["agent_id"] is None
@@ -458,8 +459,58 @@ def test_lifecycle_closeout_names_unobserved_acceptance_sources():
         agent_todo_summary={"open_count": 0},
         run_history={"latest_runs": [{"delivery_outcome": "outcome_progress"}]},
     )
+    # Closing is the todo-completion reading. Without an acceptance verdict the
+    # step stays inside closing and names what was not observed, rather than
+    # recommending the terminal outcome with a caveat attached.
     assert projection["lifecycle_phase"] == "closing"
     transition = projection["next_transitions"][0]
-    assert transition["target_phase"] == "closed"
+    assert transition["target_phase"] == "closing"
     assert transition["reason_codes"] == ["no_open_agent_work", "acceptance_unverified"]
     assert transition["precondition"].endswith("this readout could not observe agent_vision")
+
+
+def test_lifecycle_fully_observed_goal_still_needs_an_acceptance_verdict():
+    """An empty `missing_sources` is not an acceptance verdict.
+
+    With an attention item and agent vision both present the observation has
+    nothing left to name, but it still reports `acceptance_assessed=False` and
+    a `partial` coverage. Reading "nothing missing" as "acceptance verified"
+    would recommend the terminal outcome with no acceptance behind it and no
+    disclosure attached.
+    """
+
+    from loopx.control_plane.goals.acceptance_observation import (
+        build_goal_acceptance_observation,
+    )
+    from loopx.control_plane.goals.artifact_lifecycle import (
+        build_goal_artifact_lifecycle_projection,
+    )
+
+    runs = [{
+        "delivery_outcome": "outcome_progress",
+        "agent_id": "agent-a",
+        "agent_vision": {"agent_id": "agent-a", "acceptance_met": True},
+    }]
+    attention = {
+        "goal_id": "demo",
+        "user_todos": {"gate_open_items": []},
+        "agent_todos": {"open_count": 0},
+    }
+    observation = build_goal_acceptance_observation(
+        {"id": "demo", "status": "active", "latest_runs": runs}, attention
+    )
+    assert observation["missing_sources"] == []
+    assert observation["acceptance_assessed"] is False
+    assert observation["coverage"] != "complete"
+
+    projection = build_goal_artifact_lifecycle_projection(
+        goal_id="demo", goal={"id": "demo", "status": "active"},
+        user_todo_summary={"gate_open_items": []},
+        agent_todo_summary={"open_count": 0},
+        run_history={"latest_runs": runs},
+        attention_item=attention,
+    )
+    transition = projection["next_transitions"][0]
+    assert transition["target_phase"] == "closing"
+    assert transition["reason_codes"] == ["no_open_agent_work", "acceptance_unverified"]
+    assert "could not observe" not in transition["precondition"]
