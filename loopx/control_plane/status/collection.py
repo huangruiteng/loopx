@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..goals.acceptance_observation import attach_goal_acceptance_observations
+from ..goals.artifact_lifecycle import attach_goal_artifact_lifecycle_projections
 from ..goals.contract_health import project_contract_health_for_goal
 from ..goals.activation import (
     GoalActivationState,
@@ -243,4 +244,5 @@ def collect_status(
             goal_channel_notification_projection
         )
     attach_goal_acceptance_observations(payload, history=history)
+    attach_goal_artifact_lifecycle_projections(payload, history=history)
     return payload

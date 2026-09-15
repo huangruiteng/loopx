@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from ..effect_program import ReceiptBoundMonitorPhase
 from ..todos.contract import TODO_TASK_CLASS_MONITOR, normalize_todo_id
 from ..todos.todo_semantics import todo_priority_label, todo_priority_rank
+
+
+@dataclass(frozen=True)
+class WorkLaneObservation:
+    """Read-only work facts; neither a scheduling decision nor execution authority."""
+
+    lane: str | None
+    must_attempt: bool
+    next_action: str | None
+
+
+def observe_work_lane(
+    contract: Any, *, next_action: Any = None,
+) -> WorkLaneObservation | None:
+    """Keep legacy field decoding with the lane owner, outside new consumers."""
+    if not isinstance(contract, dict):
+        return None
+    lane = contract.get("lane")
+    action = contract.get("obligation") or next_action
+    return WorkLaneObservation(
+        lane=lane if isinstance(lane, str) else None,
+        must_attempt=contract.get("must_attempt_work") is True,
+        next_action=action if isinstance(action, str) else None,
+    )
+
 
 WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
 WORK_LANE_RECEIPT_BOUND_MONITOR_SETTLEMENT_OBLIGATION = (

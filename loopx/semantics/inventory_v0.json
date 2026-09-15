@@ -902,13 +902,13 @@
     ]
   },
   "summary": {
-    "source_files": 1176,
+    "source_files": 1178,
     "python_enums": 103,
     "python_closed_sets": 495,
     "python_literal_aliases": 8,
     "typescript_const_arrays": 40,
-    "named_string_constants": 2033,
-    "schema_version_names": 756,
+    "named_string_constants": 2041,
+    "schema_version_names": 757,
     "schema_version_same_runtime_forks": 7,
     "cross_runtime_twins": 166,
     "same_runtime_forks": 25,
