@@ -331,21 +331,68 @@ negative 或 mutation-style 断言，并让各 provider 复用同一 envelope �
 经 review 的兼容理由，不得削弱或删除已有维度。禁止复制生产文本、标识、路径、日志、
 凭据或私有快照。PR 验证证据需报告 fixture schema、语义维度、provider arms 与有意差异。
 
-Install the test dependencies once:
+### Local Validation Environment / 本地验证环境
+
+Run from the repository or dedicated worktree root with `uv`. The project's
+`requires-python` declares Python `>=3.11`; it does not require an executable
+named `python3.11`. `uv` selects a compatible interpreter, creates `.venv`, and
+installs the checkout with the selected extras. Interpreter downloads depend on
+uv's download settings and network access. A system `python3` may be too old,
+and a global `loopx` may resolve to a different installed source tree.
+
+在仓库或独立 worktree 根目录使用 `uv`。`pyproject.toml` 要求 Python `>=3.11`，
+无需依赖名为 `python3.11` 的命令。uv 选择兼容解释器，在 `.venv` 中安装当前源码
+与测试依赖；能否自动下载 Python 取决于下载配置与网络。系统 `python3` 可能过旧，
+全局 `loopx` 也可能指向另一个已安装版本。
 
 ```bash
-python -m pip install -e ".[test]"
-```
-
-Run the fast repository gate:
-
-```bash
-python -m ruff check tests loopx/canary loopx/control_plane loopx/domain_packs loopx/presentation
-python -m mypy
-python examples/control_plane/cli-output-budget-regression-smoke.py
-python -m pytest -q
+uv sync --extra test
+uv run --extra test python -m ruff check tests loopx/canary loopx/control_plane loopx/domain_packs loopx/presentation
+uv run --extra test python -m mypy
+uv run --extra test python examples/control_plane/cli-output-budget-regression-smoke.py
+uv run --extra test python -m pytest -q
+uv run --extra test loopx canary premerge --from-git-diff
+# For a fork whose PR base is upstream/main, use this instead:
+uv run --extra test loopx canary premerge --from-git-diff --git-diff-base upstream/main
+# Run one semantic smoke or check its generated inventory:
+uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py
+uv run python scripts/generate_semantic_inventory.py --check
 git diff --check
 ```
+
+Confirm the interpreter and imported checkout when diagnosing a mismatch:
+
+```bash
+uv run python -c "import sys, loopx; print(sys.executable); print(loopx.__file__)"
+```
+
+Canary executes Python checks with the interpreter that launched LoopX
+(`sys.executable`). Its displayed `python3` command is not a second interpreter
+selection. Keep subprocesses on `sys.executable`; use `uv run` at the developer
+entrypoint. Avoid `uvx loopx` or `uv run --no-project` when validating this
+checkout, and change into the intended worktree before running Git-based checks.
+An activated compatible environment remains a supported alternative: install
+with `python -m pip install -e ".[test]"`, then use that environment's Python
+and LoopX commands directly.
+
+Canary 使用启动 LoopX 的 `sys.executable` 执行 Python 检查，显示的 `python3`
+不是重新选择解释器。子进程继续复用 `sys.executable`，只在开发入口使用 `uv run`。
+检查当前源码时不要改用 `uvx loopx` 或 `uv run --no-project`；Git diff 检查前先进入
+目标 worktree。已有兼容虚拟环境也可用 `python -m pip install -e ".[test]"` 安装源码，
+随后直接使用该环境的命令。
+
+The repository does not currently track `.python-version` or `uv.lock`. `uv`
+creates a local lockfile during resolution; keep that generated file out of
+unrelated PRs. Introducing a shared lock or interpreter pin is a separate
+repository policy change. Do not claim identical environments from
+`requires-python` alone, or use `--locked` before a reviewed lockfile exists.
+CI keeps its explicit Python versions and pinned/hash-checked installation
+paths. Historical validation receipts keep the commands that actually ran.
+
+当前仓库未跟踪 `.python-version` 或 `uv.lock`。uv 解析依赖时生成的本地锁文件不要
+混入无关 PR；共享锁文件与解释器版本固定应单独评审。最低版本要求不等于环境完全
+可复现，没有已评审锁文件时也不使用 `--locked`。CI 保留显式 Python 版本与固定依赖／
+哈希校验的安装路径，历史验证记录保留实际执行过的命令。
 
 `.github/workflows/python-tests.yml` runs this fast lane for relevant Python
 pull requests. It intentionally excludes provider-backed evaluation and the
@@ -377,7 +424,7 @@ Sonar 只复用同一次 run 的 XML，不重复测试、不跨 run 取产物。
 Sonar，测试 job 不接收 Sonar secret。触发范围取原有两套 workflow 的并集；纯前端
 PR 使用前述豁免，Sonar 配置变更仍全量运行，包括没有 token 的 fork。
 
-Reproduce one shard locally with `python -m pytest -q -n 2 --splits 4 --group 1
+Reproduce one shard locally with `uv run --extra test python -m pytest -q -n 2 --splits 4 --group 1
 --splitting-algorithm least_duration --cov=loopx`. Omit the split arguments to
 run the complete suite locally. 全量本地测试仍省略分片参数即可。
 

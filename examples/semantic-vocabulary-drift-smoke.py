@@ -450,7 +450,7 @@ def check_inventory(registry: dict[str, Any], sources: list[SourceFile]) -> tupl
     committed = inventory_path.read_text(encoding="utf-8")
     inventory = build_inventory(REPO_ROOT, sources=sources)
     require(inventory["schema_version"] == INVENTORY_SCHEMA_VERSION, "inventory schema drift")
-    require(render_inventory(inventory) == committed, f"{registry['inventory']} is stale; run python3.11 scripts/generate_semantic_inventory.py and commit the result")
+    require(render_inventory(inventory) == committed, f"{registry['inventory']} is stale; from the repository root run uv run python scripts/generate_semantic_inventory.py and commit the result")
     ratchets = registry["inventory_ratchets"]
     summary = inventory["summary"]
     parts = []

@@ -516,9 +516,9 @@ inventory in the same PR.
 
 | Claim | Test or evidence | Required result | Boundary / exclusions |
 | --- | --- | --- | --- |
-| Registry and inventory match the code at baseline | `python3.11 examples/semantic-vocabulary-drift-smoke.py` | `ok` with coverage, ratchet, budget, and twin report | Proves parity for registered vocabularies and mapped carriers only |
-| Inventory is fresh | `python3.11 scripts/generate_semantic_inventory.py --check` | exit 0 | Structural map only |
-| Scanner classification rules | `pytest tests/architecture/test_semantic_inventory.py` | pass | Fixture repository; rules from this RFC, not from output |
+| Registry and inventory match the code at baseline | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` with coverage, ratchet, budget, and twin report | Proves parity for registered vocabularies and mapped carriers only |
+| Inventory is fresh | `uv run python scripts/generate_semantic_inventory.py --check` | exit 0 | Structural map only |
+| Scanner classification rules | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass | Fixture repository; rules from this RFC, not from output |
 | A widened `effective_action` set fails closed in Python | Add an unregistered literal via `==`, membership, or conditional expression | Failure names the value and file | Mutation exercise; not a committed test |
 | A widened `effective_action` set fails closed in TypeScript | Add an unregistered literal via `===` or a ternary | Same | Same |
 | A forked constant fails closed | Redefine `TURN_ENVELOPE_SCHEMA_VERSION` or `HANDOFF_MODES` in a non-owner module, regenerate the inventory | Failure lists the extra defining module or the fork budget | Same |
@@ -529,10 +529,10 @@ inventory in the same PR.
 | A multi-value collision cannot grow | Define one closed-set name in two modules with divergent values, or with equal values, and regenerate | `multi_value_forks` or `multi_value_twins` fails naming the new name | Mutation exercise; not a committed test |
 | The registry cannot relax its own ratchet | Lower any `coverage_floor` count, raise any `inventory_ratchets` budget, or raise a retirement budget, in the same diff that removes the coverage it counts | `COVERAGE_ANCHOR`, `BUDGET_ANCHOR`, or `RETIREMENT_ANCHOR` fails naming the anchored value | Mutation exercise; moving an anchor is a code edit a reviewer sees |
 | A tightened budget cannot drift back to a stale anchor | Lower a registry budget without touching the anchor | Failure says the registry value and the anchor differ | Equality, not `<=`; the fix is to lower the anchor in the same diff |
-| The smoke is on the pull-request path | `pytest tests/architecture/test_semantic_vocabulary_drift.py` | pass; the test is collected by the default `pytest -q` sweep in `python-tests.yml` | The fleet and premerge surfaces are not the obligation (I10) |
-| Premerge selects the smoke for a `loopx/` diff | `loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | the plan lists `examples/semantic-vocabulary-drift-smoke.py` under `repo-architecture-budget` | Selection is by trigger hint; the pytest wrapper is the guarantee |
-| Measurement covers both carrier shapes and filters local naming | `pytest tests/architecture/test_semantic_inventory.py` | pass, including the collision and module-local-convention fixtures | Rules come from this RFC, not from scanner output |
-| No behavior change from the two owner fixes | `pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
+| The smoke is on the pull-request path | `uv run --extra test python -m pytest tests/architecture/test_semantic_vocabulary_drift.py` | pass; the test is collected by the default `pytest -q` sweep in `python-tests.yml` | The fleet and premerge surfaces are not the obligation (I10) |
+| Premerge selects the smoke for a `loopx/` diff | `uv run --extra test loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | the plan lists `examples/semantic-vocabulary-drift-smoke.py` under `repo-architecture-budget` | Selection is by trigger hint; the pytest wrapper is the guarantee |
+| Measurement covers both carrier shapes and filters local naming | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass, including the collision and module-local-convention fixtures | Rules come from this RFC, not from scanner output |
+| No behavior change from the two owner fixes | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `uv run --extra test loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
 | Docs governance accepts the RFC pair | `python3 examples/docs-governance-smoke.py` | pass | Checks mirror, links, index |
 | Retirement budgets count substrings, not identifiers | `goal_boundary` counted with `in file.text` and with `\bgoal_boundary\b` | 35 vs 30 Python modules on the baseline | Known boundary; M3's zero-reader gate needs the identifier count, tracked in Section 12 |
 | The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and regenerate | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
@@ -601,13 +601,14 @@ rule is that the person who merges a PR after a red `main` regenerates the
 inventory in a follow-up commit that touches only `inventory_v0.json`, and the
 smoke's failure text names that command.
 
-**Interpreter.** The smoke, the generator, and the scanner require the
-project's Python (`>=3.11` in `pyproject.toml`); `zip(strict=True)` fails on
-3.9. Fleet and premerge commands are spelled `python3` by repository convention
-and run under the CI interpreter. A macOS system `python3` is 3.9, so local
-premerge runs need a 3.11 environment on `PATH`; the docs spell the direct
-commands as `python3.11` for that reason, and the planner entry is left as
-`python3` on purpose.
+**Interpreter and checkout.** Run the commands above from the target worktree
+with `uv run`; Python compatibility comes from `pyproject.toml` (`>=3.11`),
+and the imported LoopX must come from this checkout. Canary normalizes displayed
+`python3` commands to `sys.executable`, the interpreter that launched LoopX.
+A global installation may scan a different release snapshot even when its Python
+is compatible. See [local validation](../../development/testing-and-quality.md#local-validation-environment--本地验证环境)
+for setup, interpreter/source readback, and lockfile boundaries. Historical
+receipts below retain the commands actually executed.
 
 ## 11. Normative delivery plan
 

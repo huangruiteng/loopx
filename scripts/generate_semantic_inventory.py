@@ -2,9 +2,9 @@
 """Generate or check the repository-wide semantic inventory.
 
 Usage:
-  python3.11 scripts/generate_semantic_inventory.py            # rewrite inventory_v0.json
-  python3.11 scripts/generate_semantic_inventory.py --check    # exit 1 when the file is stale
-  python3.11 scripts/generate_semantic_inventory.py --report   # print advisory consumer ranking
+  uv run python scripts/generate_semantic_inventory.py            # rewrite inventory_v0.json
+  uv run python scripts/generate_semantic_inventory.py --check    # exit 1 when the file is stale
+  uv run python scripts/generate_semantic_inventory.py --report   # print advisory consumer ranking
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def main() -> int:
     if args.check:
         print(
             f"stale semantic inventory: {INVENTORY_PATH.relative_to(ROOT)}; "
-            "run scripts/generate_semantic_inventory.py and commit the result",
+            "from the repository root run uv run python scripts/generate_semantic_inventory.py and commit the result",
             file=sys.stderr,
         )
         return 1

@@ -423,9 +423,9 @@ PR 中重新生成清单。
 
 | 声明 | 测试或证据 | 要求结果 | 边界 / 排除 |
 | --- | --- | --- | --- |
-| 基线上注册表与清单和代码一致 | `python3.11 examples/semantic-vocabulary-drift-smoke.py` | `ok` 并输出覆盖、棘轮、预算与孪生报告 | 只证明已注册词表与已映射载体的一致性 |
-| 清单新鲜 | `python3.11 scripts/generate_semantic_inventory.py --check` | 退出码 0 | 仅结构性映射 |
-| 扫描器分类规则 | `pytest tests/architecture/test_semantic_inventory.py` | 通过 | 夹具仓库；规则来自本 RFC 而非输出 |
+| 基线上注册表与清单和代码一致 | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` 并输出覆盖、棘轮、预算与孪生报告 | 只证明已注册词表与已映射载体的一致性 |
+| 清单新鲜 | `uv run python scripts/generate_semantic_inventory.py --check` | 退出码 0 | 仅结构性映射 |
+| 扫描器分类规则 | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | 通过 | 夹具仓库；规则来自本 RFC 而非输出 |
 | Python 侧扩宽 `effective_action` 时失败关闭 | 通过 `==`、成员测试或条件表达式加一个未注册字面量 | 失败文本命名该值与文件 | 突变练习；非提交测试 |
 | TypeScript 侧扩宽 `effective_action` 时失败关闭 | 通过 `===` 或三元表达式加一个未注册字面量 | 同上 | 同上 |
 | 分叉常量时失败关闭 | 在非 owner 模块重定义 `TURN_ENVELOPE_SCHEMA_VERSION` 或 `HANDOFF_MODES`，重新生成清单 | 失败列出多出的定义模块或分叉预算 | 同上 |
@@ -436,10 +436,10 @@ PR 中重新生成清单。
 | 多值冲突不能增长 | 让一个闭集名在两个模块中以不同值集定义，或以相同值集定义，并重新生成 | `multi_value_forks` 或 `multi_value_twins` 失败并命名新名字 | 突变练习；非提交测试 |
 | 注册表不能放松自己的棘轮 | 在同一 diff 中调低任一 `coverage_floor` 计数、调高任一 `inventory_ratchets` 预算或退休预算，同时删掉它所统计的覆盖 | `COVERAGE_ANCHOR`、`BUDGET_ANCHOR` 或 `RETIREMENT_ANCHOR` 失败并命名被锚定的值 | 突变练习；挪动锚点是一次评审者可见的代码修改 |
 | 已收紧的预算不能漂回过期锚点 | 只调低注册表预算而不动锚点 | 失败文本指出注册表值与锚点不等 | 用相等而非 `<=`；修法是同 diff 调低锚点 |
-| smoke 在 PR 路径上 | `pytest tests/architecture/test_semantic_vocabulary_drift.py` | 通过；该测试被 `python-tests.yml` 的默认 `pytest -q` 扫描收集 | 舰队与 premerge 表面不是义务（I10） |
-| premerge 会为 `loopx/` 的 diff 选中该 smoke | `loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | 计划在 `repo-architecture-budget` 下列出 `examples/semantic-vocabulary-drift-smoke.py` | 选择靠触发词；pytest 包装才是保证 |
-| 度量覆盖两种载体形状并过滤局部命名 | `pytest tests/architecture/test_semantic_inventory.py` | 通过，含冲突与模块局部约定两组夹具 | 规则来自本 RFC 而非扫描输出 |
-| 两处 owner 修正不改变行为 | `pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` 与 `loopx canary premerge --from-git-diff` | 通过 | 在干净树上可复现的 `main` 既有环境失败除外 |
+| smoke 在 PR 路径上 | `uv run --extra test python -m pytest tests/architecture/test_semantic_vocabulary_drift.py` | 通过；该测试被 `python-tests.yml` 的默认 `pytest -q` 扫描收集 | 舰队与 premerge 表面不是义务（I10） |
+| premerge 会为 `loopx/` 的 diff 选中该 smoke | `uv run --extra test loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | 计划在 `repo-architecture-budget` 下列出 `examples/semantic-vocabulary-drift-smoke.py` | 选择靠触发词；pytest 包装才是保证 |
+| 度量覆盖两种载体形状并过滤局部命名 | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | 通过，含冲突与模块局部约定两组夹具 | 规则来自本 RFC 而非扫描输出 |
+| 两处 owner 修正不改变行为 | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` 与 `uv run --extra test loopx canary premerge --from-git-diff` | 通过 | 在干净树上可复现的 `main` 既有环境失败除外 |
 | 文档治理接受这对 RFC | `python3 examples/docs-governance-smoke.py` | 通过 | 检查镜像、链接、索引 |
 | 退休预算按子串而非标识符计数 | 分别以 `in file.text` 与 `\bgoal_boundary\b` 统计 `goal_boundary` | 基线上 35 对 30 个 Python 模块 | 已知边界；M3 的零读者门需要标识符计数，见第 12 节 |
 | 模块局部约定过滤器是一次代码修改 | 扩宽 `inventory.py` 的 `MODULE_LOCAL_CONVENTION` 并重新生成 | `*_semantic` 预算下降而别处无代码改动 | 已知边界；正则在代码里，扩宽是可评审的 diff，未过滤总数仍在预算内 || 无人生产的注册值失败（M0.5） | 在基线上运行生产形式扫描 | 失败并点名 `effective_action` 与 `skip`；删除 `skip` 或列入 `compatibility_only` 后通过 | 第一个预期的 I12 失败；只被比较的值不算已携带 |
@@ -496,11 +496,12 @@ heartbeat/quota 覆盖。quick 与 deep 档位的上限不变。
 `main` 变红之后合并 PR 的人负责跟一个只改 `inventory_v0.json` 的再生成提交，
 smoke 的失败文本会点名那条命令。
 
-**解释器。** smoke、生成器与扫描器要求项目声明的 Python（`pyproject.toml`
-中 `>=3.11`）；`zip(strict=True)` 在 3.9 上失败。舰队与 premerge 的命令按仓库
-约定写作 `python3`，在 CI 解释器下运行。macOS 系统 `python3` 是 3.9，本地
-premerge 需要 `PATH` 上有 3.11 环境；文档因此把直接命令写成 `python3.11`，
-planner 条目则有意保留 `python3`。
+**解释器与源码。** 在目标 worktree 根目录通过 `uv run` 执行上面的命令。
+Python 兼容范围来自 `pyproject.toml`（`>=3.11`），导入的 LoopX 必须来自当前源码。
+Canary 将显示为 `python3` 的命令转换为启动 LoopX 的 `sys.executable`；全局安装
+即使 Python 版本兼容，也可能扫描另一份发布快照。安装、解释器／源码读回及锁文件
+边界见[本地验证环境](../../development/testing-and-quality.md#local-validation-environment--本地验证环境)。
+下方历史证据保留实际执行过的命令。
 
 ## 11. 规范性交付计划
 
