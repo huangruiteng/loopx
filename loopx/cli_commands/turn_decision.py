@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,16 @@ def collect_turn_status_payload(
     )
 
 
+def turn_scheduler_execution_context(args: argparse.Namespace) -> Any:
+    """The scheduler context every Turn owner signs its decision with."""
+
+    return scheduler_execution_context_for_turn(
+        host=args.host,
+        execution_mode=args.execution_mode,
+        scheduler_owner=args.scheduler_owner,
+    )
+
+
 def build_turn_decision_builder(
     args: argparse.Namespace,
     *,
@@ -72,11 +83,7 @@ def build_turn_decision_builder(
     must not. Passing the projection in keeps that choice with the caller.
     """
 
-    scheduler_context = scheduler_execution_context_for_turn(
-        host=args.host,
-        execution_mode=args.execution_mode,
-        scheduler_owner=args.scheduler_owner,
-    )
+    scheduler_context = turn_scheduler_execution_context(args)
     # Use the resolved runtime root, not the raw CLI argument. When a registry
     # declares `common_runtime_root` and the command omits `--runtime-root`,
     # the raw value is None and the activation check would silently read the
@@ -159,6 +166,58 @@ def fresh_turn_envelope(
     )
 
 
+@dataclass(frozen=True)
+class FreshTurnDecision:
+    """The governing decision and the envelope signed from that same decision.
+
+    Both halves are returned together so an owner that needs the raw decision
+    besides the envelope - ``run-once`` reads it for reward recall - cannot
+    re-derive its own copy and drift from what was signed.
+    """
+
+    decision: Mapping[str, Any]
+    envelope: dict[str, Any]
+
+
+def build_fresh_turn_decision(
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+    runtime_root_arg: str | None,
+    turn_start_hook_dispatch: Mapping[str, Any] | None = None,
+) -> FreshTurnDecision:
+    """Resolve the current governing decision and sign it into an envelope.
+
+    Every Turn owner goes through this one chain, so an added decision input is
+    either visible to all of them or to none. `turn_start_hook_dispatch` is the
+    caller's business: an executing Turn may publish Go/No-Go hooks before
+    deciding, while a read-only step must not.
+    """
+
+    status_payload = collect_turn_status_payload(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+    )
+    build_turn_decision = build_turn_decision_builder(
+        args,
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        runtime_root_arg=runtime_root_arg,
+        status_payload=status_payload,
+        turn_start_hook_dispatch=turn_start_hook_dispatch,
+    )
+    decision = apply_controller_advisory_primary(build_turn_decision)
+    return FreshTurnDecision(
+        decision=decision,
+        envelope=fresh_turn_envelope(
+            decision,
+            scheduler_execution_context=turn_scheduler_execution_context(args),
+        ),
+    )
+
+
 def build_fresh_envelope_for_managed_step(
     args: argparse.Namespace,
     *,
@@ -173,34 +232,22 @@ def build_fresh_envelope_for_managed_step(
     may wake the same failed Turn again.
     """
 
-    status_payload = collect_turn_status_payload(
-        args,
-        registry_path=registry_path,
-        runtime_root_arg=runtime_root_arg,
-    )
-    build_turn_decision = build_turn_decision_builder(
+    return build_fresh_turn_decision(
         args,
         registry_path=registry_path,
         runtime_root=runtime_root,
         runtime_root_arg=runtime_root_arg,
-        status_payload=status_payload,
-    )
-    decision = apply_controller_advisory_primary(build_turn_decision)
-    return fresh_turn_envelope(
-        decision,
-        scheduler_execution_context=scheduler_execution_context_for_turn(
-            host=args.host,
-            execution_mode=args.execution_mode,
-            scheduler_owner=args.scheduler_owner,
-        ),
-    )
+    ).envelope
 
 
 __all__ = [
+    "FreshTurnDecision",
     "TURN_DECISION_ROUTE_SOURCE",
     "apply_controller_advisory_primary",
     "build_fresh_envelope_for_managed_step",
+    "build_fresh_turn_decision",
     "build_turn_decision_builder",
     "collect_turn_status_payload",
     "fresh_turn_envelope",
+    "turn_scheduler_execution_context",
 ]

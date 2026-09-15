@@ -10,6 +10,7 @@ import pytest
 
 from loopx.cli import main as cli_main
 from loopx.cli_commands import turn as turn_command
+from loopx.cli_commands import turn_decision
 from loopx.cli_commands import turn_rendering, turn_todo_writeback
 from loopx.control_plane.turn_driver import executor
 from loopx.control_plane.turn_driver import turn_journal_runtime
@@ -295,7 +296,6 @@ def test_inspect_journal_cli_branches_before_live_or_write_paths(
     for name in (
         "build_lark_operator_inbox_urgency_projector",
         "collect_status",
-        "scheduler_execution_context_for_turn",
         "build_live_quota_should_run_decision",
         "build_loopx_turn_plan",
         "run_codex_cli_host",
@@ -304,6 +304,16 @@ def test_inspect_journal_cli_branches_before_live_or_write_paths(
         "refresh_state_run",
     ):
         monkeypatch.setattr(turn_command, name, unexpected_call)
+    # These live reads now belong to the shared Turn decision owner, so
+    # ``inspect-journal`` must never reach them there either.
+    for name in (
+        "build_lark_operator_inbox_urgency_projector",
+        "collect_status",
+        "scheduler_execution_context_for_turn",
+        "build_live_quota_should_run_decision",
+        "build_turn_envelope",
+    ):
+        monkeypatch.setattr(turn_decision, name, unexpected_call)
     for name in ("complete_goal_todo", "update_goal_todo"):
         monkeypatch.setattr(turn_todo_writeback, name, unexpected_call)
     monkeypatch.setattr(executor, "execute_turn_driver_settlement", unexpected_call)
