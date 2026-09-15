@@ -24,7 +24,9 @@ def recovery_cli_actions(
         if turn_instance_id
         else " --turn-instance-id <current-turn-id>"
     )
-    if recovery.get("binding_task_class") == "continuous_monitor":
+    # The repair lane is a typed fact from the recovery transaction; this
+    # renderer only turns it into operator commands.
+    if recovery.get("repair") == "monitor_poll":
         prior_turn_id = str(
             recovery.get("prior_turn_instance_id") or "<prior-turn-id>"
         )

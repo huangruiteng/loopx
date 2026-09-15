@@ -52,6 +52,10 @@ import { evaluateDeliveryWorkspaceCausality } from "./quota/settlement_workspace
 import { evaluateQuotaSpendCommit } from "./quota/spend_commit.ts";
 import { evaluateQuotaVoidCommit } from "./quota/void_commit.ts";
 import { readQuotaSettlement } from "./quota/settlement_readback.ts";
+import {
+  preflightPriorHostTurnCloseout,
+  reduceUnsettledHostTurnRecovery,
+} from "./quota/unsettled_host_turn_recovery.ts";
 import { evaluateTurnEnvelope } from "./quota/turn_envelope.ts";
 import { evaluateQuotaMonitorPollCommit } from "./quota/monitor_poll_commit.ts";
 import { planMonitorSuccessor, selectMonitorTodoRequest } from "./scheduler/monitor_successor.ts";
@@ -463,6 +467,14 @@ export function createEffectRuntimeHandlers(
     ["quota.spend.commit", evaluateQuotaSpendCommit],
     ["quota.void.commit", evaluateQuotaVoidCommit],
     ["quota.settlement.read", readQuotaSettlement],
+    [
+      "quota.prior_host_turn_closeout.preflight",
+      preflightPriorHostTurnCloseout,
+    ],
+    [
+      "quota.unsettled_host_turn_recovery.reduce",
+      reduceUnsettledHostTurnRecovery,
+    ],
     ["quota.turn_envelope.evaluate", evaluateTurnEnvelope],
     ["task_lease.owner_eligibility", evaluateTaskLeaseOwnerEligibility],
     ["task_lease.acquire.decide", evaluateTaskLeaseAcquireDecision],
