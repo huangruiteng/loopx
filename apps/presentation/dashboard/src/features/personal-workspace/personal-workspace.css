@@ -192,6 +192,9 @@
 .personal-execution-chip.is-unavailable .personal-execution-chip-kind { color: var(--pw-amber); }
 .personal-execution-chip.is-unavailable .personal-execution-chip-model { color: var(--pw-amber); }
 .personal-execution-note { overflow: hidden; color: var(--pw-muted); font-size: 11px; text-overflow: ellipsis; }
+/* Why the conditional steward default resolved this way: same hairline row, no
+   new weight, so the provenance of the chip stays readable at low emphasis. */
+.personal-execution-rule-note { overflow: hidden; color: var(--pw-faint); font-size: 11px; text-overflow: ellipsis; }
 .personal-workspace-shell[data-pw-theme="brutal"] .personal-execution-chip { border-color: #141414; border-radius: 4px; }
 .personal-channel-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; }
 .personal-goal-tools { position: relative; flex: 0 0 auto; }

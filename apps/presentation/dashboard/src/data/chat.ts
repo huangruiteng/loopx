@@ -100,6 +100,10 @@ export const managerChannelBindingSchema = z.object({
   schema_version: z.string(),
   executor_endpoint: z.string(),
   executor_endpoint_source: z.string(),
+  // Why the shipped default resolved the way it did. Present so a conditional
+  // default reads as a decision with a reason instead of an incidental
+  // environment value; empty when the operator selected the endpoint explicitly.
+  executor_endpoint_default_reason: z.string().optional(),
   executor_kind: z.string(),
   model: z.string(),
   model_source: z.string(),
