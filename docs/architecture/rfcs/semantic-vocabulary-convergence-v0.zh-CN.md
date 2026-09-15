@@ -328,6 +328,91 @@ R ⊆ S × V × Version               将值持久化
 `formal_model` 保存这条证明边界；标记为 `unproved` 的性质是显式局限，不能被当作默认通过。
 
 
+### 健全性、相对完备性与候选决策
+
+这里的“完备”必须带范围。令 `U(v)` 为词表的运行时完整值域，`S(v)` 为注册表允许
+的值集合，`P(v)` 为实际产生的值集合，`O(v)` 为扫描器观察到的值集合。生产义务
+只有在完整值域上定义时才有意义：
+
+```text
+P(v) ⊆ S(v) ⊆ U(v)
+```
+
+如果预先把 `P(v)` 定义成 `S(v)` 的子集，第一个包含关系就变成恒真命题。M0 当前
+只对 `O(v)` 和已登记的结构载体建立有界结论。
+
+对一个受限语法片段 `L0` 和精确分析器 `A0`，定义：
+
+```text
+Sound(A0, property, L0)    := A0 接受 c ⇒ property(c)
+Complete(A0, property, L0) := property(c) ⇒ A0 接受 c
+```
+
+M0 守卫可以对固定载体和固定分发形式追求这两个性质，但不能对任意动态 Python 或
+TypeScript 宣称它们成立。值如果经过别名、配置、反射、外部输入或未识别语法流动，
+在有界分析覆盖它之前都属于 `unknown`。Unknown 是证据结果，不是“不存在”的证明。
+
+每个候选改动必须且只能得到一个有限决策：
+
+```text
+reuse_existing | extend_vocabulary | create_vocabulary | local_only
+external_input | compatibility_only | unknown
+```
+
+这样可以让“流程分类”完备，即使程序分析本身不完备。`reuse_existing` 要求槽位相同、
+作用域兼容、契约等价。`extend_vocabulary` 要求给出反例，证明复用旧值会把两个需要
+不同处理的状态压成一个。`create_vocabulary` 要求出现新的语义定义域或独立 owner 与
+生命周期。如果证据不足以在这些情况之间做决定，默认就是 `unknown`；Agent 不能把
+未解析候选静默当成复用旧词。
+
+任意程序的行为等价通常不可判定，因此这个 schema 不会把 `same_concept` 自动提升为
+定理。只有当输入、输出、状态转换、持久化版本和有限测试域都明确时，行为等价才可
+在受限契约内成为阻断条件。这就是可用的证明骨架与“全程序语义收敛已被证明”之间的
+边界。
+
+
+### 健全性、相对完备性与候选决策
+
+这里的“完备”必须带范围。令 `U(v)` 为词表 `v` 的运行时完整值域，`S(v)` 为注册表
+允许的值集合，`P(v)` 为实际产生的值集合，`O(v)` 为扫描器观察到的值集合。生产义务
+只有在完整值域上定义时才有意义：
+
+```text
+P(v) ⊆ S(v) ⊆ U(v)
+```
+
+如果预先把 `P(v)` 定义成 `S(v)` 的子集，第一个包含关系就会变成恒真命题。M0
+只对已识别的源码形式和已登记的结构载体建立有界结论。
+
+对一个受限语法片段 `L0` 和精确分析器 `A0`，定义：
+
+```text
+Sound(A0, property, L0)    := A0 接受 c ⇒ property(c)
+Complete(A0, property, L0) := property(c) ⇒ A0 接受 c
+```
+
+M0 守卫可以对固定载体和固定分发形式追求这两个性质，但不能对任意动态 Python 或
+TypeScript 宣称它们成立。值如果经过别名、配置、反射、外部输入或未识别语法流动，
+在有界分析覆盖它之前都属于 `unknown`。Unknown 是证据结果，不是“不存在”的证明。
+
+每个词表候选必须且只能得到一个有限决策：
+
+```text
+reuse_existing | extend_vocabulary | create_vocabulary | local_only
+external_input | compatibility_only | unknown
+```
+
+`reuse_existing` 要求槽位相同、作用域兼容、契约等价。`extend_vocabulary` 要求给出
+反例，证明复用旧值会把两个需要不同处理的状态压成一个。`create_vocabulary` 要求出现
+新的语义定义域或独立 owner 与生命周期。如果证据不足以在这些情况之间做决定，默认
+就是 `unknown`；未解析候选不能静默当成复用旧词。
+
+任意程序的行为等价通常不可判定，因此这个 schema 不会把 `same_concept` 自动提升为
+定理。只有当输入、输出、状态转换、持久化版本和有限测试域都明确时，行为等价才可
+在受限契约内成为阻断条件。这就是可用的证明骨架与“全程序语义收敛已被证明”之间的
+边界。
+
+
 ### 状态模型与 schema
 
 `loopx/semantics/vocabulary_v0.json`，`schema_version` 为
@@ -344,7 +429,7 @@ R ⊆ S × V × Version               将值持久化
 | `vocabularies.<name>.scope`（M0.5） | `global` 或 `bounded_context`；`bounded_context` 条目列出 `contexts`，每个含一个 owner 符号 | 封闭枚举；已声明的有界上下文名字从 `multi_value_forks` 排除；未声明的多模块名字仍是分叉（I14） |
 | `vocabularies.<name>.producers`（M0.5） | 写入该字段的 `path::Symbol` 位点，`kernel` 必填 | 每个位点只写注册值；未列入 `compatibility_only` 的每个值至少有一个位点或一条变量来源条目（I12、I13） |
 | `vocabularies.<name>.compatibility_only`（M0.5） | 为让已持久化记录的读者仍能解析而保留的值 | `values` 的子集；零生产位点；每个值带 `value_notes` 理由与退休里程碑 |
-| `formal_model` | 有限的集合、角色关系与层次、语义义务，以及已建立/有界/未证明的声明 | 漂移 smoke 校验精确 schema、角色层次和不变量 ID；属性实施阶段不能冒充已完成证明 |
+| `formal_model` | 有限的集合、角色关系与层次、语义义务、候选决策，以及已建立/有界/unknown/未证明的声明 | 漂移 smoke 校验精确 schema、角色层次、候选决策和不变量 ID；属性实施阶段不能冒充已完成证明 |
 | `formal_model.enforcement_policy` | 当前阻断、下一阶段阻断、建议性和未证明层级 | 每个形式不变量恰好出现一次，且层级与其实施阶段一致 |
 | `vocabularies.<name>.value_notes`、`deprecated_values` | 逐值评审备注；计划删除的值 | 名字必须是已注册值 |
 | `relations.same_concept` | `vocabulary.value` 成员组 | 每个成员可解析 |
@@ -447,7 +532,7 @@ PR 中重新生成清单。
 | 有界上下文名字只能靠声明离开分叉预算（M0.5） | 为 `SOURCE_SURFACES` 声明四个上下文；另行只改名其中一处定义而不声明 | 声明把 `multi_value_forks` 降到 3；单独改名不降 | I14；诚实的修法是评审者看得见的注册表修改，改名是不碰注册表的代码改动 |
 
 | 上游合并会让已提交清单过期 | 对 `upstream/main` 最近二十个合并提交，在第一父提交与合并结果之间重放扫描器 | 20 次合并中 8 次至少改变一个载体 | 提交快照的实测成本；处理规则见第 10 节与第 12 节 Q9 |
-| 形式模型不能静默丢失证明义务 | 从 `formal_model` 删除不变量、角色、关系或证明边界分类 | 漂移 smoke 针对形式模型结构失败 | 该模型是有限契约和证明账本，本身不等于这些性质已经被证明 |
+| 形式模型不能静默丢失证明义务 | 从 `formal_model` 删除不变量、角色、候选决策、关系或证明边界分类 | 漂移 smoke 针对形式模型结构失败 | 该模型是有限契约和证明账本，本身不等于这些性质已经被证明 |
 
 已知边界，写明是为了不让这个检查被过度信任：
 
