@@ -315,10 +315,10 @@ definitions in `global_risks.py`, `global_todos.py`, `summary_all.py`, and
 `pr_review.py` each list the data sources of that one CLI command, and the
 value sets are meant to differ. It is counted in `multi_value_forks` today and
 must not be "fixed" by renaming, because a rename lowers the number without
-changing the code's meaning. M0.5 adds a `scope` field to the registry with at
-least `global` and `bounded_context`, lets a bounded-context name be declared
-once with its owning contexts, and removes declared names from the fork
-budget (I14, the schema rows below, and the M0.5 row in Section 11). Until
+changing the code's meaning. The M0.5 scope slice adds top-level `scope_declarations` with at
+least `global` and `bounded_context`; a bounded-context name is declared once
+with its owning contexts, and declared names are removed from the semantic
+fork budget while the raw inventory count remains visible (I14, the schema rows below, and the M0.5 row in Section 11). Until
 then the fork budget is a ceiling that contains this one known
 misclassification, recorded in the registry's `inventory_ratchets` note.
 
@@ -417,7 +417,7 @@ vocabulary key fails the smoke.
 | `vocabularies.<name>.tier`, `status` | `kernel`, `cross_runtime`, `cross_module`; `canonical`, `legacy`, `merge_candidate` | Closed enumerations |
 | `vocabularies.<name>.literal_scan` | `field`, roots, suffixes | Every literal the fixed dispatch forms capture is registered; every registered value is captured or variable-sourced (I2) |
 | `vocabularies.<name>.variable_sourced_values` | value to producer module | The producer still contains the quoted value |
-| `vocabularies.<name>.scope` (M0.5) | `global` or `bounded_context`; a `bounded_context` entry lists `contexts`, each with one owner symbol | Closed enumeration; declared bounded-context names are excluded from `multi_value_forks`; an undeclared multi-module name stays a fork (I14) |
+| `scope_declarations.<name>` (M0.5a) | `bounded_context` and its context IDs, each with one `module::Symbol` owner | Every declared name resolves to one inventory fork, names every defining module exactly once, and is excluded only from `multi_value_forks_semantic`; undeclared forks remain visible (I14) |
 | `vocabularies.<name>.producers` (M0.5) | `path::Symbol` sites that write the field, required for `kernel` | Every site writes registered values only; every value not under `compatibility_only` has at least one site or a variable-sourced entry (I12, I13) |
 | `vocabularies.<name>.compatibility_only` (M0.5) | values kept so readers of persisted records still resolve them | Subset of `values`; zero production sites; each carries a `value_notes` reason and a retirement milestone |
 | `formal_model` | finite universes, role relations and hierarchy, semantic obligations, and established/bounded/unproved claims | Exact schema, role hierarchy, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
@@ -534,11 +534,11 @@ inventory in the same PR.
 | Measurement covers both carrier shapes and filters local naming | `pytest tests/architecture/test_semantic_inventory.py` | pass, including the collision and module-local-convention fixtures | Rules come from this RFC, not from scanner output |
 | No behavior change from the two owner fixes | `pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
 | Docs governance accepts the RFC pair | `python3 examples/docs-governance-smoke.py` | pass | Checks mirror, links, index |
-| Retirement budgets count substrings, not identifiers | `goal_boundary` counted with `in file.text` and with `\bgoal_boundary\b` | 35 vs 30 Python modules on the baseline | Known boundary; M3's zero-reader gate needs the identifier count, tracked in Section 12 |
+| Retirement budgets use standalone field tokens | `count_identifier_modules()` uses identifier boundaries for the six fields | `goal_boundary`: 30 Python modules under the new metric; the old substring metric was 35 | Conservative lexical measure; it removes compound-name false positives but does not prove semantic reader absence |
 | The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and regenerate | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
 | A registered value nobody produces fails (M0.5) | Run the production-form scan on the baseline | Fails naming `effective_action` and `skip`; passes after `skip` is removed or listed `compatibility_only` | First expected I12 failure; a compared-only value is not carried |
 | A producer of an unregistered value fails (M0.5) | Write `effective_action: "brand_new"` in a listed producer site | Fails naming the site and the value even though no consumer compares it | I13; production is stricter than comparison |
-| A bounded-context name leaves the fork budget only by declaration (M0.5) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | The declaration lowers `multi_value_forks` to 3; the rename alone does not | I14; the honest fix is a registry edit a reviewer sees, the rename is code without registry change |
+| A bounded-context name leaves only the semantic fork budget by declaration (M0.5a) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | Raw `multi_value_forks` stays 4, `multi_value_forks_semantic` is 3; a rename alone changes neither semantic accounting nor declaration | I14; the honest fix is a registry edit a reviewer sees, the rename is not a repair |
 | An upstream merge can stale the committed inventory | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Measured cost of committing a snapshot; the handling rule is Section 10 and Section 12 Q9 |
 | The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
 
@@ -614,7 +614,8 @@ commands as `python3.11` for that reason, and the planner entry is left as
 | Milestone | Shipped behavior | Entry gate | Exit evidence | Rollback |
 | --- | --- | --- | --- | --- |
 | M0 | Registry with 26 vocabularies and 9 relations, generated inventory with `--check`, drift smoke with fixed dispatch forms and coverage floor, two owner forks removed, RFC index entry | This RFC opened | Section 9 rows green; 20 mutation classes fail closed | Delete the smoke, `loopx/semantics/`, the generator, and its test |
-| M0.5 | `scope` with `global` and `bounded_context` and per-context owners; `producers` and `compatibility_only` on `kernel` vocabularies; production-form scan with the two role checks (I12, I13); retirement budgets counted by identifier with all six anchors lowered in one diff (Q11); merge-order rule from Q9 written into Section 10 | M0 merged; Q9 decided or its interim rule accepted | Smoke green with I11 to I14 enforced; `skip` resolved; `multi_value_forks` at 3 by declaration; Section 9 role rows green; `turn_route` persistence answered for Q2 | Remove the three fields and the role checks; budgets return to the M0 anchors |
+| M0.5a | `scope_declarations` with `bounded_context` and per-context owners; semantic fork count separated from raw inventory count | M0 merged | Smoke checks every declared context owner; raw `multi_value_forks` remains 4 and `multi_value_forks_semantic` is 3; undeclared forks still fail the budget | Remove the scope declarations and semantic-fork budget |
+| M0.5b | `producers` and `compatibility_only` on `kernel` vocabularies; production-form scan with the two role checks (I12, I13); retirement budgets counted by identifier with all six anchors lowered in one diff (Q11); merge-order rule from Q9 written into Section 10 | M0.5a complete; Q9 decided or its interim rule accepted | Smoke green with I11 to I14 enforced; `skip` resolved; Section 9 producer rows green; `turn_route` persistence answered for Q2 | Remove producer fields and role checks; budgets return to the pre-M0.5b anchors |
 | M1 | `EffectiveAction` typed enum in one owner module; the replay observation and frontier slots split off (Q6); producers and consumers import it; registry `literal_scan` tightened to the enum | M0.5 merged; owner module chosen (Q3); slot split decided (Q6) | Smoke green; zero bare `effective_action` literals outside the owner; parity fixtures for status/should-run unchanged | Revert to literals; registry keeps the set |
 | M2 | Route-to-disposition projection, the `decide_loop_disposition` decision table, and the cross-runtime sets published through a shared contract with generated Python and TypeScript bindings, following the coordination contract generator | M1 merged; Q2 and Q7 decided | Generator `--check` and smoke green; `settlement.ts` and `transaction.py` read the generated set | Regenerate from prior contract |
 | M3 | Per-field retirement of legacy should-run fields, one field per PR, budgets lowered to zero and the field removed | Field has zero external readers proven by producer/reader research | Schema-reduction record per `AGENTS.md`; Appendix B entry | Restore field from the last writer |
@@ -760,11 +761,11 @@ introduce a competing target state.
    write, then retire) to one spelling per concept. Without this decision the
    RFC has budgets but no definition of done for its headline problem.
    Owner: Turn driver owner. Needed before M2 closes.
-11. **Retirement budgets by identifier.** The six legacy-field budgets count
-   `field in file.text`; `goal_boundary` matches `goal_boundary_repair`. M3's
-   zero-external-reader gate needs word-boundary counting, which lowers all six
-   anchors in one diff. Recommendation: do it before the first M3 PR.
-   Owner: kernel maintainers.
+11. **Retirement budgets by identifier.** The six legacy-field budgets now use
+   `count_identifier_modules()`, so `goal_boundary_repair` is not counted as
+   `goal_boundary`. This is a conservative lexical metric, not proof of zero
+   semantic readers; computed accesses remain an evidence gap. Owner: kernel
+   maintainers.
 
 ## Appendix A: Execution ledger (non-normative)
 

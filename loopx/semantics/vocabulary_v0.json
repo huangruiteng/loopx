@@ -28,13 +28,26 @@
       "pass_through"
     ],
     "role_hierarchy": {
-      "consumer": ["interpreter", "pass_through"]
+      "consumer": [
+        "interpreter",
+        "pass_through"
+      ]
     },
     "enforcement_policy": {
-      "blocking_now": ["F5_projection_totality"],
-      "blocking_next": ["F1_producer_closedness", "F2_canonical_value_liveness", "F4_scope_separation"],
-      "advisory": ["F3_consumer_domain_closedness"],
-      "unproved": ["F6_persistence_version_compatibility"]
+      "blocking_now": [
+        "F5_projection_totality"
+      ],
+      "blocking_next": [
+        "F1_producer_closedness",
+        "F2_canonical_value_liveness",
+        "F4_scope_separation"
+      ],
+      "advisory": [
+        "F3_consumer_domain_closedness"
+      ],
+      "unproved": [
+        "F6_persistence_version_compatibility"
+      ]
     },
     "relations": {
       "defines": "D ⊆ S × V: a site defines a vocabulary carrier",
@@ -214,11 +227,11 @@
       ]
     },
     "effective_action": {
-      "meaning": "Compacted should-run verdict carried by status/should-run payloads and the Turn Envelope; consumers dispatch on it by string comparison. No enum exists on either runtime, so the owner is null and the literal scan is the only check.",
+      "meaning": "Compacted should-run verdict carried by status/should-run payloads and the Turn Envelope; the Python enum owns the finite value domain while the wire field remains a string for compatibility.",
       "tier": "kernel",
       "status": "merge_candidate",
       "owners": {
-        "python": null,
+        "python": "loopx/control_plane/quota/effective_action.py::EffectiveAction",
         "typescript": null
       },
       "literal_scan": {
@@ -269,6 +282,30 @@
       "variable_sourced_values": {
         "quota_action_selection_deferred": "loopx/cli_commands/quota.py",
         "quota_action_selection_rejected": "loopx/cli_commands/quota.py"
+      },
+      "producers": [
+        "loopx/cli_commands/quota.py::_apply_requested_quota_action_selection_preflight",
+        "loopx/control_plane/quota/decision_summary.py::resolve_quota_run_decision",
+        "loopx/control_plane/quota/heartbeat_receipt.py::fail_heartbeat_receipt",
+        "loopx/control_plane/quota/live_decision.py::_apply_pending_capability_intent_precedence",
+        "loopx/control_plane/quota/projection_repair.py::build_boundary_projection_repair_hint",
+        "loopx/control_plane/quota/projection_repair.py::build_state_projection_gap_repair_hint",
+        "loopx/control_plane/quota/settlement_precedence.py::apply_settled_replay_payload_precedence",
+        "loopx/control_plane/quota/should_run.py::build_quota_paused_should_run_payload",
+        "loopx/control_plane/quota/should_run_packet.py::_apply_agent_monitor_only_precedence",
+        "loopx/control_plane/quota/should_run_packet.py::_resolve_quota_should_run_route",
+        "loopx/control_plane/quota/stall_repair.py::build_quota_stall_self_repair_hint",
+        "loopx/control_plane/quota/stall_repair.py::build_runtime_capability_user_gate_repair_hint",
+        "loopx/control_plane/quota/unsettled_host_turn.py::apply_unsettled_host_turn_recovery_if_required",
+        "loopx/control_plane/todos/decision_scope.py::build_required_decision_scope_repair_hint",
+        "loopx/control_plane/todos/user_gate.py::apply_scoped_user_gate_fallback_projection",
+        "loopx/control_plane/turn_driver/turn_journal.ts::interpretTurnJournal"
+      ],
+      "compatibility_only": {
+        "skip": {
+          "reason": "Historical comparison value; no bounded producer writes it into the decision slot.",
+          "retirement": "M1 slot split and consumer cleanup"
+        }
       },
       "value_notes": {
         "skip": "Compared in loopx/control_plane/todos/user_gate.py; no producer writes it into effective_action. Candidate dead value (decision-level skip lives in the decision field).",
@@ -713,27 +750,27 @@
       "meaning": "Decision fields the should-run documentation already calls legacy. Budgets count modules under loopx/ that still mention the field.",
       "fields": {
         "execution_obligation": {
-          "python_module_budget": 21,
+          "python_module_budget": 20,
           "typescript_module_budget": 1
         },
         "heartbeat_recommendation": {
-          "python_module_budget": 18,
+          "python_module_budget": 17,
           "typescript_module_budget": 1
         },
         "work_lane_contract": {
-          "python_module_budget": 32,
+          "python_module_budget": 29,
           "typescript_module_budget": 3
         },
         "external_evidence_observation": {
-          "python_module_budget": 11,
+          "python_module_budget": 8,
           "typescript_module_budget": 1
         },
         "goal_boundary": {
-          "python_module_budget": 35,
+          "python_module_budget": 30,
           "typescript_module_budget": 2
         },
         "protocol_action_packet": {
-          "python_module_budget": 7,
+          "python_module_budget": 5,
           "typescript_module_budget": 2
         }
       }
@@ -756,8 +793,32 @@
     "multi_value_fork_definitions": 10,
     "same_runtime_forks_semantic": 18,
     "conflicting_values_semantic": 2,
-    "multi_value_meaning": "Enums, named closed sets, Literal aliases, and TypeScript as-const arrays are vocabulary exactly as a NAME = \"value\" constant is, so they get the same collision rule. One name defined in two modules with identical values is a twin; with different values it is a fork.",
+    "multi_value_meaning": "Enums, named closed sets, Literal aliases, and TypeScript as-const arrays are vocabulary exactly as a NAME = \"value\" constant is, so they get the same collision rule. One name defined in two modules with identical values is a twin; with different values it is a fork. The semantic multi-value-fork budget excludes only names declared in scope_declarations.",
     "multi_value_forks_note": "The 4 counted forks include SOURCE_SURFACES, whose four definitions are four CLI commands each listing its own data sources; that is bounded-context reuse of one name, not drift. It stays in the budget until M0.5 adds a scope field (RFC Section 5) and must not be removed by renaming.",
-    "semantic_meaning": "same_runtime_forks_semantic and conflicting_values_semantic exclude module-local convention names such as SCHEMA_VERSION, COMMAND, or *_LABEL, which every module legitimately names for itself. The remaining names are shared vocabulary, where a duplicate is real drift rather than local naming; the unfiltered totals stay visible in the generated inventory summary."
+    "semantic_meaning": "same_runtime_forks_semantic and conflicting_values_semantic exclude module-local convention names such as SCHEMA_VERSION, COMMAND, or *_LABEL, which every module legitimately names for itself. The remaining names are shared vocabulary, where a duplicate is real drift rather than local naming; the unfiltered totals stay visible in the generated inventory summary.",
+    "multi_value_forks_semantic": 3
+  },
+  "scope_declarations": {
+    "SOURCE_SURFACES": {
+      "kind": "bounded_context",
+      "contexts": [
+        {
+          "id": "global_risks",
+          "owner": "loopx/global_risks.py::SOURCE_SURFACES"
+        },
+        {
+          "id": "global_todos",
+          "owner": "loopx/global_todos.py::SOURCE_SURFACES"
+        },
+        {
+          "id": "summary_all",
+          "owner": "loopx/summary_all.py::SOURCE_SURFACES"
+        },
+        {
+          "id": "pr_review",
+          "owner": "loopx/pr_review.py::SOURCE_SURFACES"
+        }
+      ]
+    }
   }
 }
