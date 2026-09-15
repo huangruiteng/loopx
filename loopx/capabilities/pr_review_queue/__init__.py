@@ -13,6 +13,7 @@ from .review_contract import (
     build_review_execution_contract,
     build_review_plan,
     build_review_template,
+    build_semantic_alignment_context,
 )
 from .selection_execution import (
     exact_head_key,
@@ -42,6 +43,7 @@ __all__ = [
     "build_review_execution_contract",
     "build_review_plan",
     "build_review_template",
+    "build_semantic_alignment_context",
     "build_scheduling_policy",
     "DEFAULT_REVIEW_PRIORITY",
     "classify_scheduling_lane",

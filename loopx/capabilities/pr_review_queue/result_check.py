@@ -3,7 +3,11 @@
 from collections.abc import Mapping
 from typing import Any
 
-from .review_contract import build_review_execution_contract, build_review_plan
+from .review_contract import (
+    SEMANTIC_CANDIDATE_DECISIONS,
+    build_review_execution_contract,
+    build_review_plan,
+)
 
 
 def _missing(value: object) -> bool:
@@ -146,6 +150,12 @@ def check_review_result(
             blockers.append(f"{key}:missing_evidence_detail")
         if status == "verified":
             requirement = requirements[key]
+            if key == "semantic_alignment":
+                decision = row.get("candidate_decision")
+                if decision not in SEMANTIC_CANDIDATE_DECISIONS:
+                    blockers.append("semantic_alignment:invalid_candidate_decision")
+                if decision == "unknown" and row.get("verdict") != "not_yet_proven":
+                    blockers.append("semantic_alignment:unknown_requires_not_yet_proven")
             _require_fields(
                 blockers,
                 evidence_id=key,

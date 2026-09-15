@@ -38,6 +38,8 @@ def _review():
         )
         if "verdict_values" in requirement:
             row["verdict"] = requirement["verdict_values"][0]
+        if key == "semantic_alignment":
+            row["candidate_decision"] = "local_only"
         if "items_field" in requirement:
             item_fields = requirement.get("item_fields", [])
             if "required_cases" in requirement:
@@ -76,6 +78,26 @@ def test_result_check_is_not_semantic_or_merge_authority():
     assert not checked["evidence_truth_verified"]
     assert not checked["remote_head_verified"]
     assert not checked["external_writes_performed"]
+
+
+@pytest.mark.parametrize(
+    ("candidate_decision", "verdict", "blocker"),
+    [
+        ("made_up", "aligned", "semantic_alignment:invalid_candidate_decision"),
+        ("unknown", "aligned", "semantic_alignment:unknown_requires_not_yet_proven"),
+    ],
+)
+def test_semantic_alignment_cannot_hide_unknown_or_invalid_candidate(
+    candidate_decision: str, verdict: str, blocker: str
+) -> None:
+    packet, result = _review()
+    row = result["evidence"]["semantic_alignment"]
+    row["candidate_decision"] = candidate_decision
+    row["verdict"] = verdict
+    checked = check_review_result(packet, result)
+
+    assert blocker in checked["approval_blockers"]
+    assert not checked["approval_consistent"]
 
 
 @pytest.mark.parametrize(

@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 # Increment when review requirements change without changing the packet shape.
-REVIEW_POLICY_REVISION = 3
+REVIEW_POLICY_REVISION = 4
 
 REQUIRED_FINAL_SECTIONS = [
     "动机",
@@ -26,6 +26,68 @@ EXAMPLE_OR_SMOKE_AREAS = {"test_or_example"}
 BEHAVIORAL_POLICY_AREAS = {"public_entry_or_policy", "agent_instruction_surface"}
 
 NEGATIVE_PATH_AREAS = CODE_AREAS | BEHAVIORAL_POLICY_AREAS
+
+SEMANTIC_CONTRACT_PATH_PREFIXES = (
+    "loopx/semantics/",
+    "examples/semantic-vocabulary",
+    "tests/architecture/test_semantic_vocabulary",
+    "docs/architecture/rfcs/semantic-vocabulary-convergence-v0",
+    "scripts/generate_semantic_inventory.py",
+)
+SEMANTIC_CI_CONSTRAINT_PATHS = (
+    ".github/workflows/python-tests.yml",
+    ".github/workflows/dco.yml",
+    ".github/workflows/full-public-smokes.yml",
+    ".github/GOVERNANCE.md",
+    "scripts/ci/review_gate.py",
+)
+SEMANTIC_CANDIDATE_DECISIONS = (
+    "reuse_existing",
+    "extend_vocabulary",
+    "create_vocabulary",
+    "local_only",
+    "external_input",
+    "compatibility_only",
+    "unknown",
+)
+
+
+def build_semantic_alignment_context(
+    files: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Describe when a PR must account for vocabulary and CI constraints.
+
+    This is a routing signal, not a semantic detector. It makes the current
+    constraint sources visible to the review agent while leaving the final
+    architecture judgment in the structured evidence block.
+    """
+    paths = [str(item.get("path") or "") for item in files if item.get("path")]
+    semantic_paths = sorted(
+        path
+        for path in paths
+        if path.startswith(SEMANTIC_CONTRACT_PATH_PREFIXES)
+    )
+    ci_paths = sorted(
+        path
+        for path in paths
+        if path in SEMANTIC_CI_CONSTRAINT_PATHS
+    )
+    return {
+        "applicable": bool(semantic_paths or ci_paths),
+        "semantic_contract_paths": semantic_paths,
+        "ci_constraint_paths": ci_paths,
+        "source_of_truth": [
+            "docs/architecture/rfcs/semantic-vocabulary-convergence-v0.md",
+            "loopx/semantics/vocabulary_v0.json",
+            "examples/semantic-vocabulary-drift-smoke.py",
+            ".github/workflows/python-tests.yml",
+            ".github/workflows/dco.yml",
+        ],
+        "current_required_checks": ["Sign-off", "merge-gate"],
+        "current_semantic_scope": (
+            "M0 structural owner/parity/projection/inventory checks; M0.5 producer and scope checks are planned, not implied by registry metadata."
+        ),
+    }
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
@@ -89,12 +151,12 @@ def build_review_template(item: Mapping[str, Any]) -> dict[str, Any]:
             _section(
                 "对主干的风险",
                 "250-500字",
-                "Use `failure_analysis`, `walkthroughs.negative`, and `validation_matrix`; trace each finding from triggering state to observed outcome and minimum repair. When `scope_fit` applies, name the active production caller or explicitly record a coverage-only boundary. When `change_proportionality` applies, compare verified problem impact with mechanism and maintenance cost; a resolved implementation blocker does not justify approval when the full exact-head scope remains disproportionate. For opt-in changes, prove disabled-path parity through `default_off_isolation`; do not infer isolation from an absent feature object. Use `authority_semantics` to verify that public protocol names do not claim a broader actor lifecycle or authority model than the implementation provides. Surface typed-state-rule, domain-neutrality, behavior-change-disclosure, and guidance-vs-obligation findings when their evidence applies.",
+                "Use `failure_analysis`, `walkthroughs.negative`, and `validation_matrix`; trace each finding from triggering state to observed outcome and minimum repair. When `scope_fit` applies, name the active production caller or explicitly record a coverage-only boundary. When `change_proportionality` applies, compare verified problem impact with mechanism and maintenance cost; a resolved implementation blocker does not justify approval when the full exact-head scope remains disproportionate. For opt-in changes, prove disabled-path parity through `default_off_isolation`; do not infer isolation from an absent feature object. Use `authority_semantics` to verify that public protocol names do not claim a broader actor lifecycle or authority model than the implementation provides. When `semantic_alignment` applies, include a concise `### 语义与 CI 对齐` subsection with the affected constraint, failure family, minimum repair, and non-repair that would only hide the signal. Surface typed-state-rule, domain-neutrality, behavior-change-disclosure, and guidance-vs-obligation findings when their evidence applies.",
             ),
             _section(
                 "我的整体评价",
                 "150-300字",
-                "Use `observable_semantics` to report baseline/head comparisons and remaining compatibility gaps; equal decision codes are insufficient. Use `code_volume`, `change_proportionality`, `default_off_isolation`, `authority_semantics`, validation results, residual risk, and exact-head freshness to state the verdict and the evidence needed for re-review.",
+                "Use `observable_semantics` to report baseline/head comparisons and remaining compatibility gaps; equal decision codes are insufficient. Use `code_volume`, `change_proportionality`, `default_off_isolation`, `authority_semantics`, validation results, residual risk, and exact-head freshness to state the verdict and the evidence needed for re-review. For semantic or constraint-related changes, state whether the PR reuses an existing vocabulary, extends one, creates one, stays local, or remains unknown, and link any required registry/RFC/CI repair.",
             ),
         ],
         "review_order": _review_order(key_files),
@@ -186,6 +248,50 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                     "receipt_or_consumer",
                     "failure_or_retry_owner",
                 ],
+            },
+            {
+                "evidence_id": "semantic_alignment",
+                "required_when": "semantic_alignment_required",
+                "verdict_values": [
+                    "aligned",
+                    "new_semantics_justified",
+                    "not_applicable",
+                    "not_yet_proven",
+                ],
+                "fields": [
+                    "semantic_surface_classification",
+                    "ci_constraints_considered",
+                    "candidate_decision",
+                    "affected_vocabulary_slot_scope",
+                    "owner_and_reuse_evidence",
+                    "producer_consumer_or_persistence_impact",
+                    "failure_family_and_minimum_repair",
+                    "non_repairs_that_only_hide_drift",
+                    "unknown_or_unproved_boundary",
+                    "validation_commands",
+                    "verdict",
+                ],
+                "candidate_decisions": list(SEMANTIC_CANDIDATE_DECISIONS),
+                "rule": (
+                    "For every code change, and for changes touching the semantic registry, "
+                    "semantic smoke, semantic RFC, or the required CI constraint paths, "
+                    "make the alignment decision explicit. Read the exact base and head "
+                    "versions of the semantic RFC, registry, smoke, and relevant CI files. "
+                    "Report the current required checks (`Sign-off`, `merge-gate`) and the "
+                    "semantic smoke's actual scope. Classify a candidate as reuse, extension, "
+                    "new vocabulary, local-only, external input, compatibility-only, or "
+                    "unknown. A green CI result proves only the checks that ran; it does not "
+                    "prove whole-program semantic convergence. For a semantic failure, give "
+                    "the minimum repair: update the owner/registry, regenerate inventory, "
+                    "repair the projection, or run the required compatibility evidence. "
+                    "Explicitly reject hiding the failure by renaming a symbol, raising a "
+                    "budget, narrowing the scan root, or registering an unrelated value. "
+                    "If the change is ordinary code with no semantic contract impact, mark "
+                    "`not_applicable` and explain the checked paths and why no new field, "
+                    "slot, producer, consumer domain, projection, or persistence contract "
+                    "was introduced. unknown dynamic paths remain visible and are not "
+                    "treated as proof of absence."
+                ),
             },
             {
                 "evidence_id": "repository_reuse",
@@ -847,6 +953,7 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                     "misleading",
                     "not_yet_proven",
                 ],
+                "semantic_alignment": ["not_yet_proven"],
             },
             "required_final_sections": REQUIRED_FINAL_SECTIONS,
         },
@@ -868,6 +975,11 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                 "REQUEST_CHANGES when change_proportionality is disproportionate "
                 "or not_yet_proven; correctness, green CI, and resolved earlier "
                 "findings cannot override this gate"
+            ),
+            "open_pr_unresolved_semantic_alignment": (
+                "REQUEST_CHANGES when semantic_alignment is not_yet_proven; "
+                "the review must identify the affected CI or vocabulary boundary, "
+                "minimum repair, and any unknown dynamic path"
             ),
             "materially_expanded_rereview": (
                 "Reset change_proportionality from the original problem and review "
@@ -904,6 +1016,16 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
     smoke_or_example_only = bool(areas & EXAMPLE_OR_SMOKE_AREAS) and not (
         code_change or behavioral_policy_change
     )
+    semantic_context = item.get("semantic_alignment_context")
+    if not isinstance(semantic_context, Mapping):
+        semantic_context = build_semantic_alignment_context(
+            [
+                file
+                for file in _as_sequence(item.get("key_files"))
+                if isinstance(file, Mapping)
+            ]
+        )
+    semantic_alignment_required = code_change or bool(semantic_context.get("applicable"))
     required_evidence = [
         "problem_context",
         "architecture_flow",
@@ -935,6 +1057,8 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
         required_evidence.append("guidance_vs_obligation")
     if smoke_or_example_only:
         required_evidence.append("durable_smoke_value")
+    if semantic_alignment_required:
+        required_evidence.append("semantic_alignment")
     number = item.get("number")
     head_oid = str(item.get("head_oid") or "").strip()
     target_key = f"{number}@{head_oid}" if number and head_oid else None
@@ -983,6 +1107,8 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
             "durable_smoke_value_required": smoke_or_example_only,
             "duplication_scan_required": smoke_or_example_only,
             "batch_pattern_scan_required": smoke_or_example_only,
+            "semantic_alignment_required": semantic_alignment_required,
+            "semantic_alignment_context": dict(semantic_context),
         },
         "required_evidence_ids": required_evidence,
         "result_template": {

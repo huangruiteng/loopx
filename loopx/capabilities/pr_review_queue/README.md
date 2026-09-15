@@ -309,6 +309,41 @@ progress toward approval by themselves; the reviewer should request the
 smallest viable fix, deletion, split, or hold when the benefit does not justify
 the accumulated mechanism.
 
+### Semantic alignment and CI constraint recovery
+
+Every code review plan carries `semantic_alignment`. It is a lightweight
+orientation block, not a demand for whole-program semantic analysis. The agent
+must state whether the change has no semantic contract impact or whether it
+reuses an existing vocabulary, extends one, creates one, is an external or
+compatibility value, or remains `unknown`. A normal code PR may use
+`not_applicable` only with a reason that names the checked boundary.
+
+For semantic or constraint-related changes, read the exact base and head of the
+RFC, registry, smoke, and relevant CI files. The current required checks are
+`Sign-off` and `merge-gate`; the semantic smoke is currently executed through
+the default Python test path, while Full Public Smokes is a post-merge/scheduled
+confirmation surface rather than a PR-required check. Green CI proves only the
+checks that ran and does not prove whole-program semantic convergence.
+
+Use this repair map when a check fails:
+
+| Failure family | What it means | Minimum repair | Do not repair by |
+| --- | --- | --- | --- |
+| `Sign-off` | One commit in the PR range lacks a valid DCO trailer | Add `Signed-off-by` to every affected commit with `git commit --amend -s` or an equivalent history repair; verify the full range | Signing only the newest commit |
+| semantic smoke: unregistered value | A recognised carrier/field form introduced a value outside the registry | Reuse the existing owner value, or add the value with its owner, slot, scope, tests, and RFC evidence | Registering an unrelated string to silence the error |
+| semantic smoke: stale inventory | The committed generated map no longer matches the indexed source tree | Stage intended source paths, run `python3.11 scripts/generate_semantic_inventory.py`, then `--check` | Editing counts by hand or including private/untracked files |
+| semantic smoke: owner/parity | A defining symbol or Python/TypeScript value set diverged | Restore the single owner or deliberately update both runtime owners with parity evidence | Adding a second silent authority |
+| semantic smoke: projection | A source value is unmapped, mapped to the wrong target, or should be rejected explicitly | Update the declared mapping and executable owner together, then test the boundary case | Deleting a source value without compatibility analysis |
+| semantic smoke: budget/anchor | Measured debt grew or the guard was weakened | Fix the underlying duplicate/coverage issue and lower a budget only when the measured debt really fell | Raising the budget, narrowing the scan root, or renaming to hide drift |
+| `merge-gate` | A required upstream CI job failed, was skipped unexpectedly, or has incomplete qualification | Inspect `needs` and the failing job, fix the owning path, and rerun at the same head | Treating a local smoke as proof that the remote gate is complete |
+
+For every failure, publish the exact head, affected constraint, observed output,
+minimum repair, non-repair that would only hide the signal, rerun command, and
+remaining unknown boundary. A dynamic producer or consumer that the bounded
+scanner cannot classify is `unknown`; it is not evidence that the value is
+absent or safe. Missing semantic evidence is `not_yet_proven` and blocks an
+approval for an applicable semantic-alignment row.
+
 The per-actionable-PR `pull_request_review_plan_v1` records the exact target,
 applicability, required evidence ids, and an initially `unverified`
 `pull_request_review_result_v1` skeleton. Metadata, labels, file counts, risk

@@ -81,6 +81,7 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "behavior_change_disclosure",
         "guidance_vs_obligation",
         "durable_smoke_value",
+        "semantic_alignment",
     }
     assert requirements["symbol_map"]["item_count"] == {
         "minimum": 2,
@@ -113,6 +114,19 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
     assert "maintenance_and_migration_cost" in proportionality["fields"]
     assert "green CI" in proportionality["rule"]
     assert "original problem" in proportionality["rule"]
+    semantic = requirements["semantic_alignment"]
+    assert semantic["required_when"] == "semantic_alignment_required"
+    assert set(semantic["candidate_decisions"]) == {
+        "reuse_existing",
+        "extend_vocabulary",
+        "create_vocabulary",
+        "local_only",
+        "external_input",
+        "compatibility_only",
+        "unknown",
+    }
+    assert "raising a budget" in semantic["rule"]
+    assert "unknown dynamic paths" in semantic["rule"]
     isolation = requirements["default_off_isolation"]
     assert isolation["required_when"] == "behavior_bearing_change"
     assert isolation["verdict_values"] == [
@@ -148,6 +162,7 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "change_proportionality": ["disproportionate", "not_yet_proven"],
         "default_off_isolation": ["not_isolated", "not_yet_proven"],
         "authority_semantics": ["misleading", "not_yet_proven"],
+        "semantic_alignment": ["not_yet_proven"],
     }
     assert contract["finding_contract"]["findings_first"] is True
     verdict = contract["verdict_policy"]
@@ -327,6 +342,36 @@ def test_non_behavior_review_keeps_existing_coverage_policy(area: str) -> None:
     plan = build_review_plan(_item(areas={area: 1}))
     assert plan["applicability"]["repository_reuse_required"] is False
     assert "repository_reuse" not in plan["required_evidence_ids"]
+
+
+def test_code_review_requires_semantic_alignment_even_when_no_known_path_matches() -> None:
+    plan = build_review_plan(_item(areas={"product_runtime": 1}))
+
+    assert plan["applicability"]["semantic_alignment_required"] is True
+    assert "semantic_alignment" in plan["required_evidence_ids"]
+    context = plan["applicability"]["semantic_alignment_context"]
+    assert context["applicable"] is False
+    assert context["current_required_checks"] == ["Sign-off", "merge-gate"]
+
+
+def test_semantic_alignment_context_marks_registry_and_constraint_paths() -> None:
+    from loopx.capabilities.pr_review_queue import build_semantic_alignment_context
+
+    context = build_semantic_alignment_context(
+        [
+            {"path": "loopx/semantics/vocabulary_v0.json"},
+            {"path": ".github/workflows/python-tests.yml"},
+            {"path": "docs/README.md"},
+        ]
+    )
+
+    assert context["applicable"] is True
+    assert context["semantic_contract_paths"] == [
+        "loopx/semantics/vocabulary_v0.json"
+    ]
+    assert context["ci_constraint_paths"] == [
+        ".github/workflows/python-tests.yml"
+    ]
 
 
 def test_reuse_evidence_compares_semantics_beyond_the_diff() -> None:
