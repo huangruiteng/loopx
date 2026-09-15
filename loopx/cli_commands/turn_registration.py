@@ -55,15 +55,16 @@ def register_turn_commands(
     # visible interactive mode would produce a default plan that cannot be
     # scheduled. The mode follows the *selected* host, never the environment.
     resolved_default_host = resolve_default_turn_host()
+    resolved_default_execution_mode = (
+        "isolated-headless"
+        if resolved_default_host == MANAGED_TURN_HOST
+        else "interactive-visible"
+    )
     _add_turn_decision_arguments(
         plan,
         default_host=resolved_default_host,
         host_choices=list(PLANNED_TURN_HOST_CHOICES),
-        default_execution_mode=(
-            "isolated-headless"
-            if resolved_default_host == MANAGED_TURN_HOST
-            else "interactive-visible"
-        ),
+        default_execution_mode=resolved_default_execution_mode,
     )
     plan.add_argument(
         "--include-transaction-detail",
@@ -82,6 +83,65 @@ def register_turn_commands(
         help="Specific public file or directory to scan. Repeatable.",
     )
     plan.add_argument("--limit", type=int, default=5)
+
+    managed_step = command_sub.add_parser(
+        "managed-step",
+        help=(
+            "Decide one bounded same-Turn continuation for a failed Turn "
+            "without executing it."
+        ),
+        description=(
+            "Read one canonical Turn journal, rebuild its validated receipt, "
+            "and ask the pure Turn Loop Controller for a disposition against "
+            "the current decision. Grants no execution authority: it never "
+            "launches a host, writes state, or spends quota. The Turn journal "
+            "remains the authority for the attempt count and retry budget."
+        ),
+    )
+    add_subcommand_format(managed_step)
+    # A managed step decides a bounded headless continuation for a Turn that
+    # already failed, so it selects from the shipped run-once hosts and never
+    # plans a visible interactive mode.
+    _add_turn_decision_arguments(
+        managed_step,
+        default_host=resolved_default_host,
+        host_choices=list(RUN_ONCE_TURN_HOST_CHOICES),
+        execution_mode_choices=["isolated-headless"],
+        default_execution_mode="isolated-headless",
+    )
+    managed_step.add_argument(
+        "--turn-key",
+        required=True,
+        help="Exact sha256 Turn key of the failed Turn to decide about.",
+    )
+    managed_step.add_argument(
+        "--observed-attempt",
+        type=int,
+        help=(
+            "Caller's observed attempt count, reconciled against the Turn "
+            "journal. A disagreement is refused rather than adopted."
+        ),
+    )
+    managed_step.add_argument(
+        "--observed-max-attempts",
+        type=int,
+        help=(
+            "Caller's observed retry ceiling, reconciled against the Turn "
+            "journal retry policy."
+        ),
+    )
+    managed_step.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help="Public files to scan for obvious private material.",
+    )
+    managed_step.add_argument(
+        "--scan-path",
+        action="append",
+        default=[],
+        help="Specific public file or directory to scan. Repeatable.",
+    )
+    managed_step.add_argument("--limit", type=int, default=5)
 
     run_once = command_sub.add_parser(
         "run-once",

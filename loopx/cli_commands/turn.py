@@ -45,7 +45,6 @@ from ..control_plane.scheduler.execution_context import (
 )
 from ..control_plane.turn_driver import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
-    LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     TurnRecoveryBlockedError,
     build_loopx_turn_command_validator,
     build_loopx_turn_plan,
@@ -68,10 +67,12 @@ from .turn_decision import apply_controller_advisory_primary
 from .turn_dsh_host import build_dsh_host_runner
 from .turn_registration import register_turn_commands as register_turn_commands
 from .turn_inspection import handle_turn_journal_inspection
+from .turn_managed_step import handle_turn_managed_step
 from .turn_rendering import (
     render_loopx_turn_execution_markdown as _render_loopx_turn_execution_markdown,
     render_loopx_turn_plan_markdown as _render_loopx_turn_plan_markdown,
 )
+from .turn_selection import resolve_turn_resume_session_binding
 from .turn_todo_writeback import (
     write_turn_repair_update,
     write_turn_validated_completion,
@@ -109,6 +110,11 @@ def handle_turn_command(
     )
     if inspection_result is not None:
         return inspection_result
+    if args.turn_command == "managed-step":
+        return handle_turn_managed_step(
+            args, registry_path=registry_path, runtime_root_arg=runtime_root_arg,
+            output_format=output_format, print_payload=print_payload,
+        )
     try:
         scan_roots = [Path(item).expanduser() for item in args.scan_path]
         if not scan_roots:
@@ -187,27 +193,7 @@ def handle_turn_command(
         # so the advisory-primary rebinding lives in the shared decision owner
         # instead of being repeated per subcommand.
         decision = apply_controller_advisory_primary(build_turn_decision)
-        resume_identity = {
-            "goal_id": args.resume_goal_id,
-            "agent_id": args.resume_agent_id,
-            "todo_id": args.resume_todo_id,
-        }
-        supplied_resume_fields = [
-            field for field, value in resume_identity.items() if value is not None
-        ]
-        if supplied_resume_fields and len(supplied_resume_fields) != len(
-            resume_identity
-        ):
-            raise ValueError(
-                "resume planning requires --resume-goal-id, --resume-agent-id, "
-                "and --resume-todo-id together"
-            )
-        session_binding = None
-        if supplied_resume_fields:
-            session_binding = {
-                "schema_version": LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
-                **resume_identity,
-            }
+        resume_requested, session_binding = resolve_turn_resume_session_binding(args)
         turn_envelope = build_turn_envelope(
             decision,
             scheduler_execution_context=scheduler_context,
@@ -215,7 +201,7 @@ def handle_turn_command(
         if (
             args.turn_command == "run-once"
             and args.host == "codex-cli"
-            and not supplied_resume_fields
+            and not resume_requested
             and turn_envelope.get("effective_action") != "governed_capability_intent"
         ):
             session_binding = codex_cli_session_binding(runtime_root, turn_envelope)
@@ -297,7 +283,7 @@ def handle_turn_command(
                     raise ValueError(
                         "--resume-turn-key cannot be combined with --turn-instance-id"
                     )
-                if supplied_resume_fields:
+                if resume_requested:
                     raise ValueError(
                         "--resume-turn-key cannot be combined with host session identity flags"
                     )

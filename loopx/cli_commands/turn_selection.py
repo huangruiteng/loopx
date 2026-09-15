@@ -3,6 +3,45 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from ..control_plane.turn_driver import LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION
+
+
+def resolve_turn_resume_session_binding(
+    args: Any,
+) -> tuple[bool, dict[str, Any] | None]:
+    """Resolve the explicit resume binding for one Turn as ``(requested, binding)``.
+
+    A resume names the exact Goal, Agent, and Todo session to continue. A partial
+    resume is refused rather than completed from ambient context, because the
+    binding is what the Turn journal fence compares against.
+
+    ``requested`` reports that the caller named a resume identity. That is not the
+    same fact as "a session binding exists": a run-once Codex CLI Turn derives one
+    from its envelope, and that derived binding must not be read back as an
+    explicit resume request.
+    """
+
+    identity = {
+        "goal_id": args.resume_goal_id,
+        "agent_id": args.resume_agent_id,
+        "todo_id": args.resume_todo_id,
+    }
+    supplied = [name for name, value in identity.items() if value is not None]
+    if not supplied:
+        return False, None
+    if len(supplied) != len(identity):
+        raise ValueError(
+            "resume planning requires --resume-goal-id, --resume-agent-id, "
+            "and --resume-todo-id together"
+        )
+    return (
+        True,
+        {
+            "schema_version": LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
+            **identity,
+        },
+    )
+
 
 def turn_controller_advisory_primary(
     decision: Mapping[str, Any],
