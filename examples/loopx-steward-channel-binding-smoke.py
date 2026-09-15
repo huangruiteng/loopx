@@ -23,6 +23,10 @@ from loopx.chat_manager import (  # noqa: E402
     MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
     MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
     MANAGER_MODEL_SOURCE_VENDOR_DEFAULT,
+    MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK,
+    MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
+    MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNRECOGNIZED,
+    manager_channel_session_mode_readback,
     manager_channel_binding,
     manager_executor_endpoint_default,
     manager_model_config,
@@ -233,11 +237,51 @@ def _assert_session_opens_the_resolved_endpoint() -> str:
     return str(opened[-1]["agent_id"])
 
 
+def _assert_mode_readback_quotes_the_session() -> dict[str, object]:
+    """The channel reports the mode it serves, and derives none on its own."""
+
+    unbound = manager_channel_binding({CREDENTIAL_ENV: CREDENTIAL_VALUE})
+    _assert(
+        unbound["executor_kind"] == "managed"
+        and unbound["session_mode"] is None
+        and unbound["session_mode_source"]
+        == MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
+        "a ready managed endpoint is not evidence that the channel is bound",
+    )
+    attached = manager_channel_binding(
+        {CREDENTIAL_ENV: CREDENTIAL_VALUE},
+        session={"session_mode": "attached_host", "status": "busy"},
+    )
+    _assert(
+        attached["session_mode"] == "attached_host"
+        and attached["session_status"] == "busy"
+        and attached["session_mode_source"]
+        == MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK,
+        "the channel must quote the Session's own mode, not the executor it resolved",
+    )
+    unrecognized = manager_channel_session_mode_readback(
+        {"session_mode": "hybrid_handoff", "status": "ready"}
+    )
+    _assert(
+        unrecognized["session_mode"] is None
+        and unrecognized["session_mode_source"]
+        == MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNRECOGNIZED,
+        "a mode outside the closed set must be named rather than coerced",
+    )
+    return {
+        "unbound_session_mode_source": unbound["session_mode_source"],
+        "quoted_session_mode": attached["session_mode"],
+        "quoted_session_status": attached["session_status"],
+        "unrecognized_session_mode_source": unrecognized["session_mode_source"],
+    }
+
+
 def main() -> int:
     payload = {
         "ok": True,
         "credential_default_probe": _assert_credential_decides_the_disclosed_default(),
         "explicit_selection": _assert_explicit_selection_and_managed_host_verdict(),
+        "mode_readback": _assert_mode_readback_quotes_the_session(),
         "opened_endpoint": _assert_session_opens_the_resolved_endpoint(),
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

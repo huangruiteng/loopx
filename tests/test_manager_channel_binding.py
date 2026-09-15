@@ -19,6 +19,11 @@ from loopx.chat_manager import (
     MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
     MANAGER_MODEL_SOURCE_ENV_OVERRIDE,
     MANAGER_MODEL_SOURCE_VENDOR_DEFAULT,
+    MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK,
+    MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
+    MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNRECOGNIZED,
+    manager_channel_session,
+    manager_channel_session_mode_readback,
     manager_endpoint_default_reason,
     manager_channel_binding,
     manager_executor_endpoint_default,
@@ -30,6 +35,7 @@ from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_server import ChatHTTPServer, ChatRequestHandler
 from loopx.chat_store import ChatSessionStore
 from loopx.control_plane.turn_driver import host_binding
+from loopx.extensions.lark.cli_resolution import LarkCliResolution
 
 
 def test_without_the_operator_credential_the_channel_stays_on_the_cli_endpoint():
@@ -395,3 +401,153 @@ def test_manager_capability_projection_stays_unchanged_without_a_binding():
 
     assert "channel_binding" not in projection
     assert projection["model"] == "gpt-6-astra"
+
+
+def test_the_channel_quotes_the_session_mode_instead_of_deriving_it():
+    """The endpoint says managed; the Session says which mode is serving it."""
+
+    binding = manager_channel_binding(
+        {"DEEPSEEK_API_KEY": "fixture"},
+        session={"session_mode": "attached_host", "status": "busy"},
+    )
+
+    assert binding["executor_endpoint"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+    assert binding["executor_kind"] == "managed"
+    assert binding["session_mode"] == "attached_host"
+    assert binding["session_mode_source"] == (
+        MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK
+    )
+    assert binding["session_status"] == "busy"
+
+
+def test_a_channel_without_a_session_reads_as_unbound():
+    """A ready managed endpoint is not evidence that the channel is bound."""
+
+    binding = manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})
+
+    assert binding["available"] is True
+    assert binding["session_mode"] is None
+    assert binding["session_mode_source"] == (
+        MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND
+    )
+    assert binding["session_status"] is None
+
+
+def test_an_unrecognized_session_mode_is_named_rather_than_coerced():
+    """A mode outside the closed set is not rounded to the nearest known one."""
+
+    readback = manager_channel_session_mode_readback(
+        {"session_mode": "hybrid_handoff", "status": "ready"}
+    )
+
+    assert readback == {
+        "session_mode": None,
+        "session_mode_source": (
+            MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNRECOGNIZED
+        ),
+        "session_status": None,
+    }
+
+
+def test_the_channel_session_is_the_resumable_row_on_that_channel(tmp_path):
+    """A closed Session leaves the channel unbound; another channel's is not it."""
+
+    store = ChatSessionStore(tmp_path / "runtime")
+    closed = store.create_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        adapter_kind="codex",
+        upstream_thread_id="fixture-closed-host-session",
+        channel_id="manager",
+    )
+    store.update_session(closed["session_id"], status="closed")
+    elsewhere = store.create_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        adapter_kind="codex",
+        upstream_thread_id="fixture-other-channel-host-session",
+        channel_id="manager.external.fixture",
+    )
+
+    assert manager_channel_session(store) is None
+    assert manager_channel_session(
+        store, channel_id="manager.external.fixture"
+    )["session_id"] == elsewhere["session_id"]
+
+    attached = store.create_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        adapter_kind="codex",
+        upstream_thread_id="fixture-attached-host-session",
+        channel_id="manager",
+        session_mode="attached_host",
+        host_surface="desktop",
+        executor_endpoint_id=MANAGER_ENDPOINT_DEFAULT_MANAGED,
+    )
+    store.update_session(attached["session_id"], status="ready")
+
+    binding = manager_channel_binding({}, session=manager_channel_session(store))
+
+    assert binding["session_mode"] == "attached_host"
+    assert binding["session_status"] == "ready"
+    # The readback quotes the Session, and a public projection still carries no
+    # host session id.
+    assert "fixture-attached-host-session" not in json.dumps(binding)
+
+
+def test_the_live_capabilities_readback_carries_the_channel_mode(tmp_path):
+    """A frontend reads the mode from the channel it talks to, not from a guess."""
+
+    store = ChatSessionStore(tmp_path / "runtime")
+    session = store.create_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        adapter_kind="codex",
+        upstream_thread_id="fixture-live-host-session",
+        channel_id="manager",
+        session_mode="attached_host",
+        host_surface="desktop",
+    )
+    store.update_session(session["session_id"], status="busy")
+
+    class Controller:
+        def capabilities(self) -> list[dict[str, object]]:
+            return []
+
+        def close(self) -> None:
+            return None
+
+    server = ChatHTTPServer(("127.0.0.1", 0), ChatRequestHandler)
+    server.verbose = False
+    server.chat_store = store
+    server.runtime_controller = Controller()
+    server.lark_cli_resolution = LarkCliResolution(
+        command=None,
+        available=False,
+        source="missing",
+        version=None,
+        error_code="lark_cli_not_installed",
+    )
+    server.selected_goal_id = ""
+    server.scan_roots = []
+    server.limit = 20
+    server.registry_path = tmp_path / "registry.json"
+    server.runtime_root_override = None
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        with urllib.request.urlopen(f"{origin}/api/chat/capabilities") as response:
+            payload = json.load(response)
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join()
+
+    binding = payload["manager"]["channel_binding"]
+    assert binding["session_mode"] == "attached_host"
+    assert binding["session_status"] == "busy"
+    assert binding["session_mode_source"] == (
+        MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK
+    )

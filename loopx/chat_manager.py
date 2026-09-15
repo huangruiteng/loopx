@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .control_plane.operator_credential import (
     env_text,
@@ -18,6 +18,11 @@ from .control_plane.turn_driver.host_binding import (
     EXECUTOR_KIND_MANAGED,
     MANAGED_TURN_HOST,
     managed_executor_binding,
+)
+from .chat_store import (
+    CHAT_SESSION_MODE_ATTACHED,
+    CHAT_SESSION_MODE_MANAGED,
+    RESUMABLE_SESSION_STATES,
 )
 
 MANAGER_AGENT_GOAL_ID = "loopx-manager"
@@ -207,8 +212,83 @@ def manager_executor_endpoint_default(environ: dict[str, str] | None = None) -> 
     return selected_manager_executor_endpoint(environ)[0]
 
 
+# The channel's readback quotes the mode and the status of the Session it is an
+# entry point to. The execution-mode RFC makes the binding, not the endpoint,
+# the transport or the audience, the unit of mode ownership, so this projection
+# never derives a mode from the executor it resolved: a channel whose managed
+# endpoint is ready and whose Session does not exist is *unbound*, not
+# `managed_runtime`. A mode outside the closed set is named as unrecognized
+# rather than coerced into a mode the host may not have chosen.
+MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK = "session_readback"
+MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND = "unbound"
+MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNRECOGNIZED = "unrecognized"
+MANAGER_CHANNEL_SESSION_MODES = (
+    CHAT_SESSION_MODE_MANAGED,
+    CHAT_SESSION_MODE_ATTACHED,
+)
+
+
+def manager_channel_session_mode_readback(
+    session: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Quote the channel Session's own mode and status into the channel readback.
+
+    ``session`` is the store's public Session projection for this channel, or
+    ``None`` when the channel has none. The mode and the status are copied and
+    only the source of the mode is decided here, so a reader can tell a quoted
+    mode from an unbound channel instead of re-deriving the rule.
+    """
+
+    if session is None:
+        return {
+            "session_mode": None,
+            "session_mode_source": MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
+            "session_status": None,
+        }
+    session_mode = str(session.get("session_mode") or "")
+    if session_mode not in MANAGER_CHANNEL_SESSION_MODES:
+        return {
+            "session_mode": None,
+            "session_mode_source": (
+                MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNRECOGNIZED
+            ),
+            "session_status": None,
+        }
+    return {
+        "session_mode": session_mode,
+        "session_mode_source": MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK,
+        "session_status": str(session.get("status") or "") or None,
+    }
+
+
+def manager_channel_session(
+    store: Any,
+    *,
+    channel_id: str | None = None,
+    provider: str = "",
+    audience: str = "",
+) -> dict[str, Any] | None:
+    """Return the Session this channel would resume, or ``None``.
+
+    One channel is one ordered conversation, so the readback quotes its newest
+    resumable Session. The store owns which states are resumable and projects
+    the Session publicly; this function only selects, so the channel readback
+    cannot widen what a Session exposes.
+    """
+
+    selected_channel = channel_id or manager_channel(
+        provider=provider, audience=audience
+    )
+    for row in store.list_sessions(channel_id=selected_channel):
+        if str(row.get("status") or "") in RESUMABLE_SESSION_STATES:
+            return dict(row)
+    return None
+
+
 def manager_channel_binding(
     environ: dict[str, str] | None = None,
+    *,
+    session: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project the steward channel's resolved executor, model, and their source.
 
@@ -224,6 +304,11 @@ def manager_channel_binding(
     A managed endpoint quotes the governed Turn surface's own executor readback
     for that verdict instead of deriving a second one, so the channel can never
     advertise an executor the Turn driver would refuse.
+
+    ``session`` is the channel's public Session projection, when the caller has
+    one. Its mode and status are quoted so a frontend can show which execution
+    mode is serving the channel, and an absent Session reads as unbound rather
+    than as a mode this projection guessed.
     """
 
     endpoint, endpoint_source, default_reason = _resolve_manager_endpoint(environ)
@@ -252,6 +337,7 @@ def manager_channel_binding(
         "unavailable_reason": unavailable_reason,
         "model": model,
         "model_source": model_source,
+        **manager_channel_session_mode_readback(session),
     }
 
 

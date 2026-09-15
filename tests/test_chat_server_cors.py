@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import http.client
 import json
+import tempfile
 import threading
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pytest
 from loopx.chat_action_store import ChatActionStore
 from loopx.chat_actions import ChatActionService
 from loopx.chat_server import ChatHTTPServer, ChatRequestHandler
+from loopx.chat_store import ChatSessionStore
 from loopx.control_plane.effect_runtime import (
     EffectRuntimePermanentIOError,
     EffectRuntimeStartupError,
@@ -25,6 +27,9 @@ def _start_server() -> tuple[ChatHTTPServer, threading.Thread]:
     server.selected_goal_id = None
     server.registry_path = Path("/tmp/loopx-test-registry.json")
     server.runtime_root_override = None
+    # The capabilities readback quotes the steward channel's Session, so a
+    # fixture server carries the store the real startup always installs.
+    server.chat_store = ChatSessionStore(Path(tempfile.mkdtemp()) / "runtime")
     server.scan_roots = []
     server.limit = 20
     server.runtime_controller = _RuntimeController()
