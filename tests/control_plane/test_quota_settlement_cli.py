@@ -1282,6 +1282,89 @@ def test_recovery_does_not_bind_current_replan_and_reenters_same_turn(
     )
 
 
+def test_prior_turn_with_several_receipts_recovers_once(tmp_path: Path) -> None:
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    prior_turn_id = "turn-multi-receipt-prior"
+    prior_rc, prior = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        prior_turn_id,
+        "--todo-id",
+        TODO_ID,
+        "--scan-path",
+        str(project),
+    )
+    assert prior_rc == 0, prior
+    assert prior["heartbeat_receipt"]["closeout_required"] is True
+
+    # A real goal persists more than one guard per Turn: an identity upgrade
+    # append and an older guard that never carried a binding.  The newest bound
+    # receipt decides the Turn, and the unbound one can neither outrank it nor
+    # turn the Turn into an identity conflict.
+    log_path = runtime / "goals" / GOAL_ID / "rollout-event-log.jsonl"
+    with log_path.open("a", encoding="utf-8") as stream:
+        for event_id, details in (
+            (
+                "multi-receipt-identity-upgrade",
+                {
+                    "todo_id": TODO_ID,
+                    "settlement_effect_id": (
+                        f"{GOAL_ID}:{AGENT_ID}:{TODO_ID}:{prior_turn_id}"
+                    ),
+                    "closeout_required": True,
+                },
+            ),
+            ("multi-receipt-stale-unbound", {"stall_observation": "not_applicable"}),
+        ):
+            stream.write(
+                json.dumps(
+                    {
+                        "schema_version": "loopx_rollout_event_v0",
+                        "event_id": event_id,
+                        "event_kind": "quota_should_run",
+                        "goal_id": GOAL_ID,
+                        "agent_id": AGENT_ID,
+                        "run_id": prior_turn_id,
+                        "status": "turn_run_once",
+                        "summary": "prior Turn guard",
+                        "details": details,
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
+    recovery_rc, recovery = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--begin-turn",
+        "--scan-path",
+        str(project),
+    )
+    assert recovery_rc == 0, recovery
+    assert recovery["effective_action"] == "unsettled_host_turn_recovery"
+    packet = recovery["unsettled_host_turn_recovery"]
+    assert packet["prior_turn_instance_id"] == prior_turn_id
+    assert packet["binding_kind"] == "todo"
+    assert packet["binding_id"] == TODO_ID
+    assert packet["prior_event_id"] == "multi-receipt-identity-upgrade"
+
+
 @pytest.mark.parametrize("provider", ["legacy", "file", "sqlite"])
 @pytest.mark.parametrize("hidden_count", [0, 6])
 def test_prior_host_closeout_survives_hidden_todo_lifecycle(
