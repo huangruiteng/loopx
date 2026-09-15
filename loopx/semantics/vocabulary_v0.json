@@ -28,13 +28,39 @@
       "pass_through"
     ],
     "role_hierarchy": {
-      "consumer": ["interpreter", "pass_through"]
+      "consumer": [
+        "interpreter",
+        "pass_through"
+      ]
+    },
+    "candidate_decisions": {
+      "values": [
+        "compatibility_only",
+        "create_vocabulary",
+        "extend_vocabulary",
+        "external_input",
+        "local_only",
+        "reuse_existing",
+        "unknown"
+      ],
+      "default": "unknown",
+      "meaning": "Exhaustive disposition for a vocabulary candidate; unknown is the fail-closed evidence state when the bounded analysis cannot classify it."
     },
     "enforcement_policy": {
-      "blocking_now": ["F5_projection_totality"],
-      "blocking_next": ["F1_producer_closedness", "F2_canonical_value_liveness", "F4_scope_separation"],
-      "advisory": ["F3_consumer_domain_closedness"],
-      "unproved": ["F6_persistence_version_compatibility"]
+      "blocking_now": [
+        "F5_projection_totality"
+      ],
+      "blocking_next": [
+        "F1_producer_closedness",
+        "F2_canonical_value_liveness",
+        "F4_scope_separation"
+      ],
+      "advisory": [
+        "F3_consumer_domain_closedness"
+      ],
+      "unproved": [
+        "F6_persistence_version_compatibility"
+      ]
     },
     "relations": {
       "defines": "D ⊆ S × V: a site defines a vocabulary carrier",
@@ -100,6 +126,10 @@
         "all_producers_are_found",
         "same_concept_behavioral_equivalence",
         "persistence_reader_compatibility"
+      ],
+      "unknown": [
+        "dynamic_producer_or_consumer_path",
+        "unclassified_vocabulary_candidate"
       ]
     }
   },

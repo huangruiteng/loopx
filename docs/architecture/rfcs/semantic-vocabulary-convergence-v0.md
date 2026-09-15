@@ -404,6 +404,108 @@ edges are modelled. The registry stores this proof boundary in
 implicit pass.
 
 
+### Soundness, relative completeness, and candidate decisions
+
+The word *complete* is scoped here. Let `U(v)` be the ambient runtime value
+space for a vocabulary, `S(v)` its registered admitted set, `P(v)` the values
+actually produced, and `O(v)` the values observed by the scanner. The producer
+obligation is meaningful only when production is defined over `U(v)`:
+
+```text
+P(v) ⊆ S(v) ⊆ U(v)
+```
+
+Defining `P(v)` as a subset of `S(v)` in advance would make the first
+inclusion tautological. M0 currently establishes only bounded claims about
+`O(v)` and registered structural carriers.
+
+For a recognised language fragment `L0` and an exact analyser `A0`, define:
+
+```text
+Sound(A0, property, L0)    := A0 accepts c ⇒ property(c)
+Complete(A0, property, L0) := property(c) ⇒ A0 accepts c
+```
+
+The M0 guard can aim at both properties for its fixed carrier and dispatch
+forms. It cannot claim either property for arbitrary dynamic Python or
+TypeScript. A value flowing through an alias, configuration, reflection,
+external input, or unrecognised syntax belongs to `unknown` until a bounded
+analysis accounts for it. Unknown is an evidence result, not proof of absence.
+
+Every candidate change must receive exactly one finite disposition:
+
+```text
+reuse_existing | extend_vocabulary | create_vocabulary | local_only
+external_input | compatibility_only | unknown
+```
+
+This makes the *workflow classification* exhaustive even though the program
+analysis is not. `reuse_existing` requires the same slot, compatible scope,
+and an equivalent contract. `extend_vocabulary` requires a witness that
+reusing an existing value would collapse two states with different required
+behaviour. `create_vocabulary` requires a new semantic domain or independently
+owned lifecycle. If the evidence cannot decide among these cases, the default
+is `unknown`; the agent must not silently treat an unresolved candidate as a
+reuse.
+
+General behavioural equivalence remains undecidable for arbitrary programs, so
+`same_concept` is not promoted to a theorem by this schema. It becomes a
+blocking property only for a restricted contract with explicit inputs,
+outputs, transitions, persistence version and finite test domain. This is the
+boundary between a useful proof skeleton and an uncheckable claim of
+whole-program semantic convergence.
+
+
+### Soundness, relative completeness, and candidate decisions
+
+The word *complete* is scoped here. Let `U(v)` be the ambient runtime value
+space for vocabulary `v`, `S(v)` its registered admitted set, `P(v)` the values
+actually produced, and `O(v)` the values observed by the scanner. The producer
+obligation is meaningful only when production is defined over `U(v)`:
+
+```text
+P(v) ⊆ S(v) ⊆ U(v)
+```
+
+Defining `P(v)` as a subset of `S(v)` in advance would make the first
+inclusion tautological. M0 establishes bounded claims about recognised source
+forms and registered structural carriers.
+
+For a recognised language fragment `L0` and an exact analyser `A0`, define:
+
+```text
+Sound(A0, property, L0)    := A0 accepts c ⇒ property(c)
+Complete(A0, property, L0) := property(c) ⇒ A0 accepts c
+```
+
+The M0 guard may aim at both properties for its fixed carrier and dispatch
+forms. It cannot claim either property for arbitrary dynamic Python or
+TypeScript. Values flowing through aliases, configuration, reflection, external
+input, or unrecognised syntax are `unknown` until a bounded analysis accounts
+for them. Unknown is an evidence result, not proof of absence.
+
+Every vocabulary candidate has exactly one finite disposition:
+
+```text
+reuse_existing | extend_vocabulary | create_vocabulary | local_only
+external_input | compatibility_only | unknown
+```
+
+`reuse_existing` requires the same slot, compatible scope, and an equivalent
+contract. `extend_vocabulary` requires a witness that reusing an existing value
+would collapse two states with different required behaviour. `create_vocabulary`
+requires a new semantic domain or independently owned lifecycle. If evidence
+cannot decide among these cases, the disposition is `unknown`; an unresolved
+candidate must not silently become a reuse.
+
+General behavioural equivalence is undecidable for arbitrary programs, so
+`same_concept` is not promoted to a theorem by this schema. It can become a
+blocking property only for a restricted contract with explicit inputs, outputs,
+transitions, persistence version, and a finite test domain. This is the boundary
+between a useful proof skeleton and a claim of whole-program semantic
+convergence.
+
+
 ### State model and schema
 
 `loopx/semantics/vocabulary_v0.json`, `schema_version`
@@ -420,7 +522,7 @@ vocabulary key fails the smoke.
 | `vocabularies.<name>.scope` (M0.5) | `global` or `bounded_context`; a `bounded_context` entry lists `contexts`, each with one owner symbol | Closed enumeration; declared bounded-context names are excluded from `multi_value_forks`; an undeclared multi-module name stays a fork (I14) |
 | `vocabularies.<name>.producers` (M0.5) | `path::Symbol` sites that write the field, required for `kernel` | Every site writes registered values only; every value not under `compatibility_only` has at least one site or a variable-sourced entry (I12, I13) |
 | `vocabularies.<name>.compatibility_only` (M0.5) | values kept so readers of persisted records still resolve them | Subset of `values`; zero production sites; each carries a `value_notes` reason and a retirement milestone |
-| `formal_model` | finite universes, role relations and hierarchy, semantic obligations, and established/bounded/unproved claims | Exact schema, role hierarchy, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
+| `formal_model` | finite universes, role relations and hierarchy, semantic obligations, candidate decisions, and established/bounded/unknown/unproved claims | Exact schema, role hierarchy, candidate decisions, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
 | `formal_model.enforcement_policy` | blocking-now, blocking-next, advisory, and unproved lanes | Every formal invariant appears exactly once and its lane agrees with its enforcement stage |
 | `vocabularies.<name>.value_notes`, `deprecated_values` | per-value review notes; values slated for removal | Names must be registered values |
 | `relations.same_concept` | groups of `vocabulary.value` members | Every member resolves |
@@ -540,7 +642,7 @@ inventory in the same PR.
 | A producer of an unregistered value fails (M0.5) | Write `effective_action: "brand_new"` in a listed producer site | Fails naming the site and the value even though no consumer compares it | I13; production is stricter than comparison |
 | A bounded-context name leaves the fork budget only by declaration (M0.5) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | The declaration lowers `multi_value_forks` to 3; the rename alone does not | I14; the honest fix is a registry edit a reviewer sees, the rename is code without registry change |
 | An upstream merge can stale the committed inventory | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Measured cost of committing a snapshot; the handling rule is Section 10 and Section 12 Q9 |
-| The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
+| The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, candidate decision, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
 
 Known limits, stated so the check is not over-trusted:
 
