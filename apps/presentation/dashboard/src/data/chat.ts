@@ -545,7 +545,7 @@ export async function recordProjectionExchange(options: {
 
 export async function createChatSession(
   goalId: string,
-  agentId = "codex",
+  agentId?: string,
   mode: "resume_latest" | "new" = "resume_latest",
   contextKind: "goal" | "manager" = "goal",
 ) {
@@ -558,6 +558,9 @@ export async function createChatSession(
     session: ChatSessionSummary;
   }>("/api/chat/sessions", {
     method: "POST",
+    // An omitted ``agent_id`` means "no explicit executor pick": the channel
+    // owner resolves its own default. Sending this client's own default would
+    // silently re-point the steward channel away from its configured executor.
     body: JSON.stringify({ goal_id: goalId, agent_id: agentId, mode, context_kind: contextKind }),
   });
 }
@@ -673,7 +676,10 @@ export function mergeChatSessionMessages(snapshots: ChatSessionSnapshot[]) {
 }
 
 export async function fetchChatHistory(options: {
-  agentId: string;
+  // An omitted ``agentId`` reads the whole channel transcript. The steward
+  // channel is one conversation across whatever executor it currently
+  // resolves, so the client must not filter it by its own assumed executor.
+  agentId?: string;
   channelId: string;
   goalId?: string;
 }) {
