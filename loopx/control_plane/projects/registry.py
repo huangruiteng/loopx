@@ -14,6 +14,7 @@ from ..coordination.legacy_writer_fence import legacy_todo_write_transaction, re
 from ...paths import DEFAULT_RUNTIME_ROOT
 from ...registry import atomic_write_json
 from ...repository_identity import normalize_repository_identity
+from ..goals.active_state_metadata import render_objective_block
 from .contract import validate_project_record_bindings
 
 PROJECT_KINDS = ("work", "personal")
@@ -129,6 +130,9 @@ def _state_markdown(
     def bullets(items: list[str], *, empty: str) -> str:
         return "\n".join(f"- {item}" for item in items) if items else f"- {empty}"
 
+    # The objective is user prose. Isolate it so a fenced or commented example
+    # inside it cannot hide the generated Todo sections below.
+    objective_block = render_objective_block(objective)
     return f"""---
 status: active
 owner_mode: goal
@@ -142,7 +146,7 @@ adapter_id: {goal_id}
 
 ## Objective
 
-{objective}
+{objective_block}
 
 ## Acceptance
 

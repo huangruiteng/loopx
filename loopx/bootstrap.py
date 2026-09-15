@@ -13,6 +13,7 @@ from typing import Any
 
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.runtime.public_safety import public_safe_compact_text
+from .control_plane.goals.active_state_metadata import render_objective_block
 from .control_plane.todos.active_state_editing import (
     TODO_SECTION_HEADINGS,
     atomic_write_state_text,
@@ -504,6 +505,9 @@ def render_state_markdown(
     handoff_mode_line = (
         f"handoff_mode: {handoff_mode}\n" if handoff_mode != HANDOFF_MODE_LEGACY else ""
     )
+    # The objective is user prose. Isolate it so a fenced or commented example
+    # inside it cannot hide the generated Todo sections below.
+    objective_block = render_objective_block(objective)
     state_text = f"""---
 status: active
 owner_mode: goal
@@ -516,7 +520,7 @@ adapter_id: {goal_id}
 
 ## Objective
 
-{objective}
+{objective_block}
 
 ## Authority Sources
 

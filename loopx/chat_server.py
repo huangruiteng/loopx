@@ -37,6 +37,7 @@ from .chat_manager import (
 from .chat_ssh_source_api import SshSourceRequestMixin
 from .chat_store import ChatSessionStore
 from .capabilities.manager_runtime import manager_runtime_capability_projection
+from .control_plane.goals.active_state_metadata import read_objective_text
 from .control_plane.status.ssh_host_catalog import (
     SSH_HOST_CATALOG_PATH,
     ssh_host_catalog_payload,
@@ -149,7 +150,10 @@ def _goal_public_context(registry: dict[str, Any], goal: dict[str, Any]) -> dict
     if state_path is not None and state_path.exists():
         try:
             state_text = state_path.read_text(encoding="utf-8")
-            objective = _active_state_section(state_text, "Objective")
+            objective = (
+                _compact_text(read_objective_text(state_text))
+                or _active_state_section(state_text, "Objective")
+            )
             title_line = next(
                 (line[2:].strip() for line in state_text.splitlines() if line.startswith("# ")),
                 "",
