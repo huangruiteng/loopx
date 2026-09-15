@@ -33,8 +33,8 @@ from .chat_runtime import ChatRuntimeController, TERMINAL_TURN_STATES
 from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, is_manager_channel,
     manager_channel_binding, manager_workspace, manager_model_config,
-    open_manager_session,
 )
+from .chat_session_open import open_chat_session
 from .chat_ssh_source_api import SshSourceRequestMixin
 from .chat_store import ChatSessionStore
 from .capabilities.manager_runtime import manager_runtime_capability_projection
@@ -90,9 +90,6 @@ from .status_server import (
 DEFAULT_CHAT_HOST = "127.0.0.1"
 DEFAULT_CHAT_PORT = 8767
 DEFAULT_CHAT_PATH = "/chat/"
-# The executor a Goal-scoped session runs on when the caller makes no explicit
-# pick. The steward channel does not use this: it resolves its own default.
-DEFAULT_GOAL_AGENT_ID = "codex"
 DEFAULT_CHAT_STATUS_PATH = "/status.json"
 CHAT_CAPABILITIES_PATH = "/api/chat/capabilities"
 CHAT_ENDPOINTS_PATH = "/api/chat/endpoints"
@@ -575,26 +572,15 @@ class ChatRequestHandler(
                         "next_action": "Reconnect the Goal from its project root, then retry.",
                     },
                 )
-            if context_kind == "manager":
-                # The steward channel owns its executor and model defaults; the
-                # Chat server is an entry point, never a second owner.
-                session, resumed = open_manager_session(
-                    controller=self.server.runtime_controller,
-                    goal_id=goal_id,
-                    work_dir=project,
-                    executor_endpoint_id=requested_endpoint or None,
-                    mode=mode,
-                )
-            else:
-                session, resumed = self.server.runtime_controller.open_session(
-                    goal_id=goal_id,
-                    agent_id=requested_endpoint or DEFAULT_GOAL_AGENT_ID,
-                    work_dir=project,
-                    objective=runtime_objective,
-                    mode=mode,
-                    channel_id=f"goal.{goal_id}",
-                    agent_goal_id=goal_id,
-                )
+            session, resumed = open_chat_session(
+                controller=self.server.runtime_controller,
+                context_kind=context_kind,
+                goal_id=goal_id,
+                work_dir=project,
+                objective=runtime_objective,
+                mode=mode,
+                requested_endpoint=requested_endpoint,
+            )
         except CodexChatAgentError as exc:
             self._send_error(str(exc), status=424, gate=exc.gate, error_code=exc.error_code)
             return
