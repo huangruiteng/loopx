@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 # Increment when review requirements change without changing the packet shape.
-REVIEW_POLICY_REVISION = 3
+REVIEW_POLICY_REVISION = 5
 
 REQUIRED_FINAL_SECTIONS = [
     "动机",
@@ -26,6 +26,16 @@ EXAMPLE_OR_SMOKE_AREAS = {"test_or_example"}
 BEHAVIORAL_POLICY_AREAS = {"public_entry_or_policy", "agent_instruction_surface"}
 
 NEGATIVE_PATH_AREAS = CODE_AREAS | BEHAVIORAL_POLICY_AREAS
+
+SEMANTIC_CANDIDATE_DECISIONS = (
+    "reuse_existing",
+    "extend_vocabulary",
+    "create_vocabulary",
+    "local_only",
+    "external_input",
+    "compatibility_only",
+    "unknown",
+)
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
@@ -89,12 +99,12 @@ def build_review_template(item: Mapping[str, Any]) -> dict[str, Any]:
             _section(
                 "对主干的风险",
                 "250-500字",
-                "Use `failure_analysis`, `walkthroughs.negative`, and `validation_matrix`; trace each finding from triggering state to observed outcome and minimum repair. When `scope_fit` applies, name the active production caller or explicitly record a coverage-only boundary. When `change_proportionality` applies, compare verified problem impact with mechanism and maintenance cost; a resolved implementation blocker does not justify approval when the full exact-head scope remains disproportionate. For opt-in changes, prove disabled-path parity through `default_off_isolation`; do not infer isolation from an absent feature object. Use `authority_semantics` to verify that public protocol names do not claim a broader actor lifecycle or authority model than the implementation provides. Surface typed-state-rule, domain-neutrality, behavior-change-disclosure, and guidance-vs-obligation findings when their evidence applies.",
+                "Use `failure_analysis`, `walkthroughs.negative`, and `validation_matrix`; trace each finding from triggering state to observed outcome and minimum repair. When `scope_fit` applies, name the active production caller or explicitly record a coverage-only boundary. When `change_proportionality` applies, compare verified problem impact with mechanism and maintenance cost; a resolved implementation blocker does not justify approval when the full exact-head scope remains disproportionate. For opt-in changes, prove disabled-path parity through `default_off_isolation`; do not infer isolation from an absent feature object. Use `authority_semantics` to verify that public protocol names do not claim a broader actor lifecycle or authority model than the implementation provides. For a `semantic_alignment` contract impact or finding, include a concise `### 语义与 CI 对齐` subsection; ordinary `not_applicable` triage needs no separate subsection. For a blocker, name the current obligation, triggering change, observed evidence, minimum repair and rerun command. Surface typed-state-rule, domain-neutrality, behavior-change-disclosure, and guidance-vs-obligation findings when their evidence applies.",
             ),
             _section(
                 "我的整体评价",
                 "150-300字",
-                "Use `observable_semantics` to report baseline/head comparisons and remaining compatibility gaps; equal decision codes are insufficient. Use `code_volume`, `change_proportionality`, `default_off_isolation`, `authority_semantics`, validation results, residual risk, and exact-head freshness to state the verdict and the evidence needed for re-review.",
+                "Use `observable_semantics` to report baseline/head comparisons and remaining compatibility gaps; equal decision codes are insufficient. Use `code_volume`, `change_proportionality`, `default_off_isolation`, `authority_semantics`, validation results, residual risk, and exact-head freshness to state the verdict and the evidence needed for re-review. For semantic or constraint-related changes, state whether the PR reuses an existing vocabulary, extends one, creates one, stays local, or remains unknown, and link any required registry/RFC/CI repair.",
             ),
         ],
         "review_order": _review_order(key_files),
@@ -186,6 +196,55 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                     "receipt_or_consumer",
                     "failure_or_retry_owner",
                 ],
+            },
+            {
+                "evidence_id": "semantic_alignment",
+                "required_when": "semantic_alignment_required",
+                "verdict_values": [
+                    "aligned",
+                    "new_semantics_justified",
+                    "not_applicable",
+                    "advisory",
+                    "not_yet_proven",
+                    "violated",
+                ],
+                "fields": ["checked_scope", "impact_reason", "verdict"],
+                "fields_by_verdict": {
+                    "not_applicable": [],
+                    "aligned": ["candidate_decision", "affected_contract", "evidence_refs"],
+                    "new_semantics_justified": ["candidate_decision", "affected_contract", "evidence_refs"],
+                    "advisory": ["candidate_decision", "analysis_limit"],
+                    "not_yet_proven": [
+                        "candidate_decision", "affected_contract", "trigger",
+                        "observed_evidence", "minimum_repair", "validation_commands",
+                    ],
+                    "violated": [
+                        "candidate_decision", "affected_contract", "trigger",
+                        "observed_evidence", "minimum_repair", "validation_commands",
+                    ],
+                },
+                "candidate_decisions": list(SEMANTIC_CANDIDATE_DECISIONS),
+                "rule": (
+                    "Start with bounded triage of the full diff and relevant definitions/callers. "
+                    "Record checked_scope and impact_reason. If no shared contract is affected, "
+                    "use not_applicable and stop; no candidate_decision or full RFC read is required. "
+                    "File previews and unchanged registry paths do not prove absence of impact. "
+                    "For shared values, owners, consumers, projections or persistence changes, "
+                    "read only affected base/head contracts and reuse repository_reuse, "
+                    "observable_semantics and validation_matrix evidence through evidence_refs. "
+                    "Resolve CI obligations from the target repository's current policy; "
+                    "observed check names alone do not establish which checks are required. "
+                    "unknown due solely to bounded analysis is advisory: state analysis_limit "
+                    "and why no affected current obligation lacks required evidence. It is not "
+                    "proof of safety. Use not_yet_proven for missing required evidence on an "
+                    "affected current contract, or violated for a concrete violation. Both block "
+                    "approval and must name the contract, PR trigger, observed evidence, minimum "
+                    "repair and rerun command. Advisory cannot override a required CI failure "
+                    "or concrete blocking finding. Do not promote future/advisory RFC properties "
+                    "to current obligations. Reject hiding a failure by renaming a symbol, "
+                    "raising a budget, narrowing the scan root or registering an unrelated value. "
+                    "Docs-only reviews may supply this same row when contract impact is found."
+                ),
             },
             {
                 "evidence_id": "repository_reuse",
@@ -847,6 +906,7 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                     "misleading",
                     "not_yet_proven",
                 ],
+                "semantic_alignment": ["not_yet_proven", "violated"],
             },
             "required_final_sections": REQUIRED_FINAL_SECTIONS,
         },
@@ -868,6 +928,12 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                 "REQUEST_CHANGES when change_proportionality is disproportionate "
                 "or not_yet_proven; correctness, green CI, and resolved earlier "
                 "findings cannot override this gate"
+            ),
+            "open_pr_unresolved_semantic_alignment": (
+                "REQUEST_CHANGES for semantic_alignment not_yet_proven or violated: "
+                "name the affected current contract, PR trigger, observed evidence, "
+                "minimum repair and rerun command. A bounded-analysis advisory alone "
+                "does not block approval or override other required checks."
             ),
             "materially_expanded_rereview": (
                 "Reset change_proportionality from the original problem and review "
@@ -904,6 +970,7 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
     smoke_or_example_only = bool(areas & EXAMPLE_OR_SMOKE_AREAS) and not (
         code_change or behavioral_policy_change
     )
+    semantic_alignment_required = behavior_bearing_change
     required_evidence = [
         "problem_context",
         "architecture_flow",
@@ -935,6 +1002,8 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
         required_evidence.append("guidance_vs_obligation")
     if smoke_or_example_only:
         required_evidence.append("durable_smoke_value")
+    if semantic_alignment_required:
+        required_evidence.append("semantic_alignment")
     number = item.get("number")
     head_oid = str(item.get("head_oid") or "").strip()
     target_key = f"{number}@{head_oid}" if number and head_oid else None
@@ -983,6 +1052,7 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
             "durable_smoke_value_required": smoke_or_example_only,
             "duplication_scan_required": smoke_or_example_only,
             "batch_pattern_scan_required": smoke_or_example_only,
+            "semantic_alignment_required": semantic_alignment_required,
         },
         "required_evidence_ids": required_evidence,
         "result_template": {

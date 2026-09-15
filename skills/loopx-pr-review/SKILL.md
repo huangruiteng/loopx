@@ -47,7 +47,7 @@ Do not pipe the only copy through `jq`. When an exhaustive request has
 `result_completeness.complete=false`, rerun with its `recommended_limit` before
 reviewing.
 
-Require execution `policy_revision == 3`; a schema name alone is insufficient.
+Require execution `policy_revision == 5`; a schema name alone is insufficient.
 If missing or unequal, do not publish APPROVE; a conservative REQUEST_CHANGES is
 allowed only when it names the incompatible-policy evidence gap. Do not retain
 expired temporary worktree overrides. Honor explicit runtime pins, but report
