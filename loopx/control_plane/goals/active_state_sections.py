@@ -27,6 +27,39 @@ def active_state_sections(
     return sections
 
 
+def active_state_section_text(
+    state_text: str,
+    heading: str,
+    *,
+    normalize_text: NormalizeText,
+) -> str:
+    """Read back one ``## <heading>`` section as flattened prose.
+
+    Counterpart of the quote-isolated objective writers: lines starting
+    with ``>`` lose their quote prefix so quote-isolated prose round-trips
+    verbatim, legacy lines keep the bullet-prefix flattening, and comment
+    markers, blank lines, and later ``## `` sections never become content.
+    """
+    marker = f"## {heading}"
+    start = state_text.find(marker)
+    if start < 0:
+        return ""
+    content_start = start + len(marker)
+    end = state_text.find("\n## ", content_start)
+    section = state_text[content_start : end if end >= 0 else None]
+    lines = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("<!--"):
+            continue
+        if stripped.startswith(">"):
+            stripped = stripped[1:].strip()
+        else:
+            stripped = stripped.removeprefix("- ").strip()
+        lines.append(stripped)
+    return normalize_text(" ".join(lines))
+
+
 def active_state_section_entries(
     lines: list[str],
     *,
