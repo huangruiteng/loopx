@@ -22,6 +22,8 @@ import re
 from typing import Any
 
 from ...public_safe_text import find_private_text_match
+from ..runtime.public_safety import public_safe_compact_text, validate_public_safe_value
+from .acceptance_observation import build_goal_acceptance_observation
 from ..work_items.delivery_outcome import (
     MATERIAL_DELIVERY_OUTCOMES,
     normalize_delivery_outcome,
@@ -51,43 +53,19 @@ _TOKEN_SHAPES = re.compile(
     r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16})\b"
 )
 
-# Local path shapes this projection rewrites before publishing a label. The
-# control plane may not import the presentation layer's sanitizer, and the
-# lifecycle projection must not mint a second copy of the shared private-text
-# contract: it reuses `find_private_text_match` for classification and keeps
-# only this bounded, inward-safe rewrite.
-_PATH_SHAPES = (
-    re.compile(r"/(?:Users|home|private|tmp|var)/[^\s`|,)]+"),
-    re.compile(r"[A-Za-z]:\\\\Users\\\\[^\s`|,)]+"),
-)
-
-_TRUNCATION_MARKER = "..."
-
-
-def _bounded_redacted_text(value: Any, *, limit: int) -> str:
-    text = str(value or "").strip()
-    for pattern in _PATH_SHAPES:
-        text = pattern.sub("<local-path-redacted>", text)
-    text = re.sub(r"\s+", " ", text)
-    if len(text) > limit:
-        return text[: max(0, limit - 1)].rstrip() + _TRUNCATION_MARKER
-    return text
-
-
 def _compact_text(value: Any, *, limit: int = 240) -> str | None:
-    """Bound and redact one label; never carry a raw body, path or credential."""
-
+    """Validate the complete source before bounding any public label/ref."""
     if not isinstance(value, str):
         return None
-    collapsed = _bounded_redacted_text(value, limit=limit)
-    if not collapsed:
+    try:
+        validate_public_safe_value(value)
+    except ValueError:
         return None
-    # The shared private-text contract classifies; this projection additionally
-    # refuses a value that still matches a private-text or credential shape
-    # rather than publishing a partly-redacted fragment.
-    if find_private_text_match(collapsed) or _TOKEN_SHAPES.search(collapsed):
+    # Preserve the stricter existing private-text/provider-token contract too;
+    # these checks supplement, never replace, the shared public-safety owner.
+    if find_private_text_match(value) or _TOKEN_SHAPES.search(value):
         return None
-    return collapsed
+    return public_safe_compact_text(value, limit=limit)
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -157,7 +135,12 @@ def _evidence_milestones(run_history: dict[str, Any]) -> list[dict[str, Any]]:
         if milestone_id in seen:
             continue
         seen.add(milestone_id)
-        reference = _compact_text(record.get("evidence_ref") or record.get("run_id"), limit=120)
+        # Collected history exposes a timestamp, not always a public run id.
+        # Keep that existing locator; never publish its JSON/Markdown path.
+        reference = _compact_text(
+            record.get("evidence_ref") or record.get("run_id") or record.get("generated_at"),
+            limit=120,
+        )
         milestones.append(
             {
                 "id": milestone_id,
@@ -181,7 +164,7 @@ def _milestones(
         return evidence
     # A declared marker is a claim about what the Goal intends to reach, not
     # proof that it did. It counts as reached only when evidence already
-    # records that outcome, or when the Goal marks it reached explicitly.
+    # records that outcome.
     reached_outcomes = {item["id"] for item in evidence if item["reached"]}
     for milestone in declared:
         milestone["reached"] = milestone["id"] in reached_outcomes
@@ -189,7 +172,7 @@ def _milestones(
 
 
 def _guards(
-    user_summary: dict[str, Any],
+    observation: dict[str, Any],
     acceptance_gaps: list[Any],
     *,
     agent_id: str | None,
@@ -197,22 +180,19 @@ def _guards(
     """Open owner decisions and unmet evidence preconditions."""
 
     guards: list[dict[str, Any]] = []
-    for item in _list(user_summary.get("gate_open_items")):
-        record = _mapping(item)
-        if not record:
+    for record in _list(observation.get("guards")):
+        if not _mapping(record):
             continue
-        blocking_agent = _compact_text(record.get("blocks_agent"), limit=120)
-        guards.append(
-            {
-                "id": _compact_text(record.get("todo_id"), limit=120) or "owner_gate",
-                "kind": GUARD_KIND_OWNER_DECISION,
-                "blocked": True,
-                "owner": "user",
-                "decision_scope": _compact_text(record.get("action_kind"), limit=120),
-                "evidence_required": False,
-                "blocks_agent": blocking_agent,
-            }
-        )
+        guards.append({
+            "id": _compact_text(record.get("todo_id"), limit=120) or "operator_gate",
+            "kind": GUARD_KIND_OWNER_DECISION,
+            "blocked": True,
+            "owner": _compact_text(record.get("owner"), limit=120)
+            or ("user" if record.get("kind") == "user_gate" else "controller"),
+            "decision_scope": _compact_text(record.get("decision_scope")),
+            "evidence_required": bool(record.get("evidence_required")),
+            "blocks_agent": _compact_text(record.get("blocks_agent"), limit=120),
+        })
     for gap in acceptance_gaps:
         record = _mapping(gap)
         if not record:
@@ -225,7 +205,8 @@ def _guards(
                 "owner": "agent",
                 "decision_scope": None,
                 "evidence_required": True,
-                "agent_id": _compact_text(record.get("agent_id"), limit=120) or agent_id,
+                "agent_id": _compact_text(record.get("agent_id") or record.get("owner"), limit=120)
+                or _compact_text(agent_id, limit=120),
             }
         )
     return guards
@@ -237,13 +218,19 @@ def _lifecycle_phase(
     guards: list[dict[str, Any]],
     milestones: list[dict[str, Any]],
     agent_summary: dict[str, Any],
+    work_lane: dict[str, Any],
 ) -> str:
     if _is_closed(goal):
         return PHASE_CLOSED
     if any(guard["kind"] == GUARD_KIND_OWNER_DECISION for guard in guards):
         return PHASE_WAITING_OWNER
+    if guards or work_lane.get("must_attempt_work") is True:
+        return PHASE_QUALIFYING
     open_count = agent_summary.get("open_count")
-    total_open = open_count if isinstance(open_count, int) and not isinstance(open_count, bool) else 0
+    if not isinstance(open_count, int) or isinstance(open_count, bool):
+        # An omitted/bounded source is not evidence that no work remains.
+        return PHASE_QUALIFYING if milestones or guards else PHASE_STARTING
+    total_open = open_count
     if not milestones and total_open == 0:
         return PHASE_STARTING
     # An unclaimed-acceptance Goal is never closing: running out of open agent
@@ -283,7 +270,7 @@ def _next_transitions(
         ]
     # An existing work-lane constraint outranks this projection's own reading
     # of open work: the lane owner decides what runs next.
-    if lane and phase != PHASE_CLOSING:
+    if lane:
         return [
             {
                 "target_phase": PHASE_QUALIFYING,
@@ -310,14 +297,6 @@ def _next_transitions(
                 "reason_codes": ["no_open_agent_work"],
             }
         ]
-    if lane:
-        return [
-            {
-                "target_phase": PHASE_QUALIFYING,
-                "precondition": obligation or "advance the selected lane",
-                "reason_codes": ["work_lane_selected"],
-            }
-        ]
     return []
 
 
@@ -331,6 +310,7 @@ def build_goal_artifact_lifecycle_projection(
     work_lane_contract: dict[str, Any] | None = None,
     acceptance_gaps: list[Any] | None = None,
     agent_id: str | None = None,
+    attention_item: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Derive the read-only lifecycle projection for one Goal.
 
@@ -341,18 +321,36 @@ def build_goal_artifact_lifecycle_projection(
     goal_record = _mapping(goal)
     user_summary = _mapping(user_todo_summary)
     agent_summary = _mapping(agent_todo_summary)
-    history = _mapping(run_history)
+    raw_history = _mapping(run_history)
+    runs = list(_list(raw_history.get("latest_runs")))
+    # The collector already preserves semantic evidence beyond the display/
+    # recent-run window. Reuse that retained state instead of widening a limit.
+    for context in _list(_mapping(raw_history.get("semantic_history")).get("agents")):
+        for key in ("latest_material_milestone_run", "latest_agent_vision_run"):
+            retained = _mapping(context).get(key)
+            if _mapping(retained) and retained not in runs:
+                runs.append(retained)
+    history = {"latest_runs": [
+        record for record in runs
+        if _mapping(record) and record.get("goal_id") in (None, goal_id)
+    ]}
     lane = _mapping(work_lane_contract)
+    observation = build_goal_acceptance_observation(
+        {**goal_record, "id": goal_id, **history},
+        attention_item if attention_item is not None else {"user_todos": user_summary},
+    )
     gaps = [gap for gap in _list(acceptance_gaps) if _mapping(gap)]
-
+    if acceptance_gaps is None:
+        gaps = _list(observation.get("acceptance_gaps"))
     milestones = _milestones(goal_record, history)
-    guards = _guards(user_summary, gaps, agent_id=agent_id)
+    guards = _guards(observation, gaps, agent_id=agent_id)
     phase = _lifecycle_phase(
-        goal_record, guards=guards, milestones=milestones, agent_summary=agent_summary
+        goal_record, guards=guards, milestones=milestones, agent_summary=agent_summary,
+        work_lane=lane,
     )
     return {
         "schema_version": GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
-        "goal_id": str(goal_id),
+        "goal_id": _compact_text(goal_id, limit=120) or "unknown",
         "lifecycle_phase": phase,
         "milestones": milestones,
         "guards": guards,
@@ -384,27 +382,29 @@ def attach_goal_artifact_lifecycle_projections(
         goal_id = str(record.get("id") or "").strip()
         if not goal_id:
             continue
-        source = {**sources.get(goal_id, {}), **record}
+        source = {**record, **sources.get(goal_id, {})}
         item = next(
             (row for row in items if _mapping(row).get("goal_id") == goal_id), None
         )
         attention = _mapping(item)
+        asset = _mapping(attention.get("project_asset"))
+        frontier = _mapping(attention.get("goal_frontier_projection") or asset.get("goal_frontier_projection"))
         projection = build_goal_artifact_lifecycle_projection(
             goal_id=goal_id,
             goal=source,
             user_todo_summary=_mapping(
-                attention.get("user_todo_summary") or source.get("user_todo_summary")
+                attention.get("user_todos") or asset.get("user_todos")
             ),
             agent_todo_summary=_mapping(
-                attention.get("agent_todo_summary") or source.get("agent_todo_summary")
+                attention.get("agent_todos") or asset.get("agent_todos")
             ),
-            run_history=run_history,
+            run_history=source,
             work_lane_contract=_mapping(
-                source.get("work_lane_contract") or attention.get("work_lane_contract")
+                attention.get("work_lane_contract") or asset.get("work_lane_contract")
+                or source.get("work_lane_contract")
             ),
-            acceptance_gaps=_list(
-                source.get("acceptance_gaps") or attention.get("acceptance_gaps")
-            ),
+            acceptance_gaps=frontier.get("acceptance_gaps") if "acceptance_gaps" in frontier else None,
+            attention_item=attention,
         )
         record["artifact_lifecycle"] = projection
 

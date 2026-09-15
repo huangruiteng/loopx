@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.goals.artifact_lifecycle import (
+from loopx.control_plane.goals.artifact_lifecycle import (  # noqa: E402 - source-checkout entrypoint
     GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
     GUARD_KIND_EVIDENCE,
     GUARD_KIND_OWNER_DECISION,
@@ -145,7 +145,7 @@ def assert_open_owner_gate_blocks_the_next_transition() -> None:
     assert guard["kind"] == GUARD_KIND_OWNER_DECISION, projection
     assert guard["blocked"] is True, projection
     assert guard["owner"] == "user", projection
-    assert guard["decision_scope"] == "approve_baseline", projection
+    assert guard["decision_scope"] is None, projection
     # A blocking guard admits no other transition, even with a selected lane.
     transitions = projection["next_transitions"]
     assert len(transitions) == 1, projection
@@ -290,16 +290,11 @@ def assert_private_values_are_redacted_or_dropped() -> None:
     ):
         assert leaked not in rendered, (leaked, rendered)
 
-    # Pin the redaction rule itself: a benign local path must be replaced, not
-    # merely dropped, so the boundary still holds when a caller later renders a
-    # label this projection chose to keep.
-    assert _compact_text("/Users/private-owner/notes.md") == (
-        "<local-path-redacted>"
-    ), _compact_text("/Users/private-owner/notes.md")
+    # Unsafe references are withheld by the same validator as other status
+    # projections; no local path is retained even as a truncated fragment.
+    assert _compact_text("/Users/private-owner/notes.md") is None
     assert _compact_text("token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345") is None
-    assert _compact_text("/private/var/folders/x/secret.md") == (
-        "<local-path-redacted>"
-    )
+    assert _compact_text("/private/var/folders/x/secret.md") is None
 
 
 def assert_batch_scale_never_promotes_an_outcome() -> None:
@@ -374,17 +369,18 @@ def assert_status_collection_attaches_a_readable_readout() -> None:
             "items": [
                 {
                     "goal_id": GOAL_ID,
-                    "user_todo_summary": {
-                        "gate_open_items": [
+                    "user_todos": {
+                        "items": [
                             {
                                 "todo_id": "todo_gate",
+                                "task_class": "user_gate",
                                 "text": "approve the release",
                                 "status": "open",
                                 "action_kind": "publish",
                             }
                         ]
                     },
-                    "agent_todo_summary": {"open_count": 0},
+                    "agent_todos": {"open_count": 0},
                 }
             ]
         },
