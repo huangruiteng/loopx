@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from loopx import chat_dsh
 from loopx.chat import CHAT_REVIEW_CLOSE_TAG, CHAT_REVIEW_OPEN_TAG
 from loopx.chat_agent import CodexChatAgentError
 from loopx.chat_dsh import (
     HISTORY_LIMIT,
     MANAGED_HOST_CHAT_FAILED,
+    MANAGED_HOST_CHAT_SEGMENT_IN_FLIGHT,
     MANAGED_HOST_CHAT_TIMEOUT,
     STEWARD_SEGMENT_ENV,
     DshChatAdapter,
@@ -175,3 +178,124 @@ def test_visible_history_is_bounded_and_reaches_the_next_segment(
         {"role": "assistant", "content": "second answer"},
     ]
     assert len(adapter.history) <= HISTORY_LIMIT
+
+
+def _blocking_adapter(
+    tmp_path: Path,
+    *,
+    first_answer: str,
+    second_answer: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[DshChatAdapter, list[dict[str, Any]], threading.Event, threading.Event]:
+    """Build an adapter whose first segment blocks until the test releases it."""
+
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(chat_dsh, "SEGMENT_HANDOFF_GRACE_SEC", 0.05)
+
+    def runner(**kwargs: Any) -> Any:
+        calls.append(kwargs)
+        if len(calls) == 1:
+            started.set()
+            release.wait(5)
+            return {"final_response": _envelope(first_answer)}
+        return {"final_response": _envelope(second_answer)}
+
+    adapter = DshChatAdapter(
+        objective="You are the LoopX manager.",
+        work_dir=tmp_path,
+        provider="deepseek-official",
+        model="deepseek-v4-flash",
+        reasoning_effort="high",
+        runner=runner,
+    )
+    return adapter, calls, started, release
+
+
+def test_a_second_segment_start_is_refused_while_one_is_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, calls, started, release = _blocking_adapter(
+        tmp_path,
+        first_answer="first answer",
+        second_answer="second answer",
+        monkeypatch=monkeypatch,
+    )
+    finished: list[dict[str, Any]] = []
+    worker = threading.Thread(
+        target=lambda: finished.append(adapter.start_turn("first question", lambda *_a: None))
+    )
+    worker.start()
+    try:
+        assert started.wait(5)
+        with pytest.raises(CodexChatAgentError) as raised:
+            adapter.start_turn("second question", lambda *_a: None)
+        # The refusal is the point: the second caller never reaches the host.
+        assert raised.value.error_code == MANAGED_HOST_CHAT_SEGMENT_IN_FLIGHT
+        assert len(calls) == 1
+    finally:
+        release.set()
+        worker.join(5)
+
+    assert finished[0]["message"] == "first answer"
+
+
+def test_an_interrupted_segment_answer_never_becomes_visible_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, _calls, started, release = _blocking_adapter(
+        tmp_path,
+        first_answer="discarded answer",
+        second_answer="second answer",
+        monkeypatch=monkeypatch,
+    )
+    events: list[tuple[str, dict[str, Any]]] = []
+    finished: list[dict[str, Any]] = []
+    worker = threading.Thread(
+        target=lambda: finished.append(
+            adapter.start_turn("first question", lambda kind, payload: events.append((kind, payload)))
+        )
+    )
+    worker.start()
+    try:
+        assert started.wait(5)
+        adapter.interrupt_turn()
+    finally:
+        release.set()
+        worker.join(5)
+
+    assert finished[0]["message"] == "discarded answer"
+    # The channel discarded the turn, so neither the answer events nor the
+    # visible history may carry its text forward.
+    assert [kind for kind, _payload in events] == ["turn.started", "agent.phase"]
+    assert adapter.history == []
+
+
+def test_the_next_segment_starts_once_the_previous_segment_exited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, calls, started, release = _blocking_adapter(
+        tmp_path,
+        first_answer="first answer",
+        second_answer="second answer",
+        monkeypatch=monkeypatch,
+    )
+    worker = threading.Thread(
+        target=lambda: adapter.start_turn("first question", lambda *_a: None)
+    )
+    worker.start()
+    assert started.wait(5)
+    release.set()
+    worker.join(5)
+
+    response = adapter.start_turn("second question", lambda *_a: None)
+
+    assert response["message"] == "second answer"
+    assert len(calls) == 2
+    assert adapter.history == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "first answer"},
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "second answer"},
+    ]

@@ -15,6 +15,12 @@ infer it:
 * no tool authority: the segment is pinned read-only (see
   ``STEWARD_SEGMENT_ENV``), so a model that reaches for a tool is refused by the
   dsh sandbox itself, and the answer must come from the evidence LoopX supplies.
+
+The managed host cannot cancel a segment once it has started, so this adapter
+holds **one** executor slot per binding: a segment start while the previous
+segment is still running is refused with a typed error instead of quietly
+starting a second executor, and an interrupted segment's answer is discarded
+rather than folded back into the channel's visible history.
 """
 
 from __future__ import annotations
@@ -46,6 +52,29 @@ STEWARD_SEGMENT_ENV = {"DSH_PERMISSION_MODE": "read-only"}
 
 MANAGED_HOST_CHAT_TIMEOUT = "managed_host_chat_timeout"
 MANAGED_HOST_CHAT_FAILED = "managed_host_chat_failed"
+# A second executor for one binding is refused, not queued or run in parallel:
+# the managed host has no cancel, so the previous segment can only be waited
+# out. The code names the state the channel is in, not a user mistake.
+MANAGED_HOST_CHAT_SEGMENT_IN_FLIGHT = "managed_host_chat_segment_in_flight"
+
+# How long a new segment waits for the previous one to exit before it refuses.
+# It is a hand-off window for a segment that is already finishing, not a
+# deadline: a segment that is still running past it stays the binding's single
+# executor, and the caller reads one typed refusal.
+SEGMENT_HANDOFF_GRACE_SEC = 5.0
+
+
+@dataclass
+class _SegmentSlot:
+    """The binding's single managed-executor slot.
+
+    The slot is occupied until the segment's thread actually exits, including
+    after a channel timeout: the segment keeps running in the host, so the next
+    start must still see one executor as long as that is true.
+    """
+
+    thread: threading.Thread | None = None
+    interrupted: bool = False
 
 
 @dataclass
@@ -64,6 +93,10 @@ class DshChatAdapter:
     cordis: Path | None = None
     runtime_bin: str | None = None
     runner: Callable[..., Any] | None = None
+    _slot: _SegmentSlot | None = field(default=None, init=False, repr=False)
+    _slot_lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False
+    )
 
     @property
     def upstream_thread_id(self) -> str:
@@ -126,7 +159,34 @@ class DshChatAdapter:
             )
         return outcome
 
+    def _claim_segment_slot(self) -> _SegmentSlot:
+        """Reserve the binding's one executor slot, or refuse a second executor.
+
+        Only the slot hand-off is serialized, not the segment itself: the caller
+        blocks in ``start_turn`` while its own segment runs, so holding a lock
+        here would make the second caller wait on the lock instead of reading the
+        typed refusal. A previous segment that exited frees the slot; one that is
+        still running after the hand-off window keeps it.
+        """
+
+        with self._slot_lock:
+            previous = self._slot
+            thread = previous.thread if previous is not None else None
+            if thread is not None and thread.is_alive():
+                thread.join(SEGMENT_HANDOFF_GRACE_SEC)
+                if thread.is_alive():
+                    raise CodexChatAgentError(
+                        "The managed host is still running the previous segment; "
+                        "a second executor for this binding is refused.",
+                        gate=None,
+                        error_code=MANAGED_HOST_CHAT_SEGMENT_IN_FLIGHT,
+                    )
+            slot = _SegmentSlot()
+            self._slot = slot
+            return slot
+
     def start_turn(self, message: str, event_sink: EventSink) -> dict[str, Any]:
+        slot = self._claim_segment_slot()
         event_sink("turn.started", {"upstream_turn_id": self.session_id})
         event_sink(
             "agent.phase",
@@ -145,6 +205,7 @@ class DshChatAdapter:
         worker = threading.Thread(
             target=run, name="loopx-dsh-chat-segment", daemon=True
         )
+        slot.thread = worker
         worker.start()
         worker.join(self.timeout_sec)
         if worker.is_alive():
@@ -175,6 +236,12 @@ class DshChatAdapter:
                 error_code=MANAGED_HOST_CHAT_FAILED,
             )
         response = parse_agent_response(raw, protected_paths=[self.work_dir])
+        if slot.interrupted:
+            # The channel discarded this turn, so its answer never happened: the
+            # segment still exits as the binding's executor, but folding its
+            # text into the visible history would let an abandoned answer read
+            # as the steward's most recent statement.
+            return response
         self.history.extend(
             [
                 {"role": "user", "content": message},
@@ -188,9 +255,16 @@ class DshChatAdapter:
 
     def interrupt_turn(self, turn_id: str | None = None) -> None:
         # The segment owns its own runtime and exits on its request timeout, so
-        # there is no retained session to interrupt. The Chat runtime still
-        # discards a cancelled turn's result.
+        # there is no retained session to interrupt and no host-side cancel to
+        # call. What the channel can do is mark the running segment as
+        # abandoned, so its later answer is discarded instead of becoming the
+        # channel's newest visible statement. The slot stays occupied until the
+        # segment exits, because it is still the binding's one executor.
         del turn_id
+        with self._slot_lock:
+            slot = self._slot
+            if slot is not None and slot.thread is not None and slot.thread.is_alive():
+                slot.interrupted = True
 
     def close_session(self) -> None:
         return None
