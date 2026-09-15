@@ -87,6 +87,48 @@ def assert_declared_milestone_stays_unreached_while_gapped() -> None:
     assert_no_public_leak(projection)
 
 
+def assert_outcome_gap_is_material_but_not_reached() -> None:
+    """A recorded gap is retained history, never a reached marker.
+
+    `MATERIAL_DELIVERY_OUTCOMES` decides what history keeps; the canonical
+    progress outcomes decide what the Goal advanced, and they deliberately
+    exclude `outcome_gap`.
+    """
+
+    projection = build_goal_artifact_lifecycle_projection(
+        goal_id=GOAL_ID,
+        goal={"id": GOAL_ID, "status": "active"},
+        agent_todo_summary={"open_count": 2},
+        run_history={"latest_runs": [{"delivery_outcome": "outcome_gap"}]},
+    )
+    reached = {item["id"]: item["reached"] for item in projection["milestones"]}
+    assert reached == {"outcome_gap": False}, projection
+    assert projection["lifecycle_phase"] == PHASE_QUALIFYING, projection
+    assert_no_public_leak(projection)
+
+
+def assert_gap_only_evidence_blocks_closeout() -> None:
+    """The reproduced defect: zero open agent Todos over an `outcome_gap` run.
+
+    This previously read as closing / next: closed because the material set
+    marked the gap reached. A gap is an unreached marker, so the Goal stays
+    qualifying and is told what is still missing.
+    """
+
+    projection = build_goal_artifact_lifecycle_projection(
+        goal_id=GOAL_ID,
+        goal={"id": GOAL_ID, "status": "active"},
+        user_todo_summary={"gate_open_items": []},
+        agent_todo_summary={"open_count": 0},
+        run_history={"latest_runs": [{"delivery_outcome": "outcome_gap"}]},
+    )
+    assert projection["lifecycle_phase"] == PHASE_QUALIFYING, projection
+    transition = projection["next_transitions"][0]
+    assert transition["target_phase"] == PHASE_QUALIFYING, projection
+    assert transition["reason_codes"] == ["milestone_unreached"], projection
+    assert_no_public_leak(projection)
+
+
 def assert_evidence_milestone_reached_from_run_history() -> None:
     projection = build_goal_artifact_lifecycle_projection(
         goal_id=GOAL_ID,
@@ -187,7 +229,15 @@ def assert_closing_then_closed_phase() -> None:
         },
     )
     assert closing["lifecycle_phase"] == PHASE_CLOSING, closing
-    assert closing["next_transitions"][0]["target_phase"] == PHASE_CLOSED, closing
+    transition = closing["next_transitions"][0]
+    assert transition["target_phase"] == PHASE_CLOSED, closing
+    # Closing is the todo-completion reading, not an acceptance verdict. The
+    # acceptance observation could not read agent vision here, so the closeout
+    # step names that source instead of implying a verified acceptance.
+    assert "no_open_agent_work" in transition["reason_codes"], closing
+    assert "acceptance_unverified" in transition["reason_codes"], closing
+    assert "agent_vision" in transition["precondition"], closing
+    assert_no_public_leak(closing)
 
     closed = build_goal_artifact_lifecycle_projection(
         goal_id=GOAL_ID,
@@ -322,7 +372,10 @@ def assert_batch_scale_never_promotes_an_outcome() -> None:
                 },
             )
             assert projection["milestones"] == [], (outcome, scale, projection["milestones"])
-    # Every canonical material outcome still counts, at any scale.
+    # Every canonical material outcome is still retained as a marker at any
+    # scale, but only the accountable progress outcomes are reached. Scale
+    # never moves a marker in either direction.
+    accountable = {"outcome_progress", "primary_goal_outcome"}
     for scale in ("single_surface", "multi_surface"):
         for outcome in ("outcome_gap", "outcome_progress", "primary_goal_outcome"):
             projection = build_goal_artifact_lifecycle_projection(
@@ -338,8 +391,8 @@ def assert_batch_scale_never_promotes_an_outcome() -> None:
                     ]
                 },
             )
-            reached = [item for item in projection["milestones"] if item["reached"]]
-            assert [item["id"] for item in reached] == [outcome], (outcome, scale, reached)
+            markers = {item["id"]: item["reached"] for item in projection["milestones"]}
+            assert markers == {outcome: outcome in accountable}, (outcome, scale, markers)
 
 
 def assert_status_collection_attaches_a_readable_readout() -> None:
@@ -461,6 +514,8 @@ def assert_control_plane_imports_no_presentation_module() -> None:
 def main() -> int:
     assert_starting_phase_without_work()
     assert_declared_milestone_stays_unreached_while_gapped()
+    assert_outcome_gap_is_material_but_not_reached()
+    assert_gap_only_evidence_blocks_closeout()
     assert_evidence_milestone_reached_from_run_history()
     assert_open_owner_gate_blocks_the_next_transition()
     assert_evidence_guard_is_required_and_owned_by_the_agent()

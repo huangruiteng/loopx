@@ -26,6 +26,7 @@ from ..runtime.public_safety import public_safe_compact_text, validate_public_sa
 from .acceptance_observation import build_goal_acceptance_observation
 from ..work_items.delivery_outcome import (
     MATERIAL_DELIVERY_OUTCOMES,
+    PROGRESS_DELIVERY_OUTCOMES,
     normalize_delivery_outcome,
 )
 
@@ -146,7 +147,11 @@ def _evidence_milestones(run_history: dict[str, Any]) -> list[dict[str, Any]]:
                 "id": milestone_id,
                 "label": _compact_text(record.get("recommended_action"), limit=160)
                 or milestone_id,
-                "reached": True,
+                # Materiality decides what history retains; only the canonical
+                # progress outcomes decide what the Goal actually advanced.
+                # `outcome_gap` is material evidence of a recorded gap, so it
+                # stays visible here as an unreached marker.
+                "reached": outcome in PROGRESS_DELIVERY_OUTCOMES,
                 "reached_evidence_refs": [reference] if reference else [],
                 "source": "evidence",
             }
@@ -212,6 +217,23 @@ def _guards(
     return guards
 
 
+def _unobserved_acceptance_sources(observation: dict[str, Any]) -> list[str]:
+    """Name the acceptance sources the bounded observation could not read.
+
+    `goal_acceptance_observation_projection_v0` reports what it could not
+    observe rather than an acceptance verdict, so this projection surfaces
+    those sources on the closeout step instead of deriving a second completion
+    rule from the same runs.
+    """
+
+    return [
+        text for text in (
+            _compact_text(source, limit=60)
+            for source in _list(observation.get("missing_sources"))
+        ) if text
+    ]
+
+
 def _lifecycle_phase(
     goal: dict[str, Any],
     *,
@@ -234,7 +256,8 @@ def _lifecycle_phase(
     if not milestones and total_open == 0:
         return PHASE_STARTING
     # An unclaimed-acceptance Goal is never closing: running out of open agent
-    # work is not the same as having reached the declared acceptance markers.
+    # work is not the same as having reached the acceptance markers, and a
+    # recorded gap is an unreached marker rather than progress.
     unreached = any(milestone["reached"] is not True for milestone in milestones)
     if total_open == 0 and not unreached:
         return PHASE_CLOSING
@@ -248,6 +271,7 @@ def _next_transitions(
     guards: list[dict[str, Any]],
     milestones: list[dict[str, Any]],
     work_lane: dict[str, Any],
+    observation: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Reuse the existing lane/frontier derivation instead of a second machine."""
 
@@ -285,16 +309,26 @@ def _next_transitions(
         return [
             {
                 "target_phase": PHASE_QUALIFYING,
-                "precondition": "reach the declared acceptance milestones with evidence",
+                "precondition": "reach the unreached acceptance milestones with evidence",
                 "reason_codes": ["milestone_unreached"],
             }
         ]
     if phase == PHASE_CLOSING:
+        # Closing is the todo-completion reading this RFC adopts; it is not an
+        # acceptance verdict. When the acceptance owner could not read some of
+        # its sources, the closeout step says so instead of implying a verified
+        # acceptance, and the reader keeps the decision.
+        unobserved = _unobserved_acceptance_sources(observation)
+        precondition = "record the terminal no-follow-up outcome"
+        reason_codes = ["no_open_agent_work"]
+        if unobserved:
+            precondition += "; this readout could not observe " + ", ".join(unobserved)
+            reason_codes.append("acceptance_unverified")
         return [
             {
                 "target_phase": PHASE_CLOSED,
-                "precondition": "record the terminal no-follow-up outcome",
-                "reason_codes": ["no_open_agent_work"],
+                "precondition": precondition,
+                "reason_codes": reason_codes,
             }
         ]
     return []
@@ -360,6 +394,7 @@ def build_goal_artifact_lifecycle_projection(
             guards=guards,
             milestones=milestones,
             work_lane=lane,
+            observation=observation,
         ),
     }
 
