@@ -121,7 +121,12 @@ execution profile, with the channel's bounded visible history as input. That
 transport deliberately claims no partial streaming, no cross-turn host session
 and no tool authority: LoopX pins `DSH_PERMISSION_MODE=read-only` for those
 segments, so dsh refuses a write or shell action itself instead of trusting the
-channel prompt. A segment that cannot run (missing credential or missing runtime)
+channel prompt. "Exactly one" is held, not assumed: a segment is the binding's
+single executor until its thread exits, so a start while one is still running is
+refused with the typed `managed_host_chat_segment_in_flight` instead of quietly
+running a second executor, and an answer that arrives for an interrupted turn is
+discarded rather than folded into the visible history the next segment reads. A
+segment that cannot run (missing credential or missing runtime)
 makes the endpoint unavailable in `channel_binding` with the typed reason the
 governed Turn surface already publishes, and a session request for that endpoint
 fails as a typed host-tool gate with the next step instead of an unknown-endpoint
