@@ -124,6 +124,13 @@ commit with the trusted source lineage reported by `loopx doctor`:
   belongs to a different `repo/ref`; the runtime-active claim must fail closed
   until identity is refreshed.
 
+A pinned full commit SHA is its own trusted target, so
+`loopx update check --ref <40-hex-commit>` qualifies against the installed
+manifest source commit without waiting for a branch lineage lookup. Installed
+and pinned commits match: the receipt is `runtime_active`. They differ: the
+receipt stays `activation_qualification_required` and names the installed
+commit difference instead of the generic lineage message.
+
 Closing a PR monitor after latest-`main` validation is valid, but the closeout
 must not say the fix is active in the installed runtime unless this receipt is
 `runtime_active`. Publishing a release remains a separate maintainer action.
