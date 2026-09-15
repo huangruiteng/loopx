@@ -17,6 +17,7 @@ import {
   applyAuthorityStateDelta,
   authorityStateCheckpointCursor,
   authorityStateDelta,
+  authorityStateDeltaReconstructs,
   authorityStateDigest,
   authorityStateReplayBudget,
   decodeAuthorityStateDelta,
@@ -461,8 +462,7 @@ export class SqliteAuthorityStore implements AuthorityStore {
       const delta = authorityStateDelta(before.projection, nextState);
       // The encoder is proved before it is persisted: replaying the stored
       // delta must reproduce the committed projection byte for byte.
-      if (!canonicalAuthorityBytes(applyAuthorityStateDelta(before.projection, delta))
-        .equals(canonicalAuthorityBytes(nextState))) {
+      if (!authorityStateDeltaReconstructs(before.projection, delta, nextState)) {
         protocol("SQLite authority state delta does not reconstruct its commit");
       }
       const stateDigest = authorityStateDigest(nextState);

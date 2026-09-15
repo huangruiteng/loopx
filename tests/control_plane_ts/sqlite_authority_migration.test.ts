@@ -128,6 +128,60 @@ test("SQLite V1 migration preserves the exact retained history", {timeout: 60000
   assert.deepEqual(await logicalHistory(store), history);
 });
 
+test("SQLite V1 migration keeps every stored JSON key readable", async t => {
+  const root = await directory(t);
+  // A committed V1 projection may carry any JSON object key. `""` and
+  // `__proto__` are the two an object path can lose - the first was refused as
+  // a path segment, the second is read and written through the prototype chain
+  // - so the migration must prove each renamed projection stays readable
+  // instead of publishing a log the V2 read path rejects.
+  const projections: Record<string, unknown>[] = [
+    {},
+    JSON.parse('{"": {"marker": "empty"}, "todos": [{"id": "a"}]}') as Record<string, unknown>,
+    JSON.parse('{"": {"marker": "changed"}, "todos": [{"id": "a"}]}') as Record<string, unknown>,
+    JSON.parse('{"__proto__": {"marker": "proto"}, "todos": [{"id": "a"}]}') as Record<string, unknown>,
+    JSON.parse('{"scope": {"": {"__proto__": {"depth": 1}}, "todos": [{"id": "a"}]}}') as Record<string, unknown>,
+    JSON.parse('{"todos": [{"id": "a"}]}') as Record<string, unknown>,
+  ];
+  const v1 = createSqliteAuthorityStoreV1(root, GOAL_ID, projections.map((projection, index) => ({
+    operation_id: `key-op-${String(index).padStart(3, "0")}`,
+    projection,
+    receipts: [{operation_id: `key-op-${String(index).padStart(3, "0")}`}],
+  })));
+  const migrated = migrateSqliteAuthorityStoreV1ToV2(root, GOAL_ID,
+    {execute: true, expectedIdentity: v1.identity});
+  assert.equal(migrated.status, "migrated", JSON.stringify(migrated));
+  assert.equal(migrated.commits, projections.length);
+  const store = new SqliteAuthorityStore(root, GOAL_ID, {existingOnly: true, expectedIdentity: v1.identity});
+  const head = await store.loadAuthority();
+  assert.equal(head.status, "loaded");
+  if (head.status === "loaded") {
+    assert.equal(canonicalAuthorityBytes(head.head).toString("utf8"),
+      canonicalAuthorityBytes(projections[projections.length - 1]!).toString("utf8"));
+    assert.equal(Object.getPrototypeOf(head.head), Object.prototype);
+  }
+  assert.equal((await store.verifyAuthorityHistory()).status, "verified");
+  const read: Record<string, unknown>[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const page = await store.scanCommitted(after, 4);
+    assert.equal(page.status, "page", JSON.stringify(page));
+    if (page.status !== "page" || page.transactions.length === 0) break;
+    for (const transaction of page.transactions) {
+      read.push(transaction.projection as Record<string, unknown>);
+    }
+    after = page.transactions[page.transactions.length - 1]!.cursor;
+  }
+  assert.equal(read.length, projections.length);
+  for (const [index, projection] of projections.entries()) {
+    assert.equal(canonicalAuthorityBytes(read[index]!).toString("utf8"),
+      canonicalAuthorityBytes(projection).toString("utf8"), `projection ${index}`);
+  }
+  // A stored `__proto__` key is data, never a prototype assignment.
+  assert.equal(({} as Record<string, unknown>).marker, undefined);
+  assert.equal(({} as Record<string, unknown>).depth, undefined);
+});
+
 function assertFrozenV1(path: string, expectedDigest: string): void {
   const reader = new (createRequire(import.meta.url)("node:sqlite").DatabaseSync)(path, {readOnly: true});
   try {

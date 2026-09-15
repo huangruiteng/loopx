@@ -35,6 +35,12 @@ export const AUTHORITY_STATE_CHECKPOINT_INTERVAL = 64;
 /**
  * Object path inside one projection. Arrays are addressed as a whole value;
  * element identity is owned by the domain, not by this codec.
+ *
+ * A segment is any JSON object key, so `""` and `__proto__` are addressable
+ * like every other key: the delta is what preserves the exact projection a
+ * commit published, and a key the store accepted before a migration must stay
+ * readable after it. Object writes therefore define own data properties
+ * instead of assigning through the prototype chain.
  */
 export type AuthorityStatePath = readonly string[];
 
@@ -54,6 +60,29 @@ function protocol(message: string): never {
 
 function canonicalBytesEqual(left: unknown, right: unknown): boolean {
   return canonicalAuthorityBytes(left).equals(canonicalAuthorityBytes(right));
+}
+
+/** Read one own property, never a value inherited from `Object.prototype`. */
+function ownValue(container: JsonObject, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(container, key);
+  return descriptor === undefined ? undefined : descriptor.value;
+}
+
+/**
+ * Store one own data property.
+ *
+ * Ordinary assignment is not safe for a JSON key: `container["__proto__"] =
+ * value` replaces the container's prototype instead of storing the key, which
+ * both loses the value and pollutes the object. `Object.defineProperty` keeps
+ * every key addressable and keeps the container a plain object.
+ */
+function defineOwnValue(container: JsonObject, key: string, value: unknown): void {
+  Object.defineProperty(container, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
 }
 
 /** Digest of one committed projection; the anchor every reconstruction checks. */
@@ -106,9 +135,9 @@ function diffAuthorityState(
       if (!Object.hasOwn(next, key)) {
         operations.push({op: "remove", path: childPath});
       } else if (!Object.hasOwn(previous, key)) {
-        operations.push({op: "set", path: childPath, value: next[key]});
+        operations.push({op: "set", path: childPath, value: ownValue(next, key)});
       } else {
-        diffAuthorityState(previous[key], next[key], childPath, operations);
+        diffAuthorityState(ownValue(previous, key), ownValue(next, key), childPath, operations);
       }
     }
     return;
@@ -159,6 +188,28 @@ export function applyAuthorityStateDelta(
   return canonicalAuthorityObject(result, "reconstructed authority state");
 }
 
+/**
+ * Whether one delta rebuilds exactly the projection it claims to describe.
+ *
+ * Both writers of a delta - the live commit path and the V1 to V2 migration -
+ * must prove this before they persist, so the rule has one owner instead of two
+ * copies that can drift. An undecodable or inapplicable delta is a failed
+ * reconstruction rather than a different outcome: the caller fails closed the
+ * same way either way.
+ */
+export function authorityStateDeltaReconstructs(
+  previous: JsonObject,
+  delta: AuthorityStateDelta,
+  projection: JsonObject,
+): boolean {
+  try {
+    return canonicalAuthorityBytes(applyAuthorityStateDelta(previous, delta))
+      .equals(canonicalAuthorityBytes(projection));
+  } catch {
+    return false;
+  }
+}
+
 function applyAuthorityStateOperation(root: JsonObject, operation: AuthorityStateOperation): void {
   const segments = operation.path;
   if (segments.length === 0) protocol("authority state delta cannot target the root state");
@@ -169,7 +220,7 @@ function applyAuthorityStateOperation(root: JsonObject, operation: AuthorityStat
   const present = Object.hasOwn(container, last);
   if (operation.op === "splice") {
     if (!present) protocol("authority state delta path leaves the previous state");
-    const target = container[last];
+    const target = ownValue(container, last);
     if (!Array.isArray(target)) protocol("authority state delta spliced a value that is not an array");
     if (operation.index < 0 || operation.remove < 0 ||
       operation.index + operation.remove > target.length) {
@@ -183,14 +234,14 @@ function applyAuthorityStateOperation(root: JsonObject, operation: AuthorityStat
     if (!present) protocol("authority state delta removed a value that was never stored");
     delete container[last];
   }
-  else container[last] = structuredClone(operation.value);
+  else defineOwnValue(container, last, structuredClone(operation.value));
 }
 
 function descend(container: unknown, segment: string): unknown {
   if (!isAuthorityJsonObject(container) || !Object.hasOwn(container, segment)) {
     protocol("authority state delta path leaves the previous state");
   }
-  return container[segment];
+  return ownValue(container, segment);
 }
 
 /** Boundary decoder: stored or transported deltas enter as `unknown`. */
@@ -233,7 +284,7 @@ function decodeAuthorityStateOperation(value: unknown, index: number): Authority
 function decodeAuthorityStatePath(value: unknown, label: string): AuthorityStatePath {
   if (!Array.isArray(value) || value.length === 0) protocol(`${label} path is invalid`);
   return value.map(segment => {
-    if (typeof segment === "string" && segment.length > 0) return segment;
+    if (typeof segment === "string") return segment;
     return protocol(`${label} path segment is invalid`);
   });
 }
