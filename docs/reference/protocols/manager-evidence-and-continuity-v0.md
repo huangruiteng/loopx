@@ -140,6 +140,17 @@ endpoint cannot serve this channel. `available` is `null` when the projection
 makes no claim. A frontend can show which executor and model the steward channel
 resolved, and why, without re-deriving the rule.
 
+The Chat server that opens a steward Session is an entry point, not a second
+owner: it resolves the executor through the same channel decision this payload
+reports. A session request that carries no executor pick lands on the resolved
+endpoint and reports it back as the session's `executor_endpoint_id`, so a client
+that ships with its own silent executor default cannot re-point the channel
+behind its own readback. A caller that does make an explicit pick keeps it, and a
+Goal-scoped session keeps the Goal channel's own default. The steward channel is
+one conversation across whatever executor it currently resolves, so a client
+reading that conversation asks for the channel instead of filtering it by an
+executor the client assumed.
+
 The Personal Workspace manager header renders that binding as one compact chip
 (`executor · executor kind · model`). The chip is display-only: it reads the
 projected fields, keeps the executor kind in the same `individual`/`managed`
