@@ -112,6 +112,35 @@ selected. Discovering `DEEPSEEK_API_KEY` must never re-point a Turn by itself.
 | per-command override | `--host codex-cli\|claude-code\|dsh\|generic-cli` (plan), `codex-cli\|dsh\|generic-cli` (run-once) |
 | authenticating credential | `DEEPSEEK_API_KEY`, optional endpoint `DEEPSEEK_BASE_URL` |
 
+Selecting the host is not the same as choosing *what runs on it*. The managed
+host resolves one **managed execution profile** — provider, model, and reasoning
+effort — with explicit precedence: an explicit argument (for example
+`--dsh-model`, `--dsh-reasoning-effort`) wins, then the operator's environment,
+then the product default.
+
+| execution profile field | product default | operator override | legacy lower-precedence override |
+| --- | --- | --- | --- |
+| provider | `deepseek-official` | `LOOPX_TURN_PROVIDER` | `DSH_PROVIDER` |
+| model | `deepseek-v4-flash` | `LOOPX_TURN_MODEL` | `DSH_MODEL` |
+| reasoning effort | `high` | `LOOPX_TURN_REASONING_EFFORT` | — |
+
+The managed `managed_executor` readback reports the resolved profile as one line,
+`<model>@<reasoning_effort>` (the shipped shape is `deepseek-v4-flash@high`).
+The provider is prepended as `<provider>/…` only when the resolved provider is
+not the shipped one, because dropping it for a deviating provider would make the
+line claim a profile the Turn would not use. Whichever values the line names are
+the values that run, so an owner-set model appears as itself rather than as the
+shipped default. The line stays one line because every plan and execution payload
+carries it and the agent-facing output budget is a contract; the field-by-field
+form, with each value's source and the variable that set it, belongs to the
+configuration readbacks a person reads.
+
+An explicit argument the adapter cannot honour fails closed as
+`invalid_reasoning_effort` rather than being silently coerced, and the refused
+effort is named in the same line. Credentials authenticate the selected profile;
+discovering `DEEPSEEK_API_KEY` never changes provider, model, or effort on its
+own.
+
 This is a default behavior change for the affected lanes: `run-once` moved from
 `generic-cli` to `dsh`, and `plan` from `codex-cli` to `dsh`. `--host
 generic-cli` and `--host codex-cli` remain the explicit compatibility and
@@ -130,6 +159,7 @@ whether it can launch here. When it cannot, `available` is `false` and
 | --- | --- | --- |
 | `dsh_runtime_unavailable` | the DeepSeek Harness runtime is not importable and no explicit runner hook was supplied | install the released runtime, pass its runner hook, or select `--host codex-cli` |
 | `operator_credential_unconfigured` | the managed host is selected but no operator credential or runner hook would authenticate it | set `DEEPSEEK_API_KEY`, or select `--host codex-cli` explicitly |
+| `invalid_reasoning_effort` | the resolved execution profile names a reasoning effort the host adapter does not support | pass a supported `--dsh-reasoning-effort`, or clear the overriding environment variable |
 
 `run-once --execute` fails closed on that verdict: status `unavailable`, no host
 invocation, no Journal write, and no quota slot spend. An explicitly selected

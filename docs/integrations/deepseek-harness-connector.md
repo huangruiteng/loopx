@@ -147,6 +147,15 @@ re-points that default, and an explicit `--host` (or `--host-adapter-command-jso
 wins over both. A configured `DEEPSEEK_API_KEY` only *authenticates* the selected
 host: discovering a credential never changes where a Turn runs.
 
+What runs on that host is a separate resolution. The managed execution profile
+defaults to `deepseek-official` / `deepseek-v4-flash` / `high`, overridden by
+`LOOPX_TURN_PROVIDER` / `LOOPX_TURN_MODEL` / `LOOPX_TURN_REASONING_EFFORT` and, at
+lower precedence, by the legacy `DSH_PROVIDER` / `DSH_MODEL`; an explicit
+`--dsh-provider` / `--dsh-model` / `--dsh-reasoning-effort` wins over both. The
+steward channel resolves the same profile when it selects the managed host, so
+the channel and the bounded Turns it drives cannot land on two different managed
+models.
+
 Both `loopx turn plan` and `loopx turn run-once` report a `managed_executor`
 block, so a caller reads the planned executor instead of inferring it from a
 host id:
@@ -159,6 +168,7 @@ host id:
   "credential_env": "DEEPSEEK_API_KEY",
   "endpoint_env": "DEEPSEEK_BASE_URL",
   "operator_credential_bound": true,
+  "execution_profile": "deepseek-v4-flash@high",
   "available": true,
   "unavailable_reason": null
 }
@@ -172,12 +182,16 @@ only when the operator credential or an explicit injected runner hook is
 configured. `available` is `false` only when LoopX can prove the planned host
 cannot launch here, and `null` for executors this projection does not probe
 rather than an unproven claim. Only the credential variable *name* is reported;
-the value is never read back.
+the value is never read back. `execution_profile` is the resolved profile as one
+line, `deepseek-v4-flash@high` in the shipped shape, with the provider prepended
+only when it is not the shipped one -- it is one line because every plan carries
+it, and the agent-facing output budget is a contract.
 
 `run-once --execute` fails closed on that verdict: status `unavailable`, no host
 invocation, no journal write, and no quota spend, with
-`dsh_runtime_unavailable` or `operator_credential_unconfigured` naming the
-missing fact. `plan` reports the same verdict without refusing.
+`dsh_runtime_unavailable`, `operator_credential_unconfigured`, or
+`invalid_reasoning_effort` naming the missing fact. `plan` reports the same
+verdict without refusing.
 
 ## Boundaries
 
