@@ -575,6 +575,21 @@ path, and canary route rather than as a user-facing release baseline.
   typed upstream terminal errors land through #4126 and #4215. The published
   wheel, source distribution, macOS, Windows, checksum, update, and PyPI
   artifacts were verified against the exact release source before promotion.
+- `v1.0.4` on 2026-09-15 14:19 +08:00: bounded local authority storage,
+  human-confirmed operations, and a wider typed kernel release at the matching
+  `v1.0.4` tag (`b6d877b0c`). The opt-in SQLite authority provider keeps its
+  retained state log bounded with compact operation deltas plus periodic
+  checkpoints, separates storage, head, and continuity integrity, and migrates
+  V1 -> V2 as one idempotent, fail-closed transaction with a plan/execute
+  operator command (#4408, #4328, #4121); PostgreSQL authority admission
+  becomes a service-owned boundary whose authority ladder runs against a real
+  server in CI (#4334, #4399). Goal Channel operations ship as human-confirmed
+  typed actions whose review decision travels with the operation instead of
+  being re-derived per surface (#4275, #4364, #4132), and Todo, quota, lease,
+  monitor, and decision-scope rules converge on shared typed owners (#4273,
+  #4289, #4292, #4348, #4351). The published wheel, source distribution,
+  macOS, Windows, checksum, signed-update, and PyPI artifacts were verified
+  against the exact release source before `stable` fast-forwarded.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
