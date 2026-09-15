@@ -215,6 +215,27 @@ These facts retain `recorded_claim_not_independent_verification` and
 reader is added. Existing owner/external scope checks and snapshot identity
 cover this hydration; there is no second progress store or extra history scan.
 
+## A bounded recent-evidence window with declared sources
+
+The turn context reads a bounded recent window rather than one day, because a
+single-day read cannot answer a week question and an unbounded one would grow a
+prompt-only managed transport without limit. `evidence_window` records the
+schema, the number of days, the local window bounds, the per-day and total
+receipt limits, the per-day matched counts, included versus omitted receipts,
+invalid records, and `receipt_detail`: each Goal's newest receipt in the window
+keeps full `recorded_details`, while older in-window receipts are compacted to
+their recorded outcome, result class, probe kind and surface. Receipts outside
+the window are outside coverage, not evidence of no progress, and the newest
+finding for a Goal is never dropped by the window bound.
+
+The same block declares `sources`: the local registry source plus every
+configured SSH host alias with its read status and scope. Declaring a source
+performs no remote connection and grants no authority; reading remote rows still
+requires the explicit bounded remote read path and its before/after scope checks.
+A declared but unread source is a named coverage gap. The manager must state the
+window and the sources it actually read, and must not present a single-day read
+or an unread host as whole coverage.
+
 ## A bounded portfolio with explicit coverage
 
 Discover Goals from the authorized registry inventory, including unavailable

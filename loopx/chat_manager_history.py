@@ -73,16 +73,22 @@ def _recorded_details(run):
 
 
 def read_manager_delivery_history(
-    runtime_root: Path, goal_id: str, *, now=None, limit=24, offset=None, lookback_days=1
+    runtime_root: Path, goal_id: str, *, now=None, limit=24, offset=None, lookback_days=1,
+    total_limit=None,
 ):
     now = now or datetime.now().astimezone()
     if type(lookback_days) is not int or not 1 <= lookback_days <= 90:
         raise ValueError("lookback_days must be 1..90")
+    if total_limit is not None and (
+        type(total_limit) is not int or not 1 <= total_limit <= 500
+    ):
+        raise ValueError("total_limit must be 1..500")
     start = (now - timedelta(days=lookback_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     path = runtime_root / "goals" / goal_id / "runs" / "index.jsonl"
     base = {
         "window_start": start.isoformat(),
         "window_end": now.isoformat(),
+        "window_days": lookback_days,
         "observed_at": datetime.now(timezone.utc).isoformat(),
         "deliveries": [],
     }
@@ -164,6 +170,9 @@ def read_manager_delivery_history(
                 included.append(row)
         if offset is not None:
             included = rows[offset:offset + limit]
+        elif total_limit is not None and len(included) > total_limit:
+            # A wider window must not grow the model context without a bound.
+            included = included[:total_limit]
         return {
             **base,
             "status": "read",
@@ -177,6 +186,7 @@ def read_manager_delivery_history(
                 "omitted": len(rows) - len(included),
                 "matched_by_day": day_counts,
                 "limit_per_day": limit if offset is None else None,
+                "total_limit": total_limit if offset is None else None,
                 **({"offset": offset} if offset is not None else {}),
                 "invalid_delivery_records": invalid,
             },

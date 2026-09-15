@@ -1,5 +1,8 @@
 """Manager scope, restart migration and per-turn Core evidence contracts."""
 
+import json
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import loopx.chat_manager_context as context
@@ -86,6 +89,158 @@ def test_context_scopes_before_read_and_missing_registry_is_unknown(
     missing = context.manager_turn_context(None, {"channel_id": "manager"}, tmp_path)
     assert missing["coverage"]["discovered"] is None
     assert missing["warnings"] == ["registry_unavailable"]
+
+
+def _write_delivery_index(root, goal_id, rows):
+    path = root / "goals" / goal_id / "runs" / "index.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def test_turn_context_reads_a_bounded_window_and_declares_sources(
+    monkeypatch, tmp_path
+):
+    now = datetime.now(timezone.utc)
+    # A week question needs more than today; the per-day and total bounds must
+    # still hold, and the newest receipt must stay fully readable.
+    rows = []
+    for days_ago in range(6):
+        for index in range(12):
+            rows.append(
+                {
+                    "generated_at": (now - timedelta(days=days_ago, minutes=index)).isoformat(),
+                    "goal_id": "alpha",
+                    "agent_id": "worker",
+                    "todo_id": f"todo_{days_ago}_{index}",
+                    "classification": "validated_progress",
+                    "delivery_outcome": "outcome_progress",
+                    "recommended_action": f"follow up {days_ago}-{index}",
+                }
+            )
+    _write_delivery_index(tmp_path, "alpha", rows)
+    monkeypatch.setattr(
+        context,
+        "build_goal_portfolio",
+        lambda **_: {
+            "goals": [{"goal_id": "alpha", "activation_state": "active"}],
+            "coverage": {"discovered": 1},
+        },
+    )
+    monkeypatch.setattr(
+        context,
+        "read_manager_goal_details",
+        lambda *args, **kwargs: {"status": "read", "todos": []},
+    )
+
+    result = context.manager_turn_context(
+        tmp_path / "registry.json", {"channel_id": "manager"}, tmp_path
+    )
+
+    window = result["evidence_window"]
+    assert window["schema_version"] == context.MANAGER_EVIDENCE_WINDOW_SCHEMA
+    assert window["days"] == context.MANAGER_EVIDENCE_WINDOW_DAYS == 7
+    assert window["applies_to"] == "recent_delivery_history"
+    assert window["read_status"] == "read"
+    assert len(window["matched_by_day"]) == 6
+    history = result["goals"][0]["recent_delivery_history"]
+    deliveries = history["deliveries"]
+    assert len(deliveries) == context.MANAGER_EVIDENCE_TOTAL_LIMIT
+    assert len({row["goal_id"] for row in deliveries}) == 1
+    assert deliveries[0]["receipt_detail"] == "full"
+    assert deliveries[0]["recorded_details"]["source"] == "core_run_index"
+    assert {row["receipt_detail"] for row in deliveries[1:]} == {"compact"}
+    assert not [row for row in deliveries[1:] if "recorded_details" in row]
+    assert history["coverage"]["included"] == context.MANAGER_EVIDENCE_TOTAL_LIMIT
+    assert history["coverage"]["omitted"] > 0
+    assert history["window_days"] == 7
+    # Declared sources are data, not a read: local is available, others are not.
+    sources = {source["source_id"]: source for source in window["sources"]}
+    assert sources["local"]["status"] == "available"
+    assert all(
+        source["status"] == "available"
+        for source in window["sources"]
+        if source["source_id"] == "local"
+    )
+    assert window["declared_unread_sources"] == [
+        source["source_id"]
+        for source in window["sources"]
+        if source["status"] != "available"
+    ]
+
+
+def test_unread_window_keeps_its_bounds_and_unchanged_seam_default(
+    monkeypatch, tmp_path
+):
+    from loopx.chat_manager_history import read_manager_delivery_history
+
+    now = datetime.now(timezone.utc)
+    _write_delivery_index(
+        tmp_path,
+        "alpha",
+        [
+            {
+                "generated_at": (now - timedelta(days=days_ago)).isoformat(),
+                "goal_id": "alpha",
+                "delivery_outcome": "outcome_progress",
+                "todo_id": f"todo_{days_ago}",
+            }
+            for days_ago in range(3)
+        ],
+    )
+    # The reader keeps its explicit one-day default; the turn context chooses
+    # the wider bounded window.
+    default_ids = [
+        row["todo_id"]
+        for row in read_manager_delivery_history(tmp_path, "alpha")["deliveries"]
+    ]
+    assert "todo_0" in default_ids
+    assert "todo_2" not in default_ids
+    assert [
+        row["todo_id"]
+        for row in read_manager_delivery_history(
+            tmp_path, "alpha", total_limit=1
+        )["deliveries"]
+    ] == ["todo_0"]
+    with pytest.raises(ValueError):
+        read_manager_delivery_history(tmp_path, "alpha", total_limit=501)
+    monkeypatch.setattr(
+        context,
+        "build_goal_portfolio",
+        lambda **_: {
+            "goals": [{"goal_id": "alpha", "activation_state": "active"}],
+            "coverage": {"discovered": 1},
+        },
+    )
+    monkeypatch.setattr(
+        context,
+        "read_manager_goal_details",
+        lambda *args, **kwargs: {"status": "read", "todos": []},
+    )
+    windowed = context.manager_turn_context(
+        tmp_path / "registry.json", {"channel_id": "manager"}, tmp_path
+    )
+    assert "todo_2" in [
+        row["todo_id"]
+        for row in windowed["goals"][0]["recent_delivery_history"]["deliveries"]
+    ]
+    result = context.manager_turn_context(
+        tmp_path / "registry.json",
+        {"channel_id": "manager"},
+        tmp_path,
+        include_details=False,
+    )
+    assert result["evidence_window"]["read_status"] == "not_read"
+    assert result["evidence_window"]["days"] == 7
+    with pytest.raises(ValueError):
+        context.manager_turn_context(
+            tmp_path / "registry.json",
+            {"channel_id": "manager"},
+            tmp_path,
+            evidence_window_days=0,
+        )
 
 
 class Adapter:

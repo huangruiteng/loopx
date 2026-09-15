@@ -150,6 +150,28 @@ def _has_tool_result(body: str) -> bool:
     return "call_sandbox_probe" in body
 
 
+def _manager_evidence_text() -> str:
+    """Return the decoded manager evidence prompt the segment received."""
+
+    for item in CAPTURED_REQUESTS:
+        try:
+            payload = json.loads(item["body"])
+        except ValueError:
+            continue
+        for message in payload.get("messages") or []:
+            if not isinstance(message, dict):
+                continue
+            content = message.get("content")
+            if isinstance(content, list):
+                content = "".join(
+                    str(part.get("text") if isinstance(part, dict) else part)
+                    for part in content
+                )
+            if isinstance(content, str) and "Fresh Core evidence" in content:
+                return content
+    return ""
+
+
 def _sandbox_probe_path() -> Path:
     return Path(tempfile.gettempdir()) / SANDBOX_PROBE_TARGET
 
@@ -266,6 +288,15 @@ def _run_turn(args: argparse.Namespace) -> int:
         _assert(
             any("Fresh Core evidence" in item["body"] for item in CAPTURED_REQUESTS),
             "the segment must receive the manager evidence context",
+        )
+        evidence_text = _manager_evidence_text()
+        _assert(
+            "manager_evidence_window_v0" in evidence_text
+            and '"applies_to": "recent_delivery_history"' in evidence_text
+            and '"receipt_detail_policy": "latest_full_per_goal"' in evidence_text
+            and '"sources"' in evidence_text
+            and '"declared_unread_sources"' in evidence_text,
+            "the prompt-only segment must receive the bounded window and declared sources",
         )
         payloads = [
             json.loads(item["body"])
