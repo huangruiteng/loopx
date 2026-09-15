@@ -793,6 +793,7 @@ def main(argv: list[str] | None = None) -> int:
 
     pr_review_result = handle_pr_review_command(
         args,
+        registry_path=registry_path,
         output_format=output_format,
         print_payload=print_payload,
         runtime_root=(

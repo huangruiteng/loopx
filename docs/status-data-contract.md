@@ -2323,7 +2323,12 @@ The summary currently reports:
 - `runs_24h` / `runs_7d`: observed compact run records in the current status
   sample.
 - `quota_spend_slots_24h` / `quota_spend_slots_7d`: slots from
-  `quota_slot_spent` events in that sample.
+  `quota_slot_spent` events in that sample, using the same rule as the quota
+  spend ledger (`goal_quota_with_spend_ledger`): the event's `event_type`
+  decides, a spend is keyed by the run it was recorded against, and a void is
+  clamped against the spend it names. A spend whose `quota_event` cannot be
+  read contributes no slot, and a void that targets a spend outside the window
+  does not reduce that window.
 - `automation_run_count_24h` / `automation_run_count_7d`: quota spend events
   whose compact `quota_event.source` is `heartbeat`, `automation`, or `cron`.
   If the compact run index does not retain a source, `quota_slot_spent` is

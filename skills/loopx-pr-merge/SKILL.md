@@ -36,10 +36,17 @@ A rebase or head update restarts review, and admin bypass never overrides this
 gate: it needs explicit owner authorization and never substitutes for the
 evidence.
 
+## Configured CI Waiting
+
+Pass `--goal-id GOAL` for managed merges and follow resolved `wait_for_ci`.
+The default is true. When false, do not query, poll, or wait for CI; complete
+required local validation and exact-head review/thread checks. GitHub `BLOCKED`
+then reports separately authorized admin bypass, never permission to merge.
+
 ## Decision Workflow
 
 1. Read the repository `AGENTS.md`, the pull-request diff, the changed paths, the
-   checks, and the latest comments.
+   local validation results, and the latest comments.
 2. Confirm that the repository's own self-merge policy covers the changed
    surfaces. The usual LoopX shape is single-purpose and validated work with no
    private state, no public evidence-policy change, no destructive git action,

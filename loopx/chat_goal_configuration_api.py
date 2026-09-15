@@ -135,6 +135,8 @@ def _goal_capability_options(
             return {"clear_periodic_report_configuration": True}
         if capability_id == "todo_replan_cadence":
             return {"clear_execution_replan_after_todos": True}
+        if capability_id == "pull_request_review":
+            return {"clear_pull_request_review_configuration": True}
         if capability_id == "change_quality_qualification":
             return {"clear_change_quality_configuration": True}
         if capability_id == "reward_memory":
@@ -153,6 +155,7 @@ def _goal_capability_options(
         "peer_task_coordination": {"coordinator_agent_id"},
         "explore_graph": {"enabled"},
         "explore_harness": {"enabled", "profile"},
+        "pull_request_review": {"wait_for_ci", "review_priority"},
         "change_quality_qualification": {"enabled", "safe_fix", "strict_receipt"},
         "local_authority_shadow": {"enabled"},
         "lark_kanban_heartbeat_sync": {"enabled"},
@@ -201,6 +204,9 @@ def _goal_capability_options(
         }
     if capability_id == "explore_harness":
         return _explore_harness_options(config)
+    if capability_id == "pull_request_review":
+        from .capabilities.pr_review_queue.goal_configuration import normalize_configuration
+        return {"pull_request_review_configuration": normalize_configuration(config)}
     if capability_id == "change_quality_qualification":
         return _change_quality_options(config)
     if capability_id == "local_authority_shadow":

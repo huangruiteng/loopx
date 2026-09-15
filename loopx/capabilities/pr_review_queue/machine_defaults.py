@@ -21,7 +21,7 @@ PULL_REQUEST_REVIEW_MACHINE_DEFAULTS_SCHEMA = (
 def normalize_pull_request_review_machine_defaults(
     raw: Mapping[str, Any],
 ) -> dict[str, Any]:
-    unknown = sorted(set(raw) - {"schema_version", "review_priority"})
+    unknown = sorted(set(raw) - {"schema_version", "review_priority", "wait_for_ci"})
     if unknown:
         raise ValueError(
             "pull_request_review contains unsupported fields: "
@@ -32,7 +32,11 @@ def normalize_pull_request_review_machine_defaults(
             "pull_request_review must use "
             + PULL_REQUEST_REVIEW_MACHINE_DEFAULTS_SCHEMA
         )
+    wait_for_ci = raw.get("wait_for_ci", True)
+    if type(wait_for_ci) is not bool:
+        raise TypeError("pull_request_review.wait_for_ci must be a boolean")
     return {
+        "wait_for_ci": wait_for_ci,
         "schema_version": PULL_REQUEST_REVIEW_MACHINE_DEFAULTS_SCHEMA,
         "review_priority": normalize_review_priority(raw.get("review_priority")).value,
     }
@@ -47,13 +51,15 @@ def pull_request_review_machine_configuration_namespace() -> MachineConfiguratio
         apply_public_update=lambda _current, update: dict(update),
         title="Pull-request review",
         description=(
-            "Machine default for the PR review queue. Other developers are ranked "
-            "first by default; owner-first is an explicit opt-in. This changes "
-            "ordering only and grants no GitHub, Todo, push, or merge authority."
+            "Machine defaults for review priority and CI waiting, with complete "
+            "Goal overrides. Other developers rank first and CI waiting is enabled "
+            "by default. Disabling CI waiting preserves required local validation "
+            "and grants no GitHub, Todo, push, or merge authority."
         ),
         default_configuration={
             "schema_version": PULL_REQUEST_REVIEW_MACHINE_DEFAULTS_SCHEMA,
             "review_priority": DEFAULT_REVIEW_PRIORITY.value,
+            "wait_for_ci": True,
         },
     )
 

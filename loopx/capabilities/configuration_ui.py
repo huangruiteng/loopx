@@ -203,9 +203,10 @@ def capability_configuration_editor(
             ],
         },
         "pull_request_review": {
-            "supported_scopes": ["machine"],
-            "writable_scopes": ["machine"],
+            "supported_scopes": ["machine", "goal"],
+            "writable_scopes": ["machine", "goal"],
             "fields": [
+                _field("wait_for_ci", "Wait for CI", "boolean", description="When disabled, use local validation without querying or waiting for CI. This grants no merge authority."),
                 _field(
                     "review_priority",
                     "Review priority",

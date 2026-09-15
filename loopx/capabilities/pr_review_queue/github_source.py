@@ -19,7 +19,6 @@ DETAIL_FIELDS = (
     "createdAt",
     "commits",
     "reviews",
-    "statusCheckRollup",
 )
 
 
@@ -91,9 +90,11 @@ def attach_pr_review_details(
     repository: str | None,
     cwd: Path | None = None,
     run_gh_json: GitHubJsonRunner = run_gh_json,
+    wait_for_ci: bool = True,
 ) -> bool:
     """Attach complete per-PR details after the lightweight list scan."""
 
+    detail_fields = DETAIL_FIELDS + (("statusCheckRollup",) if wait_for_ci else ())
     number = str(row.get("number") or "").strip()
     if not number or not repository:
         return False
@@ -104,7 +105,7 @@ def attach_pr_review_details(
                 "view",
                 number,
                 "--json",
-                ",".join(DETAIL_FIELDS),
+                ",".join(detail_fields),
                 "--repo",
                 repository,
             ],
@@ -117,7 +118,7 @@ def attach_pr_review_details(
     except (KeyError, TypeError, ValueError):
         return False
     if not isinstance(details, dict) or any(
-        key not in details for key in DETAIL_FIELDS
+        key not in details for key in detail_fields
     ):
         return False
     detail_files = details["files"]
@@ -134,7 +135,7 @@ def attach_pr_review_details(
         if detail_files is None:
             return False
         details["files"] = detail_files
-    for key in DETAIL_FIELDS:
+    for key in detail_fields:
         row[key] = details[key]
     return True
 
@@ -149,6 +150,7 @@ def attach_pr_review_details_concurrently(
     cwd: Path | None = None,
     attach: Callable[..., bool] = attach_pr_review_details,
     run_gh_json: GitHubJsonRunner = run_gh_json,
+    wait_for_ci: bool = True,
 ) -> list[bool]:
     """Read per-PR details concurrently while preserving queue order."""
 
@@ -162,6 +164,7 @@ def attach_pr_review_details_concurrently(
             repository=repository,
             cwd=cwd,
             run_gh_json=run_gh_json,
+            **({"wait_for_ci": False} if not wait_for_ci else {}),
         )
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:

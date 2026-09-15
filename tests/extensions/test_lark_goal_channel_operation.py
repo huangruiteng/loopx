@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import threading
 from typing import Any
 
@@ -18,10 +19,12 @@ from loopx.extensions.lark.goal_channel_contracts import (
     write_goal_channel_binding,
 )
 from loopx.extensions.lark.goal_channel_message_delivery import (
+    GoalChannelDeliveryStageError,
     message_card_matches,
     normalized_card_text,
 )
 from loopx.extensions.lark.goal_channel_operation import (
+    OperationExecutorDriftError,
     build_goal_channel_operation_card,
     build_goal_channel_operation_result_card,
     deliver_goal_channel_operation_card,
@@ -650,6 +653,9 @@ def test_cli_preparation_previews_without_write_then_persists_canonical_proposal
         idempotency_key="cli-operation-fixture",
         request_path=request_path,
         execute=False,
+        executor_binding_resolver=lambda _parameters, _runtime: {
+            "revision": "simulator-v0"
+        },
     )
     assert preview["status"] == "preview_ready"
     assert store.list() == []
@@ -663,6 +669,9 @@ def test_cli_preparation_previews_without_write_then_persists_canonical_proposal
         idempotency_key="cli-operation-fixture",
         request_path=request_path,
         execute=True,
+        executor_binding_resolver=lambda _parameters, _runtime: {
+            "revision": "simulator-v0"
+        },
     )
     assert applied["status"] == "awaiting_confirmation"
     assert applied["details"]["durable_proposal_written"] is True
@@ -1371,3 +1380,274 @@ def test_forwarded_or_unauthorized_card_cannot_claim(tmp_path: Path) -> None:
             runner=runner,
             executor=lambda _proposal: {},
         )
+
+
+def test_prepare_rejects_stale_executor_revision_before_any_persistence(
+    tmp_path: Path,
+) -> None:
+    """A stale revision is blocked in preview and execute without any write."""
+
+    store, registry, runtime, _binding, _target = _fixture(tmp_path)
+    request_path = tmp_path / "operation.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "loopx_operation_request_v0",
+                "domain": "finance",
+                "operation_kind": "finance.order.simulate",
+                "operation_schema": "finance_order_intent_v0",
+                "payload_ref": "finance-order:stale-fixture",
+                "payload": {"asset": "SYNTH"},
+                "payload_digest": _digest({"asset": "SYNTH"}),
+                "projection": {
+                    "schema_version": "loopx_operation_projection_v0",
+                    "title": "Simulated trade request",
+                    "subtitle": "Synthetic fixture",
+                    "focus": "BUY 1 SYNTH @ 10 TEST",
+                    "fields": [{"label": "Order", "value": "Limit · GTC"}],
+                    "warning": "Simulation only.",
+                    "simulated": True,
+                },
+                "destination_account_ref": "account:simulation",
+                "expires_at": (
+                    datetime.now(timezone.utc) + timedelta(hours=1)
+                ).isoformat(),
+                "authorized_principals": [f"lark:{OPERATOR_ID}"],
+                "executor": {
+                    "extension_id": "loopx-finance-execution",
+                    "protocol": "finance_operation_executor_v0",
+                    "permission": "finance.operation.simulate",
+                    "revision": "requested-v1",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    for execute in (False, True):
+        with pytest.raises(OperationExecutorDriftError) as exc_info:
+            _prepare_goal_channel_operation(
+                registry_path=registry,
+                runtime_root=runtime,
+                goal_id=GOAL_ID,
+                agent_id=AGENT_ID,
+                summary="Review one simulated order",
+                idempotency_key=f"stale-operation-{execute}",
+                request_path=request_path,
+                execute=execute,
+                executor_binding_resolver=lambda _parameters, _runtime: {
+                    "revision": "active-v9"
+                },
+            )
+        assert exc_info.value.blocker == "executor_revision_drift"
+        assert exc_info.value.failure_stage == "resolve_executor_binding"
+        assert exc_info.value.details == {
+            "requested_executor_revision": "requested-v1",
+            "active_executor_revision": "active-v9",
+        }
+        assert exc_info.value.external_write_performed is False
+
+    durable = json.loads((store.root / "actions.json").read_text())
+    assert durable["proposals"] == {}
+    assert durable["idempotency"] == {}
+
+
+def test_prepare_rejects_unresolvable_executor_without_private_leak(
+    tmp_path: Path,
+) -> None:
+    """Resolution failures project a typed blocker without private text."""
+
+    store, registry, runtime, _binding, _target = _fixture(tmp_path)
+    request_path = tmp_path / "operation.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "loopx_operation_request_v0",
+                "domain": "finance",
+                "operation_kind": "finance.order.simulate",
+                "operation_schema": "finance_order_intent_v0",
+                "payload_ref": "finance-order:unavailable-fixture",
+                "payload": {"asset": "SYNTH"},
+                "payload_digest": _digest({"asset": "SYNTH"}),
+                "projection": {
+                    "schema_version": "loopx_operation_projection_v0",
+                    "title": "Simulated trade request",
+                    "subtitle": "Synthetic fixture",
+                    "focus": "BUY 1 SYNTH @ 10 TEST",
+                    "fields": [{"label": "Order", "value": "Limit · GTC"}],
+                    "warning": "Simulation only.",
+                    "simulated": True,
+                },
+                "destination_account_ref": "account:simulation",
+                "expires_at": (
+                    datetime.now(timezone.utc) + timedelta(hours=1)
+                ).isoformat(),
+                "authorized_principals": [f"lark:{OPERATOR_ID}"],
+                "executor": {
+                    "extension_id": "loopx-finance-execution",
+                    "protocol": "finance_operation_executor_v0",
+                    "permission": "finance.operation.simulate",
+                    "revision": "simulator-v0",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def broken_resolver(_parameters: object, _runtime: object) -> object:
+        raise ValueError("private resolver detail: /home/operator/secret-path")
+
+    with pytest.raises(GoalChannelDeliveryStageError) as exc_info:
+        _prepare_goal_channel_operation(
+            registry_path=registry,
+            runtime_root=runtime,
+            goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
+            summary="Review one simulated order",
+            idempotency_key="unavailable-operation",
+            request_path=request_path,
+            execute=True,
+            executor_binding_resolver=broken_resolver,
+        )
+
+    assert str(exc_info.value) == "operation executor binding is unavailable"
+    assert exc_info.value.blocker == "executor_unavailable"
+    assert "secret-path" not in str(exc_info.value)
+    durable = json.loads((store.root / "actions.json").read_text())
+    assert durable["proposals"] == {}
+    assert durable["idempotency"] == {}
+
+
+def test_delivery_projects_typed_stage_blockers(tmp_path: Path) -> None:
+    """Stage failures keep their typed blocker and stage at the deliver seam."""
+
+    def _failed_delivery(
+        case: str,
+        fail_args: tuple[str, ...],
+        *,
+        outcome: dict[str, Any] | None = None,
+        raises: Exception | None = None,
+    ) -> tuple[GoalChannelDeliveryStageError, list[list[str]]]:
+        case_root = tmp_path / case
+        case_root.mkdir()
+        store, registry, runtime, binding, target = _fixture(case_root)
+        proposal = _prepare(store, registry)
+        calls: list[list[str]] = []
+        base = _runner(calls, {})
+
+        def runner(
+            args: list[str], cwd: Path | None, timeout: float | None
+        ) -> dict[str, Any]:
+            if all(fragment in args for fragment in fail_args):
+                calls.append(list(args))
+                if raises is not None:
+                    raise raises
+                if outcome is not None:
+                    return dict(outcome)
+                return {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": "provider rejected",
+                }
+            return base(args, cwd, timeout)
+
+        with pytest.raises(GoalChannelDeliveryStageError) as exc_info:
+            deliver_goal_channel_operation_card(
+                proposal_id=proposal["proposal_id"],
+                action_store_root=store.root,
+                runtime_root=runtime,
+                binding_path=binding,
+                target_path=target,
+                execute=True,
+                runner=runner,
+                executor_binding_resolver=lambda _parameters, _runtime: {
+                    "revision": "simulator-v0"
+                },
+            )
+        return exc_info.value, calls
+
+    blocked, identity_calls = _failed_delivery("identity", ("auth", "status"))
+    assert blocked.blocker == "sender_identity_unverified"
+    assert blocked.failure_stage == "verify_sender_identity"
+    assert blocked.external_write_performed is False
+    assert not any("+messages-send" in call for call in identity_calls)
+
+    blocked, dedupe_calls = _failed_delivery("dedupe", ("+chat-messages-list",))
+    assert blocked.blocker == "dedupe_history_read_failed"
+    assert blocked.failure_stage == "read_dedupe_history"
+    assert blocked.external_write_performed is False
+    assert not any("+messages-send" in call for call in dedupe_calls)
+
+    blocked, send_calls = _failed_delivery("send", ("+messages-send",))
+    assert blocked.blocker == "provider_send_rejected"
+    assert blocked.failure_stage == "send_operation_card"
+    assert blocked.external_write_performed is False
+
+    # A provider answer is the only thing that can be projected as a verdict.
+    # Without one the card may already be live, so the send stage must report an
+    # unknown outcome rather than a clean no-write.
+    for case, outcome, raises in (
+        ("send-no-body", {"returncode": 1, "stdout": "", "stderr": ""}, None),
+        (
+            "send-timeout",
+            None,
+            subprocess.TimeoutExpired(cmd="lark-cli", timeout=30),
+        ),
+    ):
+        blocked, send_calls = _failed_delivery(
+            case, ("+messages-send",), outcome=outcome, raises=raises
+        )
+        assert blocked.blocker == "delivery_outcome_unknown", (case, blocked)
+        assert blocked.failure_stage == "send_operation_card", (case, blocked)
+        assert blocked.external_write_performed is None, (case, blocked)
+        assert any("+messages-send" in call for call in send_calls), case
+
+    # A command that never started cannot have written anything, and says so
+    # with its own blocker instead of being reported as a provider rejection.
+    blocked, send_calls = _failed_delivery(
+        "send-unavailable",
+        ("+messages-send",),
+        raises=FileNotFoundError("lark-cli"),
+    )
+    assert blocked.blocker == "provider_unavailable", blocked
+    assert blocked.failure_stage == "send_operation_card", blocked
+    assert blocked.external_write_performed is False, blocked
+
+
+def test_receipt_treats_post_send_failure_as_unknown_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failure after the provider write must not project a clean receipt."""
+
+    store, registry, runtime, binding, target = _fixture(tmp_path)
+    proposal = _prepare(store, registry)
+    calls: list[list[str]] = []
+
+    def failing_record(
+        self: ChatActionStore, *args: object, **kwargs: object
+    ) -> object:
+        raise OSError("synthetic receipt write failure")
+
+    monkeypatch.setattr(ChatActionStore, "record_operation_delivery", failing_record)
+
+    with pytest.raises(GoalChannelDeliveryStageError) as exc_info:
+        deliver_goal_channel_operation_card(
+            proposal_id=proposal["proposal_id"],
+            action_store_root=store.root,
+            runtime_root=runtime,
+            binding_path=binding,
+            target_path=target,
+            execute=True,
+            runner=_runner(calls, {}),
+            executor_binding_resolver=lambda _parameters, _runtime: {
+                "revision": "simulator-v0"
+            },
+        )
+
+    # The readback already proved the card is live, so this stage keeps its own
+    # blocker instead of diluting the "provider outcome unknown" signal.
+    assert exc_info.value.blocker == "delivery_receipt_write_failed"
+    assert exc_info.value.failure_stage == "record_delivery_receipt"
+    assert exc_info.value.external_write_performed is None
+    assert any("+messages-send" in call for call in calls)

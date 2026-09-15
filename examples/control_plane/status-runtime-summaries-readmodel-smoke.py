@@ -67,7 +67,13 @@ def build_history() -> dict[str, Any]:
         "goal_id": GOAL_ID,
         "classification": "quota_slot_spent",
         "generated_at": utc_isoformat(now),
-        "quota_event": {"slots": 1, "source": "heartbeat"},
+        # event_type is what the spend commit always stamps; the ledger and the
+        # usage summary both read the slot accounting from it.
+        "quota_event": {
+            "event_type": "quota_slot_spent",
+            "slots": 1,
+            "source": "heartbeat",
+        },
     }
     decision_run = {
         "goal_id": GOAL_ID,

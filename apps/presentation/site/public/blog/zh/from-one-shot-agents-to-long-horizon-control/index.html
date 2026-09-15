@@ -129,6 +129,7 @@ Progress   = 与验收相关的持久状态迁移</code></pre>
 <section id="agent-interface">
 <h2>4. 帮助 Agent 在合法空间内决定下一步的 CLI</h2>
 <p>可以把 LoopX 直观理解为一张可执行 Kanban。卡片有稳定身份、依赖、Claim、Scope、Evidence 和 Successor。移动卡片意味着申请一次可验证的状态迁移，看板展示的是这份契约。</p>
+<p>Agent-facing Kanban 还需要回答四个问题：状态怎样合法推进，Agent 依据什么有界上下文决策，Task 做完后怎样重新判断 Goal，以及某条路径等待时其他工作能否继续。它们决定了看板能否成为可接手的协作契约，而不仅是进度展示。具体实践见<a href="../agent-facing-kanban/">《从任务看板到长程协作：Agent-facing Kanban 的四个设计问题》</a>。</p>
 <p>它帮助 Agent 在合法空间内决定下一步，而不是给出一条不可偏离的唯一路线。<code>next_cli_actions</code>、推荐路线和 Planning Horizon 是 Guidance；只有由 Typed Contract 执行的权限、Gate、Quota、Claim、Lease 与验收边界，才是 Hard Boundary。</p>
 <p>CLI 将工作连续性写进交互。完成任务时，可以创建后继、链接已有后继，或在验收满足后记录结构化 No-follow-up 理由。这样，一次局部成功不会让更大的任务链断线。具体规则见 <a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/docs/project-agent-todo-contract.md">Todo Contract</a>。</p>
 <p>Interaction Contract 分开表达“人需要听到什么”和“Agent 必须做什么”。通知通道可以安静，同时要求 Agent 执行一段有界工作。反过来，状态要求等待时，调度器唤醒也可以合法地不产生工作。</p>

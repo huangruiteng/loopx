@@ -94,8 +94,9 @@ When `review_action_kind` is null, the row stays in `pull_requests` inventory bu
 Each PR gets an independent evidence pass and standalone card; a queue table is
 only a preface. Finish fewer complete cards rather than metadata-only reviews.
 
-## Publish And Read Back
+For managed review, pass `--goal-id GOAL` and follow the packet’s resolved `wait_for_ci`: false means never fetch, poll, or wait for CI; true retains CI validation. Required local failures/skips always block. Configure one Goal with `configure-goal --goal-id GOAL --no-pr-review-wait-for-ci --execute`; clear with `--clear-pr-review-configuration --execute`.
 
+## Publish And Read Back
 For an open PR, publish validated actionable findings by default unless the user
 requested local-only/dry-run output or the finding is private or security-sensitive.
 
@@ -122,7 +123,7 @@ bypass never overrides this gate, and author-owned fallback needs user authority
 ## Full PR Review And Bilingual Format
 
 Every review must cover the whole PR, not only the top finding: read the full
-diff/checks, then explain motivation, architecture, changed symbols, both paths,
+diff/local validation, then explain motivation, architecture, changed symbols, both paths,
 whole-diff risk, validation, and judgment. A findings-only or blocker-only body is incomplete.
 
 Publish two artifacts:

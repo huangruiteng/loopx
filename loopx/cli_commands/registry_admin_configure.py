@@ -79,6 +79,8 @@ def register_configure_goal_command(subparsers: argparse._SubParsersAction) -> N
         default=None,
         help="Enable or disable waiting-projection repair for this goal.",
     )
+    configure_goal_parser.add_argument("--pr-review-wait-for-ci", action=argparse.BooleanOptionalAction, default=None, help="Whether this Goal waits for CI during PR review; omitted inherits the machine default (true).")
+    configure_goal_parser.add_argument("--clear-pr-review-configuration", action="store_true", help="Remove Goal PR review overrides and restore machine defaults.")
     configure_goal_parser.add_argument(
         "--change-quality-enabled",
         action=argparse.BooleanOptionalAction,

@@ -35,6 +35,7 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--blue); outline
 .language { min-width: 44px; justify-content: center; }
 .blog-index { max-width: 1000px; min-height: calc(100vh - 200px); margin: 0 auto; padding: 96px 0 64px; }
 .eyebrow { font: 500 12px/20px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--body); }
+.keep-together { white-space: nowrap; }
 h1 { font-size: clamp(36px, 4.4vw, 56px); line-height: 1.08; font-weight: 600; letter-spacing: -.045em; text-wrap: balance; }
 .index-heading h1 { margin: 20px 0 24px; }
 .lead { color: var(--body); font-size: 18px; line-height: 1.65; max-width: 760px; }

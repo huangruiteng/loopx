@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -910,3 +910,55 @@ def load_quota_event_from_run(run: dict[str, Any]) -> dict[str, Any] | None:
         return None
     event = record.get("quota_event") if isinstance(record.get("quota_event"), dict) else None
     return event
+
+
+def quota_slot_contribution(run: dict[str, Any]) -> tuple[str, str, int] | None:
+    """Classify one run's contribution to the rolling-window slot ledger.
+
+    ``goal_quota_with_spend_ledger`` enforces quota from this rule and the
+    usage summary reports from it, so both read an event the same way: the
+    quota event's ``event_type`` decides, a spend is keyed by the run it was
+    recorded against, and a void by the run it targets. A run with no usable
+    event contributes no slot rather than a default one, which is what the
+    ledger already assumed.
+    """
+
+    event = load_quota_event_from_run(run)
+    if not event:
+        return None
+    slots = max(0, _int_number(event.get("slots"), default=0))
+    if slots <= 0:
+        return None
+    event_type = str(event.get("event_type") or "")
+    if event_type == QUOTA_SLOT_SPENT_CLASSIFICATION:
+        run_key = str(event.get("run_generated_at") or run.get("generated_at") or "")
+        if not run_key:
+            return None
+        return ("spent", run_key, slots)
+    if event_type == QUOTA_SLOT_VOIDED_CLASSIFICATION:
+        voided_run_generated_at = str(event.get("voided_run_generated_at") or "")
+        if not voided_run_generated_at:
+            return None
+        return ("voided", voided_run_generated_at, slots)
+    return None
+
+
+def net_quota_slot_spend(
+    contributions: Iterable[tuple[Any, str, int]],
+) -> dict[Any, int]:
+    """Clamp each spend bucket against the voids that target it.
+
+    A void only cancels the spend recorded against the key it names, so a
+    window that no longer holds that spend is never pushed negative and a void
+    never cancels an unrelated spend.
+    """
+
+    spent: dict[Any, int] = {}
+    voided: dict[Any, int] = {}
+    for bucket, kind, slots in contributions:
+        target = spent if kind == "spent" else voided
+        target[bucket] = target.get(bucket, 0) + slots
+    return {
+        bucket: max(0, slots - voided.get(bucket, 0))
+        for bucket, slots in spent.items()
+    }

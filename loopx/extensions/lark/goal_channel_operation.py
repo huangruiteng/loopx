@@ -24,6 +24,7 @@ from .goal_channel_delivery_contract import (
     goal_channel_delivery_route,
 )
 from .goal_channel_message_delivery import (
+    GoalChannelDeliveryStageError,
     GoalChannelMessageDeliverySession,
     card_projection_matches,
     message_card_matches,
@@ -430,13 +431,7 @@ def deliver_goal_channel_operation_card(
     goal_id = str(parameters["goal_id"])
     if expected_goal_id is not None and goal_id != expected_goal_id:
         raise ActionConflictError("operation proposal belongs to another goal")
-    resolved_executor = dict(
-        executor_binding_resolver(parameters, runtime_root)
-        if executor_binding_resolver is not None
-        else _resolve_operation_executor_binding(parameters, runtime_root=runtime_root)
-    )
-    if resolved_executor.get("revision") != parameters["executor"]["revision"]:
-        raise ActionConflictError("operation executor revision is not ready")
+    confirmed_operation_executor(parameters, runtime_root, executor_binding_resolver)
     agent_id = str(parameters["agent_id"])
     binding = resolve_bound_goal_channel(
         binding_path=binding_path,
@@ -485,10 +480,22 @@ def deliver_goal_channel_operation_card(
         runner=runner,
     )
     if session.verify(route) is not True:
-        raise ValueError("Goal Channel sender identity could not be verified")
+        raise GoalChannelDeliveryStageError(
+            "Goal Channel sender identity could not be verified",
+            blocker="sender_identity_unverified",
+            failure_stage="verify_sender_identity",
+        )
     sent = dict(session.send(card, key, route))
     message_id = str(sent.get("message_id") or "")
-    observed = dict(session.readback(message_id))
+    try:
+        observed = dict(session.readback(message_id))
+    except Exception as exc:
+        raise GoalChannelDeliveryStageError(
+            "operation card delivery outcome is unknown after the provider write",
+            blocker="delivery_outcome_unknown",
+            failure_stage="read_operation_card",
+            external_write_performed=None,
+        ) from exc
     if not (
         observed.get("verified") is True
         and observed.get("message_id") == message_id
@@ -508,22 +515,30 @@ def deliver_goal_channel_operation_card(
             receipt_id=proposal_id,
             blocker="readback_unverified",
         )
-    store.record_operation_delivery(
-        proposal_id,
-        delivery={
-            "provider": "lark",
-            "message_id": message_id,
-            "chat_id": route["chat_id"],
-            "app_id": route["bot_app_id"],
-            "binding_digest": goal_channel_binding_digest(binding),
-            "card_digest": card_digest,
-            "delivered_at": datetime.now(timezone.utc).isoformat(),
-        },
-    )
-    store.record_operation_delivery_snapshot(
-        proposal_id,
-        submitted_card=card,
-    )
+    try:
+        store.record_operation_delivery(
+            proposal_id,
+            delivery={
+                "provider": "lark",
+                "message_id": message_id,
+                "chat_id": route["chat_id"],
+                "app_id": route["bot_app_id"],
+                "binding_digest": goal_channel_binding_digest(binding),
+                "card_digest": card_digest,
+                "delivered_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        store.record_operation_delivery_snapshot(
+            proposal_id,
+            submitted_card=card,
+        )
+    except Exception as exc:
+        raise GoalChannelDeliveryStageError(
+            "operation card was delivered but its receipt could not be recorded",
+            blocker="delivery_receipt_write_failed",
+            failure_stage="record_delivery_receipt",
+            external_write_performed=None,
+        ) from exc
     return operation_packet(
         ok=True,
         goal_id=goal_id,
@@ -828,6 +843,76 @@ def _resolve_operation_executor_binding(
         protocol=str(executor["protocol"]),
         permission=str(executor["permission"]),
     )
+
+
+class OperationExecutorDriftError(ActionConflictError):
+    """The requested executor revision does not match the active binding.
+
+    Raised before any durable proposal is written and again at delivery, so
+    a stale proposal can never reach the provider. `details` carries only
+    opaque revision identifiers.
+    """
+
+    def __init__(
+        self,
+        summary: str,
+        *,
+        failure_stage: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(summary)
+        self.blocker = "executor_revision_drift"
+        self.failure_stage = failure_stage
+        self.details = dict(details or {})
+        self.external_write_performed = False
+
+
+def confirmed_operation_executor(
+    parameters: Mapping[str, Any],
+    runtime_root: Path,
+    executor_binding_resolver: (
+        Callable[[Mapping[str, Any], Path], Mapping[str, Any]] | None
+    ),
+) -> dict[str, Any]:
+    """Resolve the declared executor binding against the active revision.
+
+    Shared by prepare (before any durable write) and deliver, so a proposal
+    whose executor revision no longer matches the installed extension is
+    rejected with a typed blocker instead of surfacing later as an
+    unreachable gated proposal. Resolution failures never leak the private
+    resolver text. ``executor_binding_resolver`` is a test seam with the same
+    shape as the delivery runner: production callers leave it unset and get the
+    extension binding resolver, so it is not a supported configuration entry.
+    """
+
+    executor = parameters.get("executor")
+    requested_revision = (
+        executor.get("revision") if isinstance(executor, Mapping) else None
+    )
+    try:
+        resolved = dict(
+            executor_binding_resolver(parameters, runtime_root)
+            if executor_binding_resolver is not None
+            else _resolve_operation_executor_binding(
+                parameters, runtime_root=runtime_root
+            )
+        )
+    except ValueError as exc:
+        raise GoalChannelDeliveryStageError(
+            "operation executor binding is unavailable",
+            blocker="executor_unavailable",
+            failure_stage="resolve_executor_binding",
+        ) from exc
+    if resolved.get("revision") != requested_revision:
+        raise OperationExecutorDriftError(
+            "operation executor revision is not ready",
+            failure_stage="resolve_executor_binding",
+            details={
+                "requested_executor_revision": requested_revision,
+                "active_executor_revision": resolved.get("revision"),
+            },
+        )
+    return resolved
 
 
 def _execute_claimed_operation(

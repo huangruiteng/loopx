@@ -15,6 +15,7 @@ from .boundary_authority import (
     build_checkpointed_boundary_authority_entry,
     checkpointed_boundary_authority_summary,
 )
+from .capabilities.pr_review_queue import goal_configuration as pr_review_config
 from .capabilities.change_quality import goal_configuration as change_quality_config
 from .capabilities.change_quality.policy import change_quality_goal_policy_summary
 from .capabilities.machine_configuration.builtins import (
@@ -254,6 +255,7 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "lark_event_inbox": _lark_event_inbox_config_summary(goal),
         "lark_kanban_heartbeat_sync": _lark_kanban_heartbeat_config_summary(goal),
         "reward_memory": reward_memory_goal_policy_summary(goal),
+        "pull_request_review": pr_review_config.configuration_summary(goal),
         "change_quality_qualification": change_quality_goal_policy_summary(goal),
         "explore_graph": compact_explore_graph_policy(goal.get("explore_graph")),
         "orchestration": orchestration,
@@ -434,6 +436,8 @@ def configure_goal(
     self_repair_health: bool | None = None,
     self_repair_waiting_projection: bool | None = None,
     periodic_report_configuration: Mapping[str, Any] | None = None, clear_periodic_report_configuration: bool = False,
+    pull_request_review_configuration: Mapping[str, Any] | None = None,
+    clear_pull_request_review_configuration: bool = False,
     change_quality_enabled: bool | None = None,
     change_quality_safe_fix: bool | None = None,
     change_quality_strict_receipt: bool | None = None,
@@ -840,6 +844,7 @@ def configure_goal(
             )
         control_plane["self_repair"] = self_repair
     periodic_report_config.apply_change(goal, periodic_report_change)
+    pr_review_config.apply_change(goal, pull_request_review_configuration, clear=clear_pull_request_review_configuration)
     change_quality_config.apply_change(goal, change_quality_change)
     if (
         issue_fix_reviewer_notification_config is not None
@@ -1237,6 +1242,7 @@ def configure_goal(
         "lark_event_inbox": _lark_event_inbox_config_summary(goal),
         "lark_kanban_heartbeat_sync": _lark_kanban_heartbeat_config_summary(goal),
         "reward_memory": reward_memory_goal_policy_summary(goal),
+        "pull_request_review": pr_review_config.configuration_summary(goal),
         "change_quality_qualification": change_quality_goal_policy_summary(goal),
         "default": "off",
         "configuration_entry": "multi_subagent_feature",

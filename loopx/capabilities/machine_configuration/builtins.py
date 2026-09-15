@@ -68,7 +68,10 @@ def builtin_machine_inheritable_goal_overrides(
         configuration_summary as cadence_summary,
     )
 
+    from ..pr_review_queue.goal_configuration import configuration_summary as pr_review_summary
+
     summaries = {
+        "pull_request_review": pr_review_summary(goal),
         "change_quality_qualification": change_quality_summary(goal),
         "todo_replan_cadence": cadence_summary(goal),
     }

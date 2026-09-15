@@ -73,3 +73,13 @@ assert.deepEqual(projectEditableCapabilityConfiguration(periodicReportEditor, { 
 assert.deepEqual(parseEditableCapabilityJson(periodicReportEditor, JSON.stringify({ schedule })), { schedule });
 assert.deepEqual(projectEditableCapabilityConfiguration(periodicReportEditor, { schedule: null }, { schedule }), { schedule: null },
   "explicit nullable clear must not restore the inherited schedule on editor mode changes");
+
+assert.deepEqual(
+  projectEditableCapabilityConfiguration(
+    { fields: [{ key: "wait_for_ci" }, { key: "review_priority" }] },
+    { wait_for_ci: false, review_priority: "other-developers-first", schema_version: "pull_request_review_goal_configuration_v0" },
+    { wait_for_ci: true },
+  ),
+  { wait_for_ci: false, review_priority: "other-developers-first" },
+  "an explicit Goal CI opt-out must survive default projection and omit envelope fields",
+);

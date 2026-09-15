@@ -43,11 +43,30 @@ QUOTED = re.compile(r'''["']([^"']*)["']''')
 REGISTRY_KEYS = {
     "schema_version", "rfc", "inventory", "policy", "coverage_floor", "vocabularies", "relations",
     "projections", "schema_versions", "retirement_ledger", "dual_runtime_twins", "inventory_ratchets",
+    "formal_model",
 }
 VOCABULARY_KEYS = {"meaning", "tier", "status", "owners", "values"}
 VOCABULARY_OPTIONAL_KEYS = {"literal_scan", "variable_sourced_values", "value_notes", "deprecated_values"}
 TIERS = {"kernel", "cross_runtime", "cross_module"}
 STATUSES = {"canonical", "legacy", "merge_candidate"}
+FORMAL_MODEL_KEYS = {
+    "schema_version", "universes", "roles", "role_hierarchy", "relations", "invariants", "proof_boundary",
+    "enforcement_policy",
+}
+FORMAL_MODEL_SCHEMA_VERSION = "loopx_semantic_formal_model_v0"
+FORMAL_UNIVERSE_KEYS = {"vocabularies", "values", "sites", "scopes", "roles"}
+FORMAL_ROLES = {"owner", "producer", "consumer", "interpreter", "pass_through"}
+FORMAL_RELATIONS = {"defines", "produces", "consumes", "interprets", "passes_through", "projects", "persists"}
+FORMAL_INVARIANTS = {
+    "F1_producer_closedness",
+    "F2_canonical_value_liveness",
+    "F3_consumer_domain_closedness",
+    "F4_scope_separation",
+    "F5_projection_totality",
+    "F6_persistence_version_compatibility",
+}
+FORMAL_ENFORCEMENT = {"m0", "m0_5", "m1", "advisory", "unproved"}
+FORMAL_POLICY_KEYS = {"blocking_now", "blocking_next", "advisory", "unproved"}
 
 # Hard ceiling on the registry's own floors and budgets, kept in code rather than
 # in the registry so one single-diff edit to ``vocabulary_v0.json`` cannot relax
@@ -137,6 +156,7 @@ def load_registry() -> dict[str, Any]:
     registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     require(set(registry) == REGISTRY_KEYS, f"registry keys must be exactly {sorted(REGISTRY_KEYS)}")
     require(registry["schema_version"] == REGISTRY_SCHEMA_VERSION, f"registry schema_version must be {REGISTRY_SCHEMA_VERSION}")
+    check_formal_model(registry["formal_model"])
     require((REPO_ROOT / registry["rfc"]).is_file(), f"registry must point at an existing RFC: {registry['rfc']}")
     require((REPO_ROOT / registry["inventory"]).is_file(), f"registry must point at an existing inventory: {registry['inventory']}")
     for name, vocabulary in registry["vocabularies"].items():
@@ -168,6 +188,54 @@ def load_registry() -> dict[str, Any]:
             require(set(scan) == {"field", "roots", "suffixes"}, f"{name}: literal_scan keys must be field, roots, suffixes")
             require(VALUE_SHAPE.match(scan["field"]) is not None, f"{name}: literal_scan.field must be an identifier")
     return registry
+
+
+def check_formal_model(model: dict[str, Any]) -> None:
+    """Validate the formal vocabulary model's finite signature and proof ledger.
+
+    This is deliberately a schema check, not a claim that the current scanner
+    proves every property. Each property carries an enforcement stage and the
+    proof boundary records what remains unproved.
+    """
+    require(set(model) == FORMAL_MODEL_KEYS, f"formal_model keys must be exactly {sorted(FORMAL_MODEL_KEYS)}")
+    require(model["schema_version"] == FORMAL_MODEL_SCHEMA_VERSION, "formal_model schema_version drift")
+    require(set(model["universes"]) == FORMAL_UNIVERSE_KEYS, "formal_model universes must name the declared sets")
+    require(set(model["roles"]) == FORMAL_ROLES, "formal_model roles must include the consumer role and its subroles")
+    require(model["role_hierarchy"] == {"consumer": ["interpreter", "pass_through"]},
+            "formal_model role_hierarchy must classify interpreter and pass_through as consumers")
+    require(set(model["relations"]) == FORMAL_RELATIONS, "formal_model relations must be the declared edge kinds")
+    invariants = model["invariants"]
+    require(isinstance(invariants, list) and {item.get("id") for item in invariants} == FORMAL_INVARIANTS,
+            "formal_model invariants must cover exactly F1-F6")
+    for item in invariants:
+        require(set(item) == {"id", "statement", "enforcement", "evidence"},
+                f"formal invariant {item.get('id')} has an invalid shape")
+        require(item["enforcement"] in FORMAL_ENFORCEMENT,
+                f"formal invariant {item['id']} has unknown enforcement stage")
+        require(item["statement"].strip() and item["evidence"].strip(),
+                f"formal invariant {item['id']} needs a statement and evidence boundary")
+    policy = model["enforcement_policy"]
+    require(set(policy) == FORMAL_POLICY_KEYS,
+            "formal_model enforcement_policy must separate current, next, advisory, and unproved checks")
+    policy_ids = [item_id for ids in policy.values() for item_id in ids]
+    require(set(policy_ids) == FORMAL_INVARIANTS and len(policy_ids) == len(set(policy_ids)),
+            "formal_model enforcement_policy must partition all invariants exactly once")
+    stage_for_policy = {
+        "blocking_now": "m0",
+        "blocking_next": "m0_5",
+        "advisory": "advisory",
+        "unproved": "unproved",
+    }
+    stages = {item["id"]: item["enforcement"] for item in invariants}
+    for policy_name, ids in policy.items():
+        require(all(stages[item_id] == stage_for_policy[policy_name] for item_id in ids),
+                f"formal_model policy lane {policy_name} disagrees with invariant enforcement stage")
+    boundary = model["proof_boundary"]
+    require(set(boundary) == {"established", "bounded", "unproved"},
+            "formal_model proof_boundary must separate established, bounded, and unproved claims")
+    for key in boundary:
+        require(isinstance(boundary[key], list) and all(isinstance(value, str) and value.strip() for value in boundary[key]),
+                f"formal_model proof_boundary.{key} must contain non-empty claim names")
 
 
 def check_coverage_floor(registry: dict[str, Any]) -> str:

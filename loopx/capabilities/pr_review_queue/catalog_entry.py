@@ -34,7 +34,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
     "commands": [
         {
             "command": "loopx pr-review --repo <owner/repo> --check-merge-readiness NUMBER@HEAD_OID --format json",
-            "purpose": "Fail closed on exact-head, approval-body, check, thread, or merge-state drift immediately before merge.",
+            "purpose": "Fail closed on exact-head, approval-body, configured CI, thread, or merge-state drift immediately before merge.",
             "write_boundary": "live public GitHub read only; does not approve, merge, bypass policy, or grant merge authority",
         },
         {
@@ -151,7 +151,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         "Only rows with a non-null review_action_kind enter review_sequence and carry review plans, templates, or evidence commands; valid exact-head conclusions remain artifact-free inventory-only rows, and only --fresh-audit-exact-head NUMBER@HEAD_OID can explicitly reopen one.",
         "Todo prose, monitor notes, and one-off author filters are not scheduling authority.",
         "A complete exact-head conclusion requires the five Chinese sections, a state-aligned English verdict, and formal state or the verdict-specific titled author-owned fallback.",
-        "Every merge must rerun the read-only merge-readiness gate for the reviewed exact head; admin bypass cannot override stale review text, red or pending checks, incomplete thread evidence, or head drift.",
+        "Every merge must rerun the read-only merge-readiness gate for the reviewed exact head; admin bypass cannot override stale review text, required CI when wait_for_ci is true, incomplete thread evidence, or head drift.",
         "One observation emits at most one exact-head advancement Todo preview; unchanged observations replay it until explicit durable Todo-projection ACK, then rotate across acknowledged exact heads.",
         "The capability reuses the existing pr-review GitHub scan and normalized packet; review bodies are inspected for format but never emitted or checkpointed.",
         "Candidate selection grants no GitHub review, comment, push, merge, quota, or Todo-write authority; those remain with their existing policy surfaces.",

@@ -144,8 +144,14 @@ def call(
 ) -> Mapping[str, Any]:
     try:
         return runner(args, None, 30)
+    except subprocess.TimeoutExpired:
+        # The command ran and was killed, so a provider write it had already
+        # started is neither proven nor excluded. Carry the fact instead of
+        # folding it into a bare failure the callers would read as a verdict.
+        return {"returncode": 1, "stdout": "", "stderr": "", "timed_out": True}
     except (OSError, subprocess.SubprocessError):
-        return {"returncode": 1, "stdout": "", "stderr": ""}
+        # The command never started, so no provider write can have happened.
+        return {"returncode": 1, "stdout": "", "stderr": "", "spawn_failed": True}
 
 
 def profile_args(profile: str | None) -> list[str]:

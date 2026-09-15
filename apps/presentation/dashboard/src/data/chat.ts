@@ -96,6 +96,21 @@ export const chatStatusSchema = z.object({
   goals: z.array(chatGoalSchema),
 });
 
+export const managerChannelBindingSchema = z.object({
+  schema_version: z.string(),
+  executor_endpoint: z.string(),
+  executor_endpoint_source: z.string(),
+  executor_kind: z.string(),
+  model: z.string(),
+  model_source: z.string(),
+  credential_env_var: z.string(),
+  operator_credential_configured: z.boolean(),
+  available: z.boolean().nullable(),
+  unavailable_reason: z.string().nullable(),
+});
+
+export type ManagerChannelBinding = z.infer<typeof managerChannelBindingSchema>;
+
 export const chatCapabilitiesSchema = z.object({
   ok: z.literal(true),
   schema_version: z.enum(["loopx_chat_capabilities_v0", "loopx_chat_capabilities_v1"]),
@@ -109,6 +124,7 @@ export const chatCapabilitiesSchema = z.object({
     scope: z.literal("owner_global"),
     model: z.string(),
     reasoning_effort: z.string(),
+    channel_binding: managerChannelBindingSchema.optional(),
     runtime: z.object({
       schema_version: z.literal("manager_runtime_effective_profile_v0"),
       runtime_profile: z.enum(["restricted", "trusted_owner"]),

@@ -182,6 +182,17 @@
 .personal-channel-title { min-width: 0; }
 .personal-channel-title h1 { margin: 0; font-size: 17.5px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.25; }
 .personal-channel-title p { margin: 3px 0 0; color: var(--pw-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.personal-channel-title p.personal-manager-execution { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.personal-execution-chip { display: inline-flex; flex: none; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--pw-line); border-radius: 999px; background: var(--pw-card); font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; line-height: 18px; }
+.personal-execution-chip-endpoint { color: var(--pw-text); font-weight: 650; }
+.personal-execution-chip-kind { color: var(--pw-faint); }
+.personal-execution-chip-model { color: var(--pw-muted); }
+.personal-execution-chip.is-unavailable { border-color: var(--pw-amber); background: var(--pw-amber-bg); }
+.personal-execution-chip.is-unavailable .personal-execution-chip-endpoint { color: var(--pw-amber); }
+.personal-execution-chip.is-unavailable .personal-execution-chip-kind { color: var(--pw-amber); }
+.personal-execution-chip.is-unavailable .personal-execution-chip-model { color: var(--pw-amber); }
+.personal-execution-note { overflow: hidden; color: var(--pw-muted); font-size: 11px; text-overflow: ellipsis; }
+.personal-workspace-shell[data-pw-theme="brutal"] .personal-execution-chip { border-color: #141414; border-radius: 4px; }
 .personal-channel-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; }
 .personal-goal-tools { position: relative; flex: 0 0 auto; }
 .personal-goal-tools-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 11px; border: 1px solid #b8c9f5; border-radius: 10px; background: var(--pw-blue-soft); color: var(--pw-blue-ink); cursor: pointer; font: inherit; font-size: 12px; font-weight: 720; white-space: nowrap; }
@@ -1196,6 +1207,10 @@
   .personal-icon-button.personal-mobile-menu { display: inline-grid; flex: 0 0 36px; }
   .personal-channel-header { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; padding: 10px 14px; min-height: 60px; }
   .personal-channel-title p { display: none; }
+  /* The narrow header drops its secondary subtitle line, but the execution chip
+     stays: it is the only place the operator reads which executor answers for
+     the steward, and an unavailable selection must not become invisible. */
+  .personal-channel-title p.personal-manager-execution { display: flex; }
   .personal-channel-actions { min-width: 0; }
   .personal-agent-select { max-width: 132px; min-width: 0; }
   .personal-channel-actions > .personal-icon-button { display: none; }

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafafa">
+  <title>从任务看板到长程协作：Agent-facing Kanban 的四个设计问题 · LoopX</title>
+  <meta name="description" content="从 LoopX 的实践看可执行迁移、有界决策上下文、任务完成后的目标对齐，以及有作用范围的等待与人工介入。">
+  <link rel="canonical" href="https://huangruiteng.github.io/loopx/blog/zh/agent-facing-kanban/">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="LoopX">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:title" content="从任务看板到长程协作：Agent-facing Kanban 的四个设计问题">
+  <meta property="og:description" content="看板不只展示进度，还要让下一位 Agent 知道怎样继续、凭什么完成、什么时候必须停下来。">
+  <meta property="og:url" content="https://huangruiteng.github.io/loopx/blog/zh/agent-facing-kanban/">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../blog.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-header">
+  <a class="brand" href="../../../?lang=zh" aria-label="LoopX 首页"><span class="product-mark" aria-hidden="true"><i></i><i></i></span>LoopX</a>
+  <nav aria-label="主导航"><a href="../" aria-current="true">Blog</a><a href="../../../docs/book/">文档</a></nav>
+  <div class="header-actions"><a class="github" href="https://github.com/huangruiteng/loopx">GitHub <span aria-hidden="true">↗</span></a></div>
+</header>
+<main id="main">
+<div class="article-heading">
+  <a class="back" href="../">← 全部文章</a>
+  <p class="eyebrow">长程协作 · 设计实践</p>
+  <h1>从任务看板到长程协作：<span class="keep-together">Agent-facing</span> Kanban 的四个设计问题</h1>
+  <p class="lead">看板不只展示进度，还要让下一位 Agent 知道怎样继续、凭什么完成、什么时候必须停下来。</p>
+  <div class="byline"><a href="https://github.com/huangruiteng">Ruiteng Huang</a><span aria-hidden="true">·</span><time datetime="2026-09-15">2026 年 9 月 15 日</time><span aria-hidden="true">·</span><span>LoopX 工程实践</span></div>
+</div>
+<div class="article-layout">
+  <aside class="toc"><details open><summary>本文目录</summary><nav aria-label="文章目录">
+    <a href="#starting-point">看板里的隐性知识</a>
+    <a href="#transitions">1. 怎样推进状态</a>
+    <a href="#context">2. 依据什么决策</a>
+    <a href="#completion">3. 做完之后怎么办</a>
+    <a href="#scoped-waits">4. 等待时还能做什么</a>
+    <a href="#boundaries">把边界留在正确的层</a>
+    <a href="#verification">怎样检验这套设计</a>
+  </nav></details></aside>
+  <article class="prose" aria-label="Agent-facing Kanban 的四个设计问题">
+    <section id="starting-point">
+      <h2>看板里的隐性知识</h2>
+      <p>给几个 Agent 一张共享看板，让它们认领、执行、交付任务，是一种很自然的协作方式。困难出现在工作跨过几个会话之后：卡片还在，接手的 Agent 却不一定知道“待评审”指哪个版本、“完成”还欠哪些验证、“阻塞”究竟禁止了什么。</p>
+      <p>人能从一次会议、一段聊天，甚至对同事的了解中补齐这些区别。Agent 换了会话或执行器，这些隐性知识就容易丢失。于是，看板上的进度看起来连续，实际决策却断了。</p>
+      <p>我的判断是：<strong>Agent-facing Kanban 应当是一份可执行的协作契约，而不只是任务状态的展示面。</strong>这里的 Kanban 指看板式协作界面，不是对整个 Kanban 方法的重新定义。状态机、依赖、审批和自动化也并非 Agent 时代才有；区别在于，当模型成为持续读写看板的参与者，哪些规则不能再依赖人的默契。</p>
+      <p>此前，我在小红书的<a href="https://www.xiaohongshu.com/explore/6a6debe00000000025003e0b?xsec_token=ABnPnAKXdPxtBlL1LlPCa_xtRStQAAvhvgZY7wAWeOWp0=&amp;xsec_source=pc_user">长程 Agent 可执行看板图文</a>中，用看板解释了 LoopX 的状态、迁移与恢复。本文沿着这个思路，展开四个设计问题：怎样推进状态，依据什么决策，做完之后怎么办，以及等待时还能做什么。</p>
+      <p>下面用一个构造场景串起来：两位 Agent 协作交付“批量导出”功能，一位开发，一位评审；允许开发和测试，发布需要人确认。它用于解释设计，不是真实客户案例或效果数据。</p>
+    </section>
+
+    <section id="transitions">
+      <h2>1. Kanban 要提供可执行的 Transition 算子</h2>
+      <p>“开发中 → 待评审”看似只是一次卡片移动。真正的交接至少需要回答：交付的是哪个修订，做过哪些验证，评审者要检查什么，以及开发者此后还能否修改这份交付。</p>
+      <p>把这些事都藏在备注里，下一位 Agent 就得重新猜。把它们表达成迁移契约，控制面才能检查前置条件、执行者权限、证据绑定与后继关系，再接受或拒绝这次推进。<strong>模型判断下一步怎么走，控制面验证这次变化能否成为共同事实。</strong></p>
+      <figure class="diagram" aria-labelledby="transition-caption">
+        <p class="diagram-label">一次交接，不只是移动卡片</p>
+        <div class="diagram-node"><b>提出迁移</b><span>开发 Agent 提交候选修订、验证证据和评审请求。</span></div>
+        <div class="connector" aria-hidden="true">↓</div>
+        <div class="diagram-node kernel"><b>检查契约</b><span>身份与范围是否匹配？证据对应当前交付吗？后继是否明确？</span></div>
+        <div class="connector" aria-hidden="true">↓</div>
+        <div class="diagram-pair">
+          <div class="diagram-node"><b>接受并记录</b><span>保存迁移结果，关联可接手的评审工作。</span></div>
+          <div class="diagram-node"><b>拒绝并解释</b><span>返回缺少的证据或失效条件，不伪造进展。</span></div>
+        </div>
+        <figcaption id="transition-caption">这是一份设计示意，不是一个跨代码仓库、看板和部署系统的原子事务。</figcaption>
+      </figure>
+      <p>LoopX 已将 Todo 完成、后继绑定和下一步更新做成生命周期操作，而不是任意字段覆盖；实现可见 <a href="https://github.com/huangruiteng/loopx/blob/4f33d5ac6f63a00028cd8ac6815c03c15d17e154/loopx/control_plane/todos/next_action.ts">Todo Next Action</a>。批量导出的完整评审流程仍需由领域能力组织，不能从这些基础操作推导出“一条通用命令自动完成所有交付”。</p>
+      <p>不必把“开发、评审、发布”这条业务流程硬编码进 Kernel。Kernel 保证身份、权限和合法迁移；上层能力定义不同工作的验收与后继。展示列可以按团队习惯调整，不应因此改写任务的执行状态和授权。</p>
+      <p>还要区分状态迁移与外部副作用。创建远程评审请求后进程崩溃，重试不能仅凭卡片仍在“开发中”就再创建一次。外部动作需要幂等键、结果回查或人工核对；缺少这些保证时，就应显式保留“不确定”，不能声称恰好执行一次。相关恢复边界在<a href="../from-one-shot-agents-to-long-horizon-control/#effects">总览的 Effect Program 一节</a>展开。</p>
+    </section>
+
+    <section id="context">
+      <h2>2. Agent-facing 看板需要有界的决策上下文</h2>
+      <p>把整张看板和全部历史都塞进上下文，并不等于给足信息。工作越多，当前任务的限制越容易被不相关细节淹没。只返回一句“去做下一个任务”，又会让 Agent 看不到依赖、风险和其他可选路线。</p>
+      <p>我更倾向于提供当前任务附近的 Planning Horizon：选中的工作、相关依赖与后继、等待条件、验收缺口，以及少量值得比较的替代工作。摘要应有界，必要时按稳定身份展开原始证据。</p>
+      <div class="case-note"><b>评审 Agent 接手时，真正需要知道什么？</b><p>当前评审对应修订 A；单测已通过，大数据量验证尚缺；开发者正在另一个任务里补验证，不能把它误判为无人负责；修订若变为 B，需要重新确认评审范围；发布仍未授权。</p></div>
+      <p>LoopX 的 <a href="https://github.com/huangruiteng/loopx/blob/4f33d5ac6f63a00028cd8ac6815c03c15d17e154/loopx/control_plane/work_items/planning_horizon.ts">Planning Horizon 投影</a>会沿任务关系选择上下文，并限制条目、关系、验收缺口和文本长度。引用版本的上限分别为 5 个任务、8 条关系和 2 个验收缺口；这些数字是当前实现的边界，不是所有场景的最优配置。</p>
+      <p>有界也意味着可能遗漏。必须让截断可见，并保留继续查证的入口；不能让一个局部投影冒充完整事实。接口是否有效，要看 Agent 能否据此做对决策，而不只是输出变短了多少。</p>
+      <p>这里最容易混淆的是三个层次：<strong>可见，不等于可执行；推荐，不等于强制；认领，也不等于获得全部权限。</strong>Planning Horizon 是读模型，推荐动作是 Guidance。是否能写入、验收或发布，仍取决于当前 Scope、Gate、Claim／Lease 和其他执行约束。下一位 Agent 能理解别人的任务，不意味着它可以接管别人的任务。</p>
+    </section>
+
+    <section id="completion">
+      <h2>3. Task 完成后，要重新判断 Goal</h2>
+      <p>一个 PR 合入，不一定意味着批量导出已经交付。还可能缺集成验证、灰度、使用说明或用户验收。把“最后一张卡片完成”直接等同于“目标完成”，就会让长程任务在局部成功处悄悄断线。</p>
+      <p>因此，完成操作除了记录产物和证据，还应该交代后续：创建新的后继，链接已有后继，或者明确说明为什么没有后继。LoopX 的 <a href="https://github.com/huangruiteng/loopx/blob/4f33d5ac6f63a00028cd8ac6815c03c15d17e154/docs/project-agent-todo-contract.md">Todo Contract</a>把这些选择放进显式契约，而不是依赖 Agent 在最终回复里顺口提一句。</p>
+      <pre><code>本次完成：批量导出的实现与单元测试
+交付身份：候选修订 A，以及绑定到 A 的测试记录
+尚缺验收：大数据量集成验证、发布确认
+后继工作：链接已有集成验证任务，不重复创建
+当前边界：可以继续验证；不允许发布</code></pre>
+      <p>上面是解释用记录，不是 CLI Payload。实际调用应读取当前交互契约，遵守写回、消耗结算和完成操作的顺序。</p>
+      <p>如果当前任务链已耗尽，Goal 的验收仍未满足，就需要 Replan：选择新的有效路线，或者记录具体阻塞和恢复条件。<a href="https://github.com/huangruiteng/loopx/blob/4f33d5ac6f63a00028cd8ac6815c03c15d17e154/loopx/control_plane/work_items/replan_settlement.ts">LoopX 的重规划结算</a>会把处理绑定到具体任务完成身份或重规划义务，要求真实后继或 No-follow-up 理由，而不是制造只为关闭流程的填充任务。</p>
+      <p><strong>No-follow-up 关闭的是这次局部工作的续接问题，不是自动签发整个 Goal 的验收。</strong>同样，Replan 也不是要求 Agent 永远找活干。目标已满足就应停止；权限不足就等待；路线无效就调整。模型和领域验证器仍要判断证据是否足够，控制面不能只凭一段“已完成”的文字替它们证明正确。</p>
+    </section>
+
+    <section id="scoped-waits">
+      <h2>4. Blocked 和 Human-in-the-loop 要有作用范围</h2>
+      <p>“发布前等我确认”应该阻塞发布，不应自动阻塞已经授权的测试、分析和文档。某位 Worker 等待外部验证，也不代表整个 Board 都必须停止。</p>
+      <p>如果系统只有一个全局 Blocked 开关，会出现两种相反的错误：过度停止，浪费仍可推进的时间；或者为了继续干活，干脆忽略人的限制。解决办法不是调一个更激进的 Prompt，而是明确等待约束的作用范围。</p>
+      <div class="table-scroll"><table>
+        <caption>同一个目标可以同时存在的状态</caption>
+        <thead><tr><th>工作</th><th>当前状态</th><th>允许的下一步</th></tr></thead>
+        <tbody>
+          <tr><td>发布候选版本</td><td>等待 Owner 确认</td><td>准备决策所需证据，不执行发布</td></tr>
+          <tr><td>大数据量验证</td><td>已授权，环境可用</td><td>在既定预算内执行并回写结果</td></tr>
+          <tr><td>使用说明</td><td>依赖接口稳定</td><td>接口未确认时等待；确认后重新检查执行条件</td></tr>
+        </tbody>
+      </table></div>
+      <p>LoopX 的 <a href="https://github.com/huangruiteng/loopx/blob/4f33d5ac6f63a00028cd8ac6815c03c15d17e154/docs/reference/protocols/decision-scope-v0.md">Decision Scope 契约</a>区分不同范围的决策。<a href="https://github.com/huangruiteng/loopx/blob/4f33d5ac6f63a00028cd8ac6815c03c15d17e154/tests/control_plane/test_scoped_gate_successor_tool_behavior.py">Scoped Gate 的行为测试</a>也覆盖了“提示一个需要人处理的问题，同时推进不受它阻塞的已选后继”。这不意味着所有 Gate 都局部生效：如果 Owner 明确暂停整个 Goal，它就应约束整个 Goal。</p>
+      <p>等待还需要恢复条件。测试结果返回、候选修订变化、审批到达，都是可以重新检查的事件。定时唤醒本身不是新证据，曾经批准过也不代表当前仍然有效。<strong>恢复的第一步是重新检查准入条件，而不是直接执行上次记住的命令。</strong>如果权限已经撤回，即便等待的结果到了，也不能越过新的边界。</p>
+    </section>
+
+    <section id="boundaries">
+      <h2>把边界留在正确的层</h2>
+      <p>这四点并不要求 Runtime 长出一套完整的看板产品。我的划分是：Runtime／Harness 提供执行、工具调用和会话能力；控制面维护持久身份、权限、迁移与结算；领域能力和模型定义工作路线、验证方式与后继；看板把它们投影成适合人与 Agent 使用的界面。</p>
+      <p>跨层接口要能表达“提议—验证—接受／拒绝—接手”，而不是让展示面绕过权限直接改事实，或让 Kernel 接管全部业务推理。对 LoopX 来说，Kanban 是语义控制面的一种工作形态，不是它唯一的 UI，也不是一套固定的多 Agent 组织结构。</p>
+      <p>人负责定义目标、关键取舍和授权；Agent 在边界内自主选择并推进工作。好的控制面应减少重复解释，而不是把所有人和模型都变成填写表单的操作员。</p>
+    </section>
+
+    <section id="verification">
+      <h2>怎样检验这套设计</h2>
+      <p>我更愿意用几个故障场景检查设计，而不是只看正常流程能否跑通：</p>
+      <ul>
+        <li><b>交付版本变了：</b>旧评审结果能否被误用到新修订？</li>
+        <li><b>交接中断了：</b>接手者能否识别已完成的外部动作与尚未完成的状态写回，避免盲目重复？</li>
+        <li><b>卡片清空了：</b>系统能否发现仍未满足的验收，而不是直接宣布 Goal 完成？</li>
+        <li><b>发布在等人：</b>其他已授权工作能否继续，同时确实不越过发布边界？</li>
+        <li><b>上下文截断了：</b>Agent 能否发现缺口并查证，而不是把局部可见当成全局完备？</li>
+      </ul>
+      <p>这些是验证问题，不是宣称 LoopX 已在所有 Host 和场景下完全解决。本文引用的是可检查的代码、契约和测试；它们不替代生产环境验证，也不直接证明多 Agent 相比单 Agent 更省钱或更准确。还应测量任务验收率、重复执行、无效重规划、人工介入次数，以及每次有效交付的时间和成本。</p>
+      <p>任务看板解决“工作放在哪里”。长程协作还要解决“换一个 Agent，工作能否带着正确的理由、证据和边界继续”。这四个问题，就是我认为 Agent-facing Kanban 值得认真设计的部分。</p>
+      <p>关于 LoopX 更完整的分层、恢复与协作模型，见<a href="../from-one-shot-agents-to-long-horizon-control/">《从一次性 Agent 到长程控制面》</a>。</p>
+      <p class="edition">实现依据固定到公开仓库修订 <a href="https://github.com/huangruiteng/loopx/tree/4f33d5ac6f63a00028cd8ac6815c03c15d17e154"><code>4f33d5ac6</code></a>。示例中的业务流程是设计说明，不是生产落地承诺。</p>
+    </section>
+  </article>
+</div>
+</main>
+<footer class="site-footer"><a class="brand" href="../../../?lang=zh">LoopX</a><p>让工作持续推进，让判断由人掌握。</p><a href="../">全部文章 ↑</a></footer>
+</body>
+</html>

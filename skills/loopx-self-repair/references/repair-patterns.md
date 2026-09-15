@@ -261,3 +261,7 @@ raw logs and private traces stay in ignored local paths.
 
 | A prompt migration reports success but the App restores the old body | A running host caches automation rows; disk CAS cannot invalidate scheduler memory. Use native automation_update and read back through that host, or close the host for offline migration and verify after restart. | Keep update-time reconciliation fail-closed while the App runs, and cover unchanged SQLite/TOML plus a complete native update request. |
 | A newly started heartbeat persists execution rules despite a successful runtime update | Startup and migration used different renderers, and installed skill guidance still told the agent to save raw thin output. Generate the v2 loader from the activation command and replace stale lifecycle instructions. | Exercise onboarding to bootstrap to one-level fresh CLI load, authentic legacy migration, and absent/duplicate-command rejection. |
+
+## Review ignores a Goal's CI waiting configuration
+
+Symptom: a managed review ignores `pull_request_review.wait_for_ci=false` and waits on remote CI after local evidence is complete. Read the named Goal's configuration and pass `--goal-id` through both review and readiness. Repair the capability transport, packet, and readiness owner together; retain required local checks, exact-head binding, valid approval, unresolved-thread rejection, and merge authority. Never change the global default to repair one Goal. Validate both default-on and explicit-off paths through the production CLI and the shared configuration editor.

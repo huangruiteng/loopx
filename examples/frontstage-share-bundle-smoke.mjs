@@ -122,7 +122,8 @@ assertExists(resolve(siteDir, "benchmarks/deepswe/behavior-discovery/index.html"
 // fallback or client-side execution, including on repository-base hosting.
 const blogArticle = "from-one-shot-agents-to-long-horizon-control/";
 for (const locale of ["", "zh/"]) {
-  for (const article of ["", blogArticle]) {
+  const articles = locale ? ["", blogArticle, "agent-facing-kanban/"] : ["", blogArticle];
+  for (const article of articles) {
     const pagePath = resolve(siteDir, "blog", locale, article, "index.html");
     assertExists(pagePath);
     const html = await readFile(pagePath, "utf8");
@@ -130,7 +131,9 @@ for (const locale of ["", "zh/"]) {
     if (!html.includes(`<html lang="${language}">`) || !html.includes("<h1>") || html.includes("<script")) {
       throw new Error(`Blog must provide static content in ${language}: ${pagePath}`);
     }
-    for (const hreflang of ["en", "zh-CN", "x-default"]) {
+    // A single-language article must not advertise a nonexistent translation.
+    const alternates = article === "agent-facing-kanban/" ? [] : ["en", "zh-CN", "x-default"];
+    for (const hreflang of alternates) {
       if (!html.includes(`hreflang="${hreflang}"`)) throw new Error(`Missing Blog language alternate: ${hreflang}`);
     }
     const stylesheet = html.match(/<link rel="stylesheet" href="([^"]+)"/);

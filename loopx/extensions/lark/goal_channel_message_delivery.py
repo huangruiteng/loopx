@@ -29,6 +29,73 @@ from .goal_channel_transport import (
 from .presentation.kanban import CommandRunner
 
 
+class GoalChannelDeliveryStageError(ValueError):
+    """One typed, public-safe failure stage of a Goal Channel delivery.
+
+    The summary is the only user-visible text and must never carry private
+    provider or configuration detail. `external_write_performed` is True or
+    False only when the provider outcome is known; None means the outcome is
+    unknown and the projected receipt must treat the provider write as
+    performed instead of claiming a clean run.
+    """
+
+    def __init__(
+        self,
+        summary: str,
+        *,
+        blocker: str,
+        failure_stage: str,
+        external_write_performed: bool | None = False,
+    ) -> None:
+        super().__init__(summary)
+        self.blocker = blocker
+        self.failure_stage = failure_stage
+        self.external_write_performed = external_write_performed
+
+
+def _has_provider_response_body(result: Mapping[str, Any]) -> bool:
+    """Whether the provider answered at all, rejection text included."""
+
+    return any(str(result.get(key) or "").strip() for key in ("stdout", "stderr"))
+
+
+def delivery_send_failure(
+    result: Mapping[str, Any],
+) -> GoalChannelDeliveryStageError:
+    """Classify a send result that produced no usable message id.
+
+    Only a provider response body is a verdict, and only a non-zero exit with
+    that body is a rejection. A send that timed out, never started, or answered
+    without a body leaves the outcome unknown, and the card may already be live
+    in the chat: reporting a clean no-write there would be the misprojection
+    this stage's contract forbids. A zero exit without a readable message id is
+    the same unknown, because the provider accepted a write we cannot name.
+    """
+
+    if result.get("spawn_failed") is True:
+        return GoalChannelDeliveryStageError(
+            "Goal Channel delivery could not start the Lark CLI",
+            blocker="provider_unavailable",
+            failure_stage="send_operation_card",
+        )
+    if (
+        result.get("timed_out") is True
+        or result.get("returncode") == 0
+        or not _has_provider_response_body(result)
+    ):
+        return GoalChannelDeliveryStageError(
+            "Goal Channel delivery send outcome is unknown",
+            blocker="delivery_outcome_unknown",
+            failure_stage="send_operation_card",
+            external_write_performed=None,
+        )
+    return GoalChannelDeliveryStageError(
+        "Goal Channel delivery send failed",
+        blocker="provider_send_rejected",
+        failure_stage="send_operation_card",
+    )
+
+
 def resolve_bound_goal_channel(
     *,
     binding_path: Path,
@@ -353,7 +420,11 @@ class GoalChannelMessageDeliverySession:
         )
         payload = json_payload(result)
         if result.get("returncode") != 0:
-            raise ValueError("Goal Channel delivery dedupe readback failed")
+            raise GoalChannelDeliveryStageError(
+                "Goal Channel delivery dedupe readback failed",
+                blocker="dedupe_history_read_failed",
+                failure_stage="read_dedupe_history",
+            )
         for message in _message_rows(payload):
             sender_type, sender_app_id = _message_sender(message)
             if (
@@ -372,7 +443,11 @@ class GoalChannelMessageDeliverySession:
             ):
                 return str(message["message_id"])
         if not _history_is_complete(payload):
-            raise ValueError("Goal Channel delivery dedupe history is incomplete")
+            raise GoalChannelDeliveryStageError(
+                "Goal Channel delivery dedupe history is incomplete",
+                blocker="dedupe_history_incomplete",
+                failure_stage="read_dedupe_history",
+            )
         return None
 
     def resolve(self, requested_goal_id: str) -> Mapping[str, Any]:
@@ -434,13 +509,21 @@ class GoalChannelMessageDeliverySession:
                     )
                 )
             if dict(self.resolve_current_binding()) != self.binding:
-                raise ValueError("Goal Channel delivery binding drifted")
+                raise GoalChannelDeliveryStageError(
+                    "Goal Channel delivery binding drifted",
+                    blocker="binding_drifted",
+                    failure_stage="prepare_delivery_transaction",
+                )
             existing_message_id = self._existing_message(card, route)
             # The history lookup is a provider round trip. Recheck under the same
             # lock used by binding writers immediately before either accepting
             # the dedupe result or performing the external write.
             if dict(self.resolve_current_binding()) != self.binding:
-                raise ValueError("Goal Channel delivery binding drifted")
+                raise GoalChannelDeliveryStageError(
+                    "Goal Channel delivery binding drifted",
+                    blocker="binding_drifted",
+                    failure_stage="prepare_delivery_transaction",
+                )
             if existing_message_id is not None:
                 self.expected_cards.setdefault(existing_message_id, []).append(
                     dict(card)
@@ -477,7 +560,7 @@ class GoalChannelMessageDeliverySession:
             json_payload(result), {"message_id"}, MESSAGE_ID_PATTERN
         )
         if result.get("returncode") != 0 or not message_id:
-            raise ValueError("Goal Channel delivery send failed")
+            raise delivery_send_failure(result)
         self.expected_cards.setdefault(message_id, []).append(dict(card))
         return {
             "message_id": message_id,
@@ -541,7 +624,9 @@ class GoalChannelMessageDeliverySession:
 
 
 __all__ = [
+    "delivery_send_failure",
     "GoalChannelMessageDeliverySession",
+    "GoalChannelDeliveryStageError",
     "normalized_card_text",
     "goal_channel_delivery_route",
     "resolve_bound_goal_channel",

@@ -70,7 +70,7 @@ below and the existing `control-plane` label.
 | P1 | Operator surface / IM | Split one projection or session-contract characterization unit from the incubation branch | #3244 | Needs design |
 | P1 | Shared coordination | Characterize the shipped file-backed `claim_work` executor with a provider-neutral parity fixture | #3700 / #3245 | Needs design |
 | P1 | Core hardening | One budget-aware CLI output ergonomics slice | #2881 | Needs design |
-| P2 | Project docs | Release docs install, activation, and recovery guidance through v0.5.4 | GH-C04 | Available |
+| P2 | Project docs | Release docs install, activation, and recovery guidance through v0.5.4 | GH-C04 | Landed via #3982 |
 | P2 | Maintainability | CLI ownership and hot-module extraction | GH-C06 | Available |
 
 ## Product Manager Cut
@@ -142,8 +142,8 @@ points for contributors who are still learning the repository.
 
 | ID | Area | Task | Validation |
 | --- | --- | --- | --- |
-| GH-C02 | tests | Claimed: a PR is open (#3623) extending the todo-lifecycle smoke with archive-completed coverage. Review it at exact head or add the omit/archive negative the review finds missing. | `python3 examples/control_plane/todo-lifecycle-cli-smoke.py` and `python3 -m py_compile loopx/*.py` |
-| GH-C04 | docs | Claimed: branch `docs/release-readiness-v0.5.4` corrects six public-timeline dates to tagged evidence (`v0.2.7`, `v0.2.12`, `v0.4.0`, `v0.4.2`, `v0.4.3`, `v0.4.5`) and adds the restart-host activation note beside the first-time PyPI install block; the #3301/#3566/#3556 install, ownership, activation-recovery, and extension-doctor alignment landed earlier via #3810 and was re-verified against the guide at this head. | `python3 examples/fresh-clone-quickstart-smoke.py`, `python3 examples/loopx-update-smoke.py`, `python3 examples/release/release-readiness-doc-smoke.py`, `python3 examples/release/release-version-contract-smoke.py`, and `loopx check --scan-path docs/product/release-readiness.md --scan-path CONTRIBUTING.md` |
+| GH-C02 | tests | Claimed: PR #4436 (open) extends the owning `todo-archive-completed` smoke with the archive invariant no CLI-level coverage exercised: a durable standing decision survives the archive as active standing authority, and `todo archive-completed --role user` leaves the Agent Todo section untouched. The earlier #3623 attempt (closed unmerged 2026-08-31) was rejected because it repeated assertions the owning smoke already carried; prefer a new durable invariant over a second same-shape smoke. | `python3 examples/control_plane/todo-archive-completed-smoke.py`, `python3 examples/control_plane/todo-lifecycle-cli-smoke.py`, and `python3 -m py_compile loopx/*.py` |
+| GH-C04 | docs | Landed: #3982 (merged 2026-09-06) synced the public timeline to tagged v0.5.4 evidence and completed the restart-host activation note beside the first-time PyPI install block; the #3301/#3566/#3556 install, ownership, activation-recovery, and extension-doctor alignment landed earlier via #3810. The `docs/release-readiness-v0.5.4` branch is absent from the remote because its work merged, so this row is history rather than an open claim. | `python3 examples/fresh-clone-quickstart-smoke.py`, `python3 examples/loopx-update-smoke.py`, `python3 examples/release/release-readiness-doc-smoke.py`, `python3 examples/release/release-version-contract-smoke.py`, and `loopx check --scan-path docs/product/release-readiness.md --scan-path CONTRIBUTING.md` |
 ### Focused Implementation
 
 Small-to-medium code changes with a clear validation surface. These are good

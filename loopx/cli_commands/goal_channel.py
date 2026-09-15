@@ -30,6 +30,13 @@ from ..extensions.lark.goal_channel import (
     sync_lark_goal_channel,
 )
 from ..extensions.lark.goal_channel_contracts import binding_for_goal, operation_packet
+from ..extensions.lark.goal_channel_message_delivery import (
+    GoalChannelDeliveryStageError,
+)
+from ..extensions.lark.goal_channel_operation import (
+    OperationExecutorDriftError,
+    confirmed_operation_executor,
+)
 from ..extensions.lark.goal_topic_batch import upgrade_lark_goal_topics
 from ..extensions.runtime import (
     default_extension_state_file,
@@ -253,8 +260,11 @@ def _error_packet(
     execute: bool,
     blocker: str,
     summary: str,
+    external_write_performed: bool = False,
+    failure_stage: str | None = None,
+    details: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    packet: dict[str, object] = {
         "schema_version": "loopx_goal_channel_operation_v0",
         "ok": False,
         "goal_id": goal_id,
@@ -262,7 +272,7 @@ def _error_packet(
         "operation": operation,
         "execute": execute,
         "status": "blocked",
-        "external_write_performed": False,
+        "external_write_performed": external_write_performed,
         "readback_verified": False,
         "idempotency_key": None,
         "receipt_id": None,
@@ -270,6 +280,11 @@ def _error_packet(
         "private_provider_payload_captured": False,
         "blocker": blocker,
     }
+    if failure_stage:
+        packet["failure_stage"] = failure_stage
+    if details:
+        packet["details"] = dict(details)
+    return packet
 
 
 def _target_path(args: argparse.Namespace, runtime_root: Path) -> Path:
@@ -451,11 +466,20 @@ def _prepare_goal_channel_operation(
     idempotency_key: str,
     request_path: Path,
     execute: bool,
+    executor_binding_resolver: Callable[[Mapping[str, Any], Path], Mapping[str, Any]]
+    | None = None,
 ) -> dict[str, Any]:
     request = json.loads(request_path.read_text(encoding="utf-8"))
     if not isinstance(request, dict):
         raise ValueError("operation request JSON must be an object")
     parameters = {**request, "goal_id": goal_id, "agent_id": agent_id}
+    if isinstance(parameters.get("executor"), Mapping):
+        # Resolve the declared executor and compare the active revision
+        # before any durable proposal or idempotency entry exists, so a
+        # stale proposal can never become an unreachable gated record.
+        confirmed_operation_executor(
+            parameters, runtime_root, executor_binding_resolver
+        )
 
     def preview(store_root: Path) -> dict[str, Any]:
         return ChatActionService(
@@ -798,6 +822,37 @@ def handle_goal_channel_command(
                     raise ValueError(f"unknown goal-channel command: {command}")
             if payload.get("ok"):
                 payload["extension_activation"] = activation
+        except OperationExecutorDriftError as exc:
+            payload = _error_packet(
+                goal_id=goal_id,
+                operation=command.replace("-", "_"),
+                execute=execute,
+                blocker=exc.blocker,
+                summary=str(exc),
+                external_write_performed=exc.external_write_performed,
+                failure_stage=exc.failure_stage,
+                details=exc.details,
+            )
+        except GoalChannelDeliveryStageError as exc:
+            outcome = exc.external_write_performed
+            payload = _error_packet(
+                goal_id=goal_id,
+                operation=command.replace("-", "_"),
+                execute=execute,
+                blocker=exc.blocker,
+                summary=str(exc),
+                # An unknown provider outcome must never be projected as a
+                # clean not-performed receipt: assume the write happened.
+                external_write_performed=(
+                    True if outcome is None else outcome
+                ),
+                failure_stage=exc.failure_stage,
+                details=(
+                    {"external_write_outcome": "unknown"}
+                    if outcome is None
+                    else None
+                ),
+            )
         except ValueError:
             payload = _error_packet(
                 goal_id=goal_id,

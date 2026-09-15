@@ -141,6 +141,8 @@ def main() -> int:
         registry_path = write_registry(root)
         runtime = root / "runtime"
         append_run(runtime, goal_id="project-a", generated_at=now - timedelta(hours=1), classification="state_refreshed")
+        # No quota_event: the spend ledger records no slot for a spend whose
+        # event it cannot read, and the usage summary reports the same number.
         append_run(runtime, goal_id="project-a", generated_at=now - timedelta(minutes=30), classification="quota_slot_spent")
         append_run(
             runtime,
@@ -226,8 +228,8 @@ def main() -> int:
         assert usage["sample_run_count"] == 9, usage
         assert totals["runs_24h"] == 6, totals
         assert totals["runs_7d"] == 7, totals
-        assert totals["quota_spend_slots_24h"] == 3, totals
-        assert totals["quota_spend_slots_7d"] == 3, totals
+        assert totals["quota_spend_slots_24h"] == 2, totals
+        assert totals["quota_spend_slots_7d"] == 2, totals
         assert totals["automation_run_count_24h"] == 2, totals
         assert totals["automation_run_count_7d"] == 2, totals
         assert totals["progress_signal_run_count_24h"] == 3, totals
@@ -237,6 +239,12 @@ def main() -> int:
         assert goals["project-a"]["runs_24h"] == 3, goals
         assert goals["project-a"]["runs_7d"] == 4, goals
         assert goals["project-b"]["runs_24h"] == 3, goals
+        # project-a's spend run has no readable quota_event, so it contributes
+        # no slot; project-b's carries a 2-slot event.
+        assert goals["project-a"]["quota_spend_slots_24h"] == 0, goals
+        assert goals["project-a"]["quota_spend_slots_7d"] == 0, goals
+        assert goals["project-b"]["quota_spend_slots_24h"] == 2, goals
+        assert goals["project-b"]["quota_spend_slots_7d"] == 2, goals
         assert goals["project-a"]["progress_signal_run_count_24h"] == 1, goals
         assert goals["project-a"]["progress_signal_run_count_7d"] == 2, goals
         assert goals["project-b"]["progress_signal_run_count_24h"] == 2, goals

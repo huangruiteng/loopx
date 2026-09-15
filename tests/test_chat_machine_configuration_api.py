@@ -346,6 +346,7 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
     assert namespace_catalog["pull_request_review"]["configuration_template"] == {
         "schema_version": "pull_request_review_machine_defaults_v0",
         "review_priority": "other-developers-first",
+        "wait_for_ci": True,
     }
     assert namespace_catalog["manager_runtime"]["configuration_template"] == {
         "schema_version": "manager_runtime_profile_v0",
@@ -412,18 +413,18 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
         default_multi_subagent_max_children=2,
         explore_harness_profiles=(),
     )
-    assert set(machine) - {"manager_runtime", "pull_request_review"} == {
+    assert set(machine) - {"manager_runtime"} == {
         feature["feature_id"] for feature in goal["features"]
     }
-    assert machine["pull_request_review"]["available_scopes"] == ["machine"]
+    assert machine["pull_request_review"]["available_scopes"] == ["machine", "goal"]
     assert machine["pull_request_review"]["machine_namespace"] == "pull_request_review"
     assert machine["pull_request_review"]["configuration_editor"][
         "writable_scopes"
-    ] == ["machine"]
+    ] == ["machine", "goal"]
     assert [
         field["key"]
         for field in machine["pull_request_review"]["configuration_editor"]["fields"]
-    ] == ["review_priority"]
+    ] == ["wait_for_ci", "review_priority"]
     assert "multi_subagent" in machine
     for capability_id, item in machine.items():
         assert "current" not in item

@@ -50,14 +50,44 @@ def state_text() -> str:
     )
 
 
-def write_fixture(root: Path) -> tuple[Path, Path, Path]:
+def user_role_state_text() -> str:
+    """A user-role section where one done gate is a durable standing receipt."""
+
+    return (
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Todo Archive User Role Fixture\n\n"
+        "## User Todo\n\n"
+        "- [x] [P0] Approve validated benchmark PR self-merge for this agent.\n"
+        "  <!-- loopx:todo todo_id=todo_user_standing_approve status=done "
+        "task_class=user_gate decision_scope=write_scope:goal:benchmark_pr_self_merge "
+        "decision_outcome=approve blocks_agent=codex-reviewer -->\n"
+        "- [x] [P1] Ordinary completed reminder one.\n"
+        "  <!-- loopx:todo todo_id=todo_user_ordinary_1 status=done "
+        "task_class=user_action bound_agent=codex-reviewer -->\n"
+        "- [x] [P1] Ordinary completed reminder two.\n"
+        "  <!-- loopx:todo todo_id=todo_user_ordinary_2 status=done "
+        "task_class=user_action bound_agent=codex-reviewer -->\n\n"
+        "## Agent Todo\n\n"
+        "- [x] [P1] Completed agent lane outside the user archive scope.\n"
+        "  <!-- loopx:todo todo_id=todo_agent_completed status=done "
+        "task_class=advancement_task claimed_by=codex-reviewer -->\n"
+        "- [ ] [P2] Keep current open agent work visible.\n"
+        "  <!-- loopx:todo todo_id=todo_agent_open status=open "
+        "task_class=advancement_task claimed_by=codex-reviewer -->\n"
+    )
+
+
+def write_fixture(root: Path, *, text: str | None = None) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = ".codex/goals/todo-archive-completed-goal/ACTIVE_GOAL_STATE.md"
     state_path = project / state_file
     registry_path = project / ".loopx" / "registry.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(state_text(), encoding="utf-8")
+    state_path.write_text(state_text() if text is None else text, encoding="utf-8")
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(
         json.dumps(
@@ -112,6 +142,90 @@ def run_cli(registry_path: Path, runtime: Path, *args: str, check: bool = True) 
         text=True,
     )
     return json.loads(result.stdout)
+
+
+def assert_user_role_archive_retains_standing_decision() -> None:
+    """`--role user` archives ordinary done gates but never a standing receipt.
+
+    The shipped CLI accepts `--role`, yet the user-role archive path was only
+    covered at the helper level. This pins the two invariants that only the
+    command can prove: a durable standing decision survives compaction, and the
+    Agent Todo section is not touched while compacting the user section.
+    """
+
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-archive-user-role-") as tmp:
+        registry_path, runtime, state_path = write_fixture(
+            Path(tmp), text=user_role_state_text()
+        )
+        original = state_path.read_text(encoding="utf-8")
+        parsed = parse_active_state_todos(original)
+        assert parsed["user_todos"]["done_count"] == 3, parsed
+        assert parsed["agent_todos"]["done_count"] == 1, parsed
+
+        dry_run = run_cli(
+            registry_path,
+            runtime,
+            "todo",
+            "archive-completed",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "user",
+            "--max-active-done",
+            "0",
+        )
+        assert dry_run["dry_run"] is True, dry_run
+        assert dry_run["role"] == "user", dry_run
+        assert dry_run["active_done_before"] == 3, dry_run
+        assert dry_run["active_done_after"] == 1, dry_run
+        assert dry_run["moved_count"] == 2, dry_run
+        assert dry_run["retained_standing_decision_count"] == 1, dry_run
+        assert state_path.read_text(encoding="utf-8") == original
+
+        execute = run_cli(
+            registry_path,
+            runtime,
+            "todo",
+            "archive-completed",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "user",
+            "--max-active-done",
+            "0",
+            "--execute",
+        )
+        assert execute["dry_run"] is False, execute
+        assert execute["moved_count"] == 2, execute
+        assert execute["active_done_before"] == 3, execute
+        assert execute["active_done_after"] == 1, execute
+        assert execute["retained_standing_decision_count"] == 1, execute
+
+        updated = state_path.read_text(encoding="utf-8")
+        parsed_after = parse_active_state_todos(updated)
+        user_ids = [item["todo_id"] for item in parsed_after["user_todos"]["items"]]
+        assert user_ids == ["todo_user_standing_approve"], parsed_after
+        assert updated.index("## Completed Work Archive") < updated.index(
+            "todo_user_ordinary_1"
+        ), updated
+        assert updated.count("todo_user_ordinary_2") == 1, updated
+        authority = parsed_after.get("standing_decision_authority")
+        assert authority is not None, parsed_after
+        assert authority["active_count"] == 1, authority
+        assert authority["entries"][0]["source_todo_id"] == (
+            "todo_user_standing_approve"
+        ), authority
+
+        # Role scoping: compacting the user section must not move Agent Todo work.
+        agent_ids = [item["todo_id"] for item in parsed_after["agent_todos"]["items"]]
+        assert "todo_agent_completed" in agent_ids, parsed_after
+        assert parsed_after["agent_todos"]["done_count"] == 1, parsed_after
+        assert updated.index("todo_agent_completed") < updated.index(
+            "## Completed Work Archive"
+        ), updated
+
+        status_after = run_cli(registry_path, runtime, "status")
+        assert status_after["contract_errors"] == [], status_after
 
 
 def main() -> int:
@@ -351,6 +465,8 @@ def main() -> int:
             "todo_archived_empty" in item and "malformed status metadata" in item
             for item in invalid_status["contract_errors"]
         ), invalid_status
+
+    assert_user_role_archive_retains_standing_decision()
 
     print("todo-archive-completed-smoke ok")
     return 0

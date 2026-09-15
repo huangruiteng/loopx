@@ -475,6 +475,8 @@ def handle_registry_admin_command(
                 self_repair_enabled=args.self_repair_enabled,
                 self_repair_health=args.self_repair_health,
                 self_repair_waiting_projection=args.self_repair_waiting_projection,
+                pull_request_review_configuration=({"wait_for_ci": args.pr_review_wait_for_ci} if args.pr_review_wait_for_ci is not None else None),
+                clear_pull_request_review_configuration=args.clear_pr_review_configuration,
                 change_quality_enabled=args.change_quality_enabled,
                 change_quality_safe_fix=args.change_quality_safe_fix,
                 change_quality_strict_receipt=args.change_quality_strict_receipt,

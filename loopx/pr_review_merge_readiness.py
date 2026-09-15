@@ -23,13 +23,16 @@ def fetch_github_pull_request(
     repo: str,
     number: int,
     cwd: Path | None = None,
+    wait_for_ci: bool = True,
 ) -> dict[str, Any]:
     fields = (
         "number,title,url,state,isDraft,reviewDecision,mergeStateStatus,"
         "headRefName,headRefOid,baseRefName,author,createdAt,updatedAt,"
         "closedAt,mergedAt,mergeCommit,body,files,changedFiles,additions,"
-        "deletions,commits,reviews,statusCheckRollup"
+        "deletions,commits,reviews"
     )
+    if wait_for_ci:
+        fields += ",statusCheckRollup"
     payload = _run_gh_json(
         ["pr", "view", str(number), "--json", fields, "--repo", repo],
         cwd=cwd,
@@ -130,6 +133,7 @@ def build_pr_merge_readiness_packet(
     reviewer_login: str | None,
     review_threads: Mapping[str, Any],
     source: str,
+    wait_for_ci: bool = True,
 ) -> dict[str, Any]:
     generated_at_text = _now_iso()
     generated_at = _parse_timestamp(generated_at_text) or datetime.now(timezone.utc)
@@ -138,6 +142,7 @@ def build_pr_merge_readiness_packet(
         reviewer_login=reviewer_login,
         generated_at=generated_at,
         fresh_audit_exact_heads=set(),
+        wait_for_ci=wait_for_ci,
     )
     payload = build_merge_readiness(
         repository=repository,
@@ -145,6 +150,7 @@ def build_pr_merge_readiness_packet(
         item=item,
         review_threads=review_threads,
         source=source,
+        wait_for_ci=wait_for_ci,
     )
     payload["generated_at"] = generated_at_text
     return payload

@@ -562,7 +562,7 @@ absolute paths, private source bodies, or hidden CI artifacts.
       },
       "risk_notes": [],
       "evidence_commands": [
-        "gh pr view 773 --json title,body,files,commits,statusCheckRollup,headRefOid,updatedAt",
+        "gh pr view 773 --json title,body,files,commits,headRefOid,updatedAt",
         "gh pr diff 773 --name-only",
         "gh pr diff 773 --patch",
         "gh pr view 773 --json headRefOid,updatedAt"
@@ -782,3 +782,33 @@ A first implementation is acceptable when:
 - live GitHub reads and fixture-based smokes share the same schema;
 - no raw logs, private payloads, credentials, local paths, or private source
   bodies are recorded.
+
+## Configure CI waiting / 配置是否等待 CI
+
+`pull_request_review.wait_for_ci` defaults to `true`. Machine defaults use the
+existing capability editor. A Goal may override the complete review namespace;
+clearing that override restores live machine defaults. Local required validation
+and exact-head review/thread gates apply in both modes. Disabling CI waiting
+also removes CI requests and waiting instructions; legacy supplied summaries
+are diagnostic only. It grants no publication, merge, or admin-bypass authority.
+
+```bash
+loopx configure-goal --goal-id GOAL --no-pr-review-wait-for-ci --execute
+loopx configure-goal --goal-id GOAL
+loopx pr-review --goal-id GOAL --state all --format json
+loopx pr-review --goal-id GOAL --check-merge-readiness NUMBER@HEAD_OID --format json
+loopx configure-goal --goal-id GOAL --clear-pr-review-configuration --execute
+```
+
+The Dashboard capability editor exposes **Wait for CI** in machine and Goal
+scopes. Save a Goal override to affect only that Goal; use inherit/reset to
+restore machine defaults. The CLI packet echoes the resolved configuration.
+A Goal namespace is atomic (including review priority); partial updates retain
+its existing values, and a new namespace uses capability defaults.
+
+`wait_for_ci` 默认开启，保留既有 CI 验证行为。Dashboard 的机器/目标 capability
+编辑器提供“等待 CI”开关。以上命令只关闭指定 Goal 的等待，读取配置和评审载荷
+可确认生效；清除完整目标覆盖后恢复机器默认。目标覆盖是完整 namespace（包括
+审阅优先级），部分修改保留既有目标值，新覆盖使用 capability 默认值。关闭时不
+查询、轮询或等待 CI；本地必需验证、当前提交评审、评论及权限检查仍然适用。
+GitHub `BLOCKED` 只提示另需管理员授权，不授予合并权限。

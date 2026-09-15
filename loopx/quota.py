@@ -63,7 +63,8 @@ from .control_plane.quota.slot_accounting import (
     QUOTA_SLOT_VOIDED_CLASSIFICATION,
     build_quota_slot_preview_for_decision,
     build_quota_slot_spend_event as _build_quota_slot_spend_event,
-    load_quota_event_from_run,
+    net_quota_slot_spend,
+    quota_slot_contribution,
     record_quota_slot_spend_from_preview,
 )
 from .control_plane.quota.spend_commit import replay_quota_spend_by_effect_ref
@@ -356,10 +357,6 @@ def goal_quota_config(goal: dict[str, Any] | None) -> dict[str, Any]:
     return payload
 
 
-def _quota_event_run_key(run: dict[str, Any], event: dict[str, Any]) -> str:
-    return str(event.get("run_generated_at") or run.get("generated_at") or "")
-
-
 def goal_quota_with_spend_ledger(
     goal: dict[str, Any] | None,
     runs: list[dict[str, Any]],
@@ -372,8 +369,7 @@ def goal_quota_with_spend_ledger(
     if current_time.tzinfo is None:
         current_time = current_time.replace(tzinfo=timezone.utc)
     window_start = current_time - timedelta(hours=int(payload["window_hours"]))
-    spent_by_run: dict[str, int] = {}
-    voided_by_run: dict[str, int] = {}
+    contributions: list[tuple[str, str, int]] = []
     spend_event_count = 0
     void_event_count = 0
 
@@ -389,32 +385,17 @@ def goal_quota_with_spend_ledger(
             or generated_at > current_time
         ):
             continue
-        event = load_quota_event_from_run(run)
-        if not event:
+        contribution = quota_slot_contribution(run)
+        if contribution is None:
             continue
-        event_type = str(event.get("event_type") or "")
-        slots = max(0, _int_number(event.get("slots"), default=0))
-        if slots <= 0:
-            continue
-        if event_type == QUOTA_SLOT_SPENT_CLASSIFICATION:
-            run_key = _quota_event_run_key(run, event)
-            if not run_key:
-                continue
-            spent_by_run[run_key] = spent_by_run.get(run_key, 0) + slots
+        kind, run_key, slots = contribution
+        contributions.append((run_key, kind, slots))
+        if kind == "spent":
             spend_event_count += 1
-        elif event_type == QUOTA_SLOT_VOIDED_CLASSIFICATION:
-            voided_run_generated_at = str(event.get("voided_run_generated_at") or "")
-            if not voided_run_generated_at:
-                continue
-            voided_by_run[voided_run_generated_at] = (
-                voided_by_run.get(voided_run_generated_at, 0) + slots
-            )
+        else:
             void_event_count += 1
 
-    spent_slots = 0
-    for run_key, slots in spent_by_run.items():
-        spent_slots += max(0, slots - voided_by_run.get(run_key, 0))
-    payload["spent_slots"] = spent_slots
+    payload["spent_slots"] = sum(net_quota_slot_spend(contributions).values())
     payload["spend_source"] = "runtime_events"
     payload["spend_event_count"] = spend_event_count
     if void_event_count:

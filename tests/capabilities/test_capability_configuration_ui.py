@@ -25,14 +25,16 @@ def test_periodic_report_editor_is_shared_across_machine_and_goal_scopes() -> No
     ]
 
 
-def test_pull_request_review_editor_is_machine_configurable() -> None:
+def test_pull_request_review_editor_supports_machine_and_goal_ci_policy() -> None:
     editor = capability_configuration_editor("pull_request_review")
 
     assert editor["schema_version"] == "capability_configuration_editor_v0"
     assert editor["editable"] is True
-    assert editor["supported_scopes"] == ["machine"]
-    assert editor["writable_scopes"] == ["machine"]
-    assert editor["fields"] == [
+    assert editor["supported_scopes"] == ["machine", "goal"]
+    assert editor["writable_scopes"] == ["machine", "goal"]
+    assert editor["fields"][0]["key"] == "wait_for_ci"
+    assert editor["fields"][0]["input_kind"] == "boolean"
+    assert editor["fields"][1:] == [
         {
             "key": "review_priority",
             "label": "Review priority",

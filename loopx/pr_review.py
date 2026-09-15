@@ -221,6 +221,7 @@ def scan_github_pull_requests(
     cwd: Path | None = None,
     state_filter: str = "all",
     since: str | None = None,
+    wait_for_ci: bool = True,
 ) -> dict[str, Any]:
     repo_args = ["--repo", repo] if repo else []
     api_repository = repo or resolve_current_github_repository(cwd=cwd)
@@ -303,6 +304,7 @@ def scan_github_pull_requests(
             repository=api_repository,
             cwd=cwd,
             attach=_attach_pr_review_details,
+            **({"wait_for_ci": False} if not wait_for_ci else {}),
             run_gh_json=_run_gh_json,
         )
         detail_read_failures = sum(not result for result in detail_results)
@@ -520,7 +522,7 @@ def _check_brief_phrase(checks: dict[str, Any]) -> str:
     return str(checks.get("summary") or "unknown")
 
 
-def _metadata_risk_hint(pr: dict[str, Any], files: list[dict[str, Any]], checks: dict[str, Any]) -> dict[str, Any]:
+def _metadata_risk_hint(pr: dict[str, Any], files: list[dict[str, Any]], checks: dict[str, Any], *, wait_for_ci: bool = True) -> dict[str, Any]:
     areas = _area_counts(files)
     changed = int(pr.get("changedFiles") or len(files) or 0)
     additions = int(pr.get("additions") or 0)
@@ -536,9 +538,9 @@ def _metadata_risk_hint(pr: dict[str, Any], files: list[dict[str, Any]], checks:
         }
         for item in files
     )
-    if checks.get("failures") or changed >= 12 or additions + deletions >= 800:
+    if (wait_for_ci and checks.get("failures")) or changed >= 12 or additions + deletions >= 800:
         level = "high"
-    elif has_runtime or checks.get("pending") or not checks.get("total"):
+    elif has_runtime or (wait_for_ci and (checks.get("pending") or not checks.get("total"))):
         level = "medium"
     else:
         level = "low"
@@ -548,13 +550,13 @@ def _metadata_risk_hint(pr: dict[str, Any], files: list[dict[str, Any]], checks:
         "basis": [
             f"areas={_area_phrase(areas)}",
             f"scale={changed} files +{additions}/-{deletions}",
-            f"checks={_check_brief_phrase(checks)}",
+            f"checks={_check_brief_phrase(checks)}" if wait_for_ci else "CI not consulted",
         ],
         "disclaimer": "Metadata-only hint for queue ordering; agentloop must read the PR diff before judging main risk.",
     }
 
 
-def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -> dict[str, Any]:
+def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]], *, wait_for_ci: bool = True) -> dict[str, Any]:
     areas = _area_counts(files)
     checks = _checks(pr)
     state = str(pr.get("state") or "").upper()
@@ -615,15 +617,16 @@ def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -
         bug_risks.append("Unclassified files may still affect generated assets, packaging, or reviewer workflow assumptions.")
         verification_focus.append("Review the diff for the top changed files and run the nearest project smoke.")
 
-    if checks.get("failures"):
-        bug_risks.insert(0, "Failing status checks indicate the branch may already break a required validation surface.")
-        verification_focus.insert(0, "Inspect failing checks before merge and rerun them after fixes.")
-    elif checks.get("pending"):
-        bug_risks.append("Pending checks leave merge readiness uncertain.")
-        verification_focus.append("Wait for pending checks or run the equivalent local smoke before merge.")
-    elif not checks.get("total"):
-        bug_risks.append("No status-check rollup was available, so validation coverage must be inferred from local evidence.")
-        verification_focus.append("Run at least one focused local validation command before approving.")
+    if wait_for_ci:
+        if checks.get("failures"):
+            bug_risks.insert(0, "Failing status checks indicate the branch may already break a required validation surface.")
+            verification_focus.insert(0, "Inspect failing checks before merge and rerun them after fixes.")
+        elif checks.get("pending"):
+            bug_risks.append("Pending checks leave merge readiness uncertain.")
+            verification_focus.append("Wait for pending checks or run the equivalent local smoke before merge.")
+        elif not checks.get("total"):
+            bug_risks.append("No status-check rollup was available, so validation coverage must be inferred from local evidence.")
+            verification_focus.append("Run at least one focused local validation command before approving.")
 
     has_sensitive_area = bool(
         area_names
@@ -635,9 +638,9 @@ def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -
             "agent_instruction_surface",
         }
     )
-    if checks.get("failures") or changed >= 12 or churn >= 800 or (state == "MERGED" and has_sensitive_area):
+    if (wait_for_ci and checks.get("failures")) or changed >= 12 or churn >= 800 or (state == "MERGED" and has_sensitive_area):
         level = "high"
-    elif has_sensitive_area or checks.get("pending") or not checks.get("total"):
+    elif has_sensitive_area or (wait_for_ci and (checks.get("pending") or not checks.get("total"))):
         level = "medium"
     else:
         level = "low"
@@ -647,7 +650,8 @@ def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -
         "risk_level": level,
         "risk_summary": (
             f"{RISK_LEVEL_LABELS.get(level, level)} main regression risk across {_area_phrase(areas)}; "
-            f"{changed} file(s), +{additions}/-{deletions}; checks={_check_brief_phrase(checks)}."
+            f"{changed} file(s), +{additions}/-{deletions}; "
+            + (f"checks={_check_brief_phrase(checks)}." if wait_for_ci else "CI not consulted.")
         ),
         "potential_regressions": potential_regressions[:5],
         "bug_risks": bug_risks[:5],
@@ -718,7 +722,7 @@ def _checks(pr: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _risk_notes(pr: dict[str, Any], files: list[dict[str, Any]]) -> list[str]:
+def _risk_notes(pr: dict[str, Any], files: list[dict[str, Any]], *, wait_for_ci: bool = True) -> list[str]:
     notes: list[str] = []
     state = str(pr.get("state") or "").upper()
     if state == "MERGED" or pr.get("mergedAt") or pr.get("merged_at"):
@@ -737,7 +741,7 @@ def _risk_notes(pr: dict[str, Any], files: list[dict[str, Any]]) -> list[str]:
     if changed >= 12 or additions + deletions >= 800:
         notes.append("Large review surface; split the review by area before approving.")
     checks = _checks(pr)
-    if checks.get("failures"):
+    if wait_for_ci and checks.get("failures"):
         notes.append("Failing status checks block a clean merge decision.")
     return notes
 
@@ -931,6 +935,7 @@ def _normalize_pr(
     review_priority: PullRequestReviewPriority = DEFAULT_REVIEW_PRIORITY,
     generated_at: datetime,
     fresh_audit_exact_heads: set[str],
+    wait_for_ci: bool = True,
 ) -> dict[str, Any]:
     files = _files(pr)
     checks = _checks(pr)
@@ -996,10 +1001,11 @@ def _normalize_pr(
         "key_files": files[:10],
         "commit_headlines": _commit_headlines(pr),
         "checks": checks,
+        "wait_for_ci": wait_for_ci,
         "review_depth": _review_depth(files),
-        "risk_notes": _risk_notes(pr, files),
-        "metadata_risk_hint": _metadata_risk_hint(pr, files, checks),
-        "main_regression_analysis": _main_regression_analysis(pr, files),
+        "risk_notes": _risk_notes(pr, files, wait_for_ci=wait_for_ci),
+        "metadata_risk_hint": _metadata_risk_hint(pr, files, checks, wait_for_ci=wait_for_ci),
+        "main_regression_analysis": _main_regression_analysis(pr, files, wait_for_ci=wait_for_ci),
     }
     item.update(
         materialize_review_execution(
@@ -1030,6 +1036,7 @@ def build_pr_review_packet(
     reviewer_login: str | None = None,
     fresh_audit_exact_heads: Sequence[str] = (),
     review_priority: object = DEFAULT_REVIEW_PRIORITY,
+    wait_for_ci: bool = True,
 ) -> dict[str, Any]:
     normalized_state_filter = normalize_pr_state_filter(state_filter)
     normalized_priority = normalize_review_priority(review_priority)
@@ -1043,6 +1050,7 @@ def build_pr_review_packet(
             review_priority=normalized_priority,
             generated_at=generated_at,
             fresh_audit_exact_heads=requested_fresh_audits,
+            wait_for_ci=wait_for_ci,
         )
         for item in pull_requests
     ]
@@ -1257,7 +1265,7 @@ def build_pr_review_packet(
         "review_sequence": review_sequence,
         "review_groups": review_groups,
         "pull_requests": normalized,
-        "agent_response_contract": build_agent_response_contract(),
+        "agent_response_contract": build_agent_response_contract(wait_for_ci=wait_for_ci),
         "actions": [
             {
                 "action_id": "act_review_next_pr",

@@ -234,7 +234,7 @@
     {"name": "UNSAFE_FIELDS", "module": "loopx/capabilities/material_lifecycle/_validation.py", "container": "set", "values": ["api_key", "content", "credential", "credentials", "private_locator", "provider_payload", "raw_chat", "raw_content", "raw_provider_payload", "token", "tool_output"]},
     {"name": "MATERIAL_LIFECYCLE_STATES", "module": "loopx/capabilities/material_lifecycle/inventory.py", "container": "set", "values": ["active", "archived", "candidate", "carryover", "unread"]},
     {"name": "OBSERVATION_STATES", "module": "loopx/capabilities/pr_review_queue/core.py", "container": "set", "values": ["not_observed", "observed_unchanged", "material_transition"]},
-    {"name": "DETAIL_FIELDS", "module": "loopx/capabilities/pr_review_queue/github_source.py", "container": "tuple", "values": ["body", "files", "reviewDecision", "mergeStateStatus", "createdAt", "commits", "reviews", "statusCheckRollup"]},
+    {"name": "DETAIL_FIELDS", "module": "loopx/capabilities/pr_review_queue/github_source.py", "container": "tuple", "values": ["body", "files", "reviewDecision", "mergeStateStatus", "createdAt", "commits", "reviews"]},
     {"name": "BEHAVIORAL_POLICY_AREAS", "module": "loopx/capabilities/pr_review_queue/review_contract.py", "container": "set", "values": ["public_entry_or_policy", "agent_instruction_surface"]},
     {"name": "CODE_AREAS", "module": "loopx/capabilities/pr_review_queue/review_contract.py", "container": "set", "values": ["product_runtime", "app_or_ui_surface", "ci_or_release", "build_or_config"]},
     {"name": "REQUIRED_FINAL_SECTIONS", "module": "loopx/capabilities/pr_review_queue/review_contract.py", "container": "list", "values": ["动机", "改动思路", "具体改动", "对主干的风险", "我的整体评价"]},
@@ -902,12 +902,12 @@
     ]
   },
   "summary": {
-    "source_files": 1174,
+    "source_files": 1175,
     "python_enums": 103,
     "python_closed_sets": 495,
     "python_literal_aliases": 8,
     "typescript_const_arrays": 40,
-    "named_string_constants": 2030,
+    "named_string_constants": 2031,
     "schema_version_names": 756,
     "schema_version_same_runtime_forks": 7,
     "cross_runtime_twins": 166,

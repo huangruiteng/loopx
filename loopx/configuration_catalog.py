@@ -446,6 +446,15 @@ def build_goal_configuration_catalog(
                 },
             },
             {
+                "feature_id": "pull_request_review",
+                "display_name": "Pull-request review",
+                "availability": "supported",
+                "default": {"wait_for_ci": True, "review_priority": "other-developers-first"},
+                "current": feature_summary.get("pull_request_review") or {},
+                "effect": "Choose CI waiting and review priority for this Goal; clear the complete override to restore machine defaults.",
+                "documentation": {"path": "loopx/capabilities/pr_review_queue/README.md"},
+            },
+            {
                 "feature_id": "change_quality_qualification",
                 "display_name": "Change quality qualification",
                 "availability": "supported_opt_in",
@@ -787,6 +796,7 @@ def build_goal_configuration_catalog(
         if feature_id not in {
             "todo_replan_cadence",
             "change_quality_qualification",
+            "pull_request_review",
         }:
             continue
         explicit = overrides.get(feature_id)

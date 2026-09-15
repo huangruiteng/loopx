@@ -12,7 +12,6 @@ from ..capabilities.pr_review_queue import (
     build_pull_request_review_queue_observation,
     normalize_fresh_audit_exact_heads,
     normalize_review_priority,
-    review_priority_machine_default,
 )
 from ..capabilities.machine_configuration.builtins import (
     build_builtin_machine_configuration_registry,
@@ -34,7 +33,8 @@ from ..pr_review_merge_readiness import (
     fetch_github_pull_request,
     fetch_github_review_thread_summary,
 )
-from ..registry import atomic_write_json
+from ..registry import atomic_write_json, read_json, find_registry_goal
+from ..capabilities.pr_review_queue.goal_configuration import resolve_configuration
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
@@ -97,6 +97,7 @@ def register_pr_review_command(
         help="Build a public-safe /loopx-pr-review queue for the current project's open and merged pull requests.",
     )
     add_subcommand_format(parser)
+    parser.add_argument("--goal-id", help="Use this Goal PR review configuration; otherwise use machine defaults.")
     parser.add_argument(
         "--check-result",
         help="Check a saved review result for verdict/evidence consistency; no GitHub writes.",
@@ -106,7 +107,7 @@ def register_pr_review_command(
         metavar="NUMBER@HEAD_OID",
         help=(
             "Re-read one open PR and fail closed unless this exact reviewed head, "
-            "its checks, and review threads are ready immediately before merge."
+            "its configured CI policy, approval, and review threads are ready immediately before merge."
         ),
     )
     parser.add_argument(
@@ -201,12 +202,24 @@ def handle_pr_review_command(
     output_format: FormatSelector,
     print_payload: PrintPayload,
     runtime_root: Path | None = None,
+    registry_path: Path | None = None,
 ) -> int | None:
     if args.command != "pr-review":
         return None
     checkpoint_path: Path | None = None
     resolved_review_priority = DEFAULT_REVIEW_PRIORITY
     try:
+        machine_configuration = (read_machine_configuration(runtime_root, registry=build_builtin_machine_configuration_registry()) if runtime_root is not None else None)
+        goal = None
+        goal_id = getattr(args, "goal_id", None)
+        if goal_id:
+            if registry_path is None or not registry_path.exists():
+                raise ValueError("--goal-id requires an available Goal registry")
+            goal = find_registry_goal(read_json(registry_path), goal_id)
+            if goal is None:
+                raise ValueError("PR review Goal was not found: " + goal_id)
+        review_configuration = resolve_configuration(goal, machine_configuration)
+        wait_for_ci = review_configuration["wait_for_ci"]
         if args.check_result or args.packet:
             if not (args.check_result and args.packet):
                 raise ValueError("--check-result and --packet must be used together")
@@ -295,6 +308,7 @@ def handle_pr_review_command(
                 pull_request = fetch_github_pull_request(
                     repo=repository,
                     number=number,
+                    **({"wait_for_ci": False} if not wait_for_ci else {}),
                 )
                 review_threads = fetch_github_review_thread_summary(
                     repo=repository,
@@ -310,6 +324,7 @@ def handle_pr_review_command(
                 reviewer_login=reviewer_login,
                 review_threads=review_threads,
                 source=source,
+                wait_for_ci=wait_for_ci,
             )
             print_payload(
                 payload,
@@ -337,15 +352,8 @@ def handle_pr_review_command(
         explicit_review_priority = getattr(args, "review_priority", None)
         if explicit_review_priority is not None:
             resolved_review_priority = normalize_review_priority(explicit_review_priority)
-        elif runtime_root is not None:
-            machine_configuration = read_machine_configuration(
-                runtime_root,
-                registry=build_builtin_machine_configuration_registry(),
-            )
-            resolved_review_priority = (
-                review_priority_machine_default(machine_configuration)
-                or DEFAULT_REVIEW_PRIORITY
-            )
+        else:
+            resolved_review_priority = normalize_review_priority(review_configuration["review_priority"])
         previous_observation = None
         checkpoint_digest = None
         if args.observation_state_file:
@@ -379,6 +387,7 @@ def handle_pr_review_command(
                 limit=max(1, args.limit) + 1,
                 state_filter=normalize_pr_state_filter(args.state),
                 since=args.since,
+                **({"wait_for_ci": False} if not wait_for_ci else {}),
             )
             pull_requests = source_scan["pull_requests"]
         if checkpoint_path is not None and previous_observation:
@@ -403,7 +412,10 @@ def handle_pr_review_command(
             reviewer_login=reviewer_login,
             fresh_audit_exact_heads=args.fresh_audit_exact_head,
             review_priority=resolved_review_priority,
+            wait_for_ci=wait_for_ci,
         )
+        payload["request"]["goal_id"] = goal_id
+        payload["request"]["review_configuration"] = review_configuration
         if args.autonomous_observation:
             autonomous_review = build_pull_request_review_queue_observation(
                 repository=repository,
