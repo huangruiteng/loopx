@@ -8,11 +8,13 @@
  * delivery do not change; only redundant storage does.
  *
  * The migration is linear, transactional and idempotent: it reads the frozen
- * V1 rows, proves every stored digest while writing the V2 log, verifies that
- * the retained transaction identity sequence is byte-identical, and only then
- * swaps tables inside the same transaction. A V1 database that never committed
- * migrates to an equally empty V2 database; nothing is invented. Any failure
- * leaves the V1 database untouched. A production first-cutover command,
+ * V1 rows, proves every stored digest while writing the V2 log, proves that
+ * every written delta reconstructs the exact projection it claims (the V2 read
+ * contract, checked before the swap instead of after the first read), verifies
+ * that the retained transaction identity sequence is byte-identical, and only
+ * then swaps tables inside the same transaction. A V1 database that never
+ * committed migrates to an equally empty V2 database; nothing is invented. Any
+ * failure leaves the V1 database untouched. A production first-cutover command,
  * migration manifest and reverse export remain separate reviewed deliverables.
  */
 import { createHash } from "node:crypto";
@@ -22,7 +24,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { JsonObject } from "../effect_program.ts";
 import { AuthorityStoreProtocolError, canonicalAuthorityObject,
   canonicalAuthorityObjectList, requireAuthorityStoreId } from "./authority_store_codec.ts";
-import { authorityStateCheckpointCursor, authorityStateDelta,
+import { authorityStateCheckpointCursor, authorityStateDelta, authorityStateDeltaReconstructs,
   authorityStateDigest, isAuthorityStateCheckpoint } from "./authority_state_log.ts";
 import {
   SQLITE_AUTHORITY_STORE_SCHEMA,
@@ -192,6 +194,14 @@ function executeSqliteAuthorityMigration(
         }
         const stateDigest = authorityStateDigest(projection);
         const delta = authorityStateDelta(previous ?? {}, projection);
+        // The committed V1 projection is the contract the migrated store must
+        // keep readable, so the delta is proved against it here. A codec that
+        // cannot address one of its keys must fail the migration and leave V1
+        // intact instead of publishing a log the V2 read path rejects.
+        if (!authorityStateDeltaReconstructs(previous ?? {}, delta, projection)) {
+          throw new AuthorityStoreProtocolError(
+            "V1 authority state delta does not reconstruct its commit");
+        }
         if (isAuthorityStateCheckpoint(cursor)) {
           insertCheckpoint.run(cursor.toString(), JSON.stringify(projection), stateDigest);
           checkpoints += 1;

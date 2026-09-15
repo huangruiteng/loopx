@@ -7,11 +7,14 @@ import {
   applyAuthorityStateDelta,
   authorityStateCheckpointCursor,
   authorityStateDelta,
+  authorityStateDeltaReconstructs,
   authorityStateDigest,
   authorityStateReplayBudget,
   decodeAuthorityStateDelta,
   isAuthorityStateCheckpoint,
 } from "../../loopx/control_plane/coordination/authority_state_log.ts";
+import {canonicalAuthorityBytes} from
+  "../../loopx/control_plane/coordination/authority_store_codec.ts";
 
 test("authority state deltas reconstruct every committed projection exactly", () => {
   const previous = {
@@ -88,6 +91,53 @@ test("authority state delta decoding fails closed at the storage boundary", () =
     assert.throws(() => applyAuthorityStateDelta(previous, decoded), /path|splice|never stored/u);
     assert.throws(() => applyAuthorityStateDelta({other: 1}, decoded), /path|splice|never stored/u);
   }
+});
+
+test("authority state deltas preserve every JSON object key", () => {
+  // A JSON object key is any string, so `""` and `__proto__` are keys a
+  // committed projection can carry. A delta must address them exactly instead
+  // of rejecting them or writing through the prototype chain, otherwise a
+  // migration would publish a log whose own read path cannot rebuild the state
+  // it claims to preserve.
+  const encoded = (value: unknown): string =>
+    canonicalAuthorityBytes(value).toString("utf8");
+  const special = JSON.parse(
+    '{"": {"marker": "empty"}, "__proto__": {"marker": "proto"}, "todos": [{"id": "a"}]}',
+  ) as Record<string, unknown>;
+  const nested = JSON.parse('{"scope": {"": {"__proto__": {"depth": 1}}}}') as Record<string, unknown>;
+
+  for (const projection of [{}, special, nested]) {
+    const delta = authorityStateDelta({}, projection);
+    const replayed = applyAuthorityStateDelta({}, delta);
+    assert.equal(encoded(replayed), encoded(projection));
+    assert.equal(authorityStateDeltaReconstructs({}, delta, projection), true);
+    // Round-tripping the delta through JSON is the storage boundary the store
+    // actually crosses, and it must not change the outcome.
+    const stored = JSON.parse(JSON.stringify(delta)) as unknown;
+    assert.equal(encoded(applyAuthorityStateDelta({}, decodeAuthorityStateDelta(stored))),
+      encoded(projection));
+  }
+  // Every path segment is an own data property, so a stored `__proto__` key
+  // neither disappears nor replaces the container's prototype.
+  const protoOnly = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
+  const replayedProto = applyAuthorityStateDelta({}, authorityStateDelta({}, protoOnly));
+  assert.equal(Object.hasOwn(replayedProto, "__proto__"), true);
+  assert.equal(Object.getPrototypeOf(replayedProto), Object.prototype);
+  assert.equal(encoded(replayedProto), encoded(protoOnly));
+  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+  // Removing a key that exists is exact for the empty key too.
+  assert.equal(encoded(applyAuthorityStateDelta({"": 1}, authorityStateDelta({"": 1}, {}))), "{}");
+  // The reconstruction rule is one shared decision, so a delta that decodes but
+  // describes a different projection is reported as a failed reconstruction
+  // rather than as an applied change.
+  const mismatched = decodeAuthorityStateDelta({schema_version: AUTHORITY_STATE_DELTA_SCHEMA,
+    operations: [{op: "set", path: ["a"], value: 2}]});
+  assert.equal(authorityStateDeltaReconstructs({}, mismatched, {a: 1}), false);
+  assert.equal(authorityStateDeltaReconstructs({}, mismatched, {a: 2}), true);
+  assert.equal(authorityStateDeltaReconstructs({}, mismatched, {}), false);
+  const undecodable = {schema_version: AUTHORITY_STATE_DELTA_SCHEMA,
+    operations: [{op: "set", path: [], value: 1}]} as never;
+  assert.equal(authorityStateDeltaReconstructs({}, undecodable, {}), false);
 });
 
 test("authority state digests and checkpoint windows are stable and bounded", () => {

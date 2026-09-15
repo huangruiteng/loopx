@@ -8,6 +8,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SqliteAuthorityStore } from "../../loopx/control_plane/coordination/sqlite_authority_store.ts";
 import { AUTHORITY_STATE_CHECKPOINT_INTERVAL } from "../../loopx/control_plane/coordination/authority_state_log.ts";
+import { canonicalAuthorityBytes } from "../../loopx/control_plane/coordination/authority_store_codec.ts";
 import { authorityStoreCommitFixture, registerAuthorityStoreConformance } from "./authority_store_conformance.ts";
 
 async function fixture(t: test.TestContext) {
@@ -16,6 +17,50 @@ async function fixture(t: test.TestContext) {
   return {store: new SqliteAuthorityStore(directory, "goal"), contender: new SqliteAuthorityStore(directory, "goal")};
 }
 registerAuthorityStoreConformance("SQLite", fixture);
+
+test("SQLite commits and reads back every JSON object key", {timeout: 30000}, async t => {
+  const {store} = await fixture(t);
+  // The live writer must accept the same key space the migration has to carry:
+  // a projection may key an object with `""` or `__proto__`, and both must
+  // survive the stored delta, the head row and the retained history.
+  const projections: Record<string, unknown>[] = [
+    {},
+    JSON.parse('{"": {"marker": "empty"}, "__proto__": {"marker": "proto"}}') as Record<string, unknown>,
+    JSON.parse('{"nested": {"": [{"__proto__": "leaf"}]}}') as Record<string, unknown>,
+    JSON.parse('{}') as Record<string, unknown>,
+  ];
+  let revision: string | null = null;
+  for (const [index, projection] of projections.entries()) {
+    const receipt = await store.commitAuthority({expected_provider_revision: revision,
+      operation_id: `key-op-${String(index).padStart(3, "0")}`, next_projection: projection,
+      events: [], receipts: []});
+    assert.equal(receipt.status, "applied", JSON.stringify(receipt));
+    revision = receipt.status === "applied" ? receipt.provider_revision : null;
+  }
+  const head = await store.loadAuthority();
+  assert.equal(head.status, "loaded");
+  if (head.status === "loaded") {
+    assert.equal(canonicalAuthorityBytes(head.head).toString("utf8"),
+      canonicalAuthorityBytes(projections[projections.length - 1]!).toString("utf8"));
+  }
+  assert.equal((await store.verifyAuthorityHistory()).status, "verified");
+  const read: Record<string, unknown>[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const page = await store.scanCommitted(after, 4);
+    assert.equal(page.status, "page", JSON.stringify(page));
+    if (page.status !== "page" || page.transactions.length === 0) break;
+    for (const transaction of page.transactions) {
+      read.push(transaction.projection as Record<string, unknown>);
+    }
+    after = page.transactions[page.transactions.length - 1]!.cursor;
+  }
+  for (const [index, projection] of projections.entries()) {
+    assert.equal(canonicalAuthorityBytes(read[index]!).toString("utf8"),
+      canonicalAuthorityBytes(projection).toString("utf8"), `projection ${index}`);
+  }
+  assert.equal(({} as Record<string, unknown>).marker, undefined);
+});
 
 test("SQLite head continuity is independent of retained history", {timeout: 30000}, async t => {
   const {store} = await fixture(t);
