@@ -230,12 +230,26 @@ npm run smoke:demo-readiness
 Before opening a pull request:
 
 - link the issue or task ID when one exists;
-- describe the behavior change and the validation you ran;
+- state the requested outcome, current gap and observable before/after result;
+- distinguish completion of the scoped task from a justified increment; for an
+  increment, name the remaining gap, next owner/dependency and why the boundary
+  is independently testable and reversible;
+- link decisive validation to that outcome, including relevant user-entrypoint
+  readback and failure/recovery cases;
 - keep unrelated formatting or refactors out of the PR;
 - include docs or tests when changing user-visible behavior;
 - confirm that no private/local runtime state was committed.
 
-Maintainers may ask for a smaller PR if the change mixes unrelated concerns.
+Use the [overall roadmap](docs/architecture/rfcs/loopx-overall-roadmap-v0.md) for
+cross-cutting work, without inventing roadmap ids for ordinary fixes. Existing
+issues and canonical Todos own execution; update them instead of duplicating
+follow-up work. A completed task needs no invented successor. Prerequisites,
+research, docs and maintenance can be useful delivered outcomes. A schema,
+message, mock or passing suite alone does not complete a promised user journey.
+
+Maintainers may request consolidation when a useful outcome was unnecessarily
+split, or a smaller PR when unrelated concerns were mixed. Review evaluates the
+verified goal delta and evidence, not minimum size, model identity or PR count.
 
 ### Validation disclosure
 
