@@ -147,7 +147,9 @@ LoopX services are already running separately. Vite proxies the default
 The full-stack launcher needs a Python 3.11+ interpreter for the status and
 Chat services. It honors `LOOPX_PYTHON` first, then the Python recorded by the
 LoopX installer in `.loopx-python`, then the repository `.venv`,
-compatible versioned interpreters on `PATH`, and common Homebrew locations.
+versioned interpreters discovered on `PATH` in descending numeric order, the
+unversioned `python3`, and common Homebrew locations. Every discovered executable
+must pass the Python compatibility probe; there is no fixed minor-version list.
 Prepare the project environment and launch from the repository root:
 
 ```bash
