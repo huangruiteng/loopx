@@ -156,7 +156,7 @@ def test_the_chat_normalizer_admits_a_preview_only_with_host_facts() -> None:
         "gate": None,
     }
     context = {
-        "registered_agent_ids": ["agent-alpha"],
+        "registered_agents_by_goal": {"team-plan-fixture": ["agent-alpha"]},
         "supported_action_kinds": ["implement"],
     }
 
@@ -171,6 +171,56 @@ def test_the_chat_normalizer_admits_a_preview_only_with_host_facts() -> None:
     # Without the host facts the preview cannot be validated, so it is not
     # surfaced at all rather than admitted half-checked.
     assert normalize_agent_response(envelope)["proposals"] == []
+
+    # A plan for a Goal this Turn was not given facts for is dropped as well:
+    # another Goal's Agents must not validate it.
+    other_goal = {**envelope, "proposals": [_plan(goal_id="some-other-goal")]}
+    assert normalize_agent_response(other_goal, team_plan_context=context)[
+        "proposals"
+    ] == []
+
+    # A host with a large Goal set resolves on demand, for the named Goal only.
+    looked_up: list[str] = []
+
+    def resolve(goal_id: str) -> list[str] | None:
+        looked_up.append(goal_id)
+        # ``None`` means "this host cannot describe that Goal", which drops the
+        # preview; an empty list is a real answer and becomes typed gaps.
+        return ["agent-alpha"] if goal_id == "team-plan-fixture" else None
+
+    on_demand_context = {
+        "resolve_registered_agents": resolve,
+        "supported_action_kinds": ["implement"],
+    }
+    on_demand = normalize_agent_response(
+        envelope, team_plan_context=on_demand_context
+    )
+    assert [item["kind"] for item in on_demand["proposals"]] == [
+        "steward_team_plan_preview"
+    ]
+    assert looked_up == ["team-plan-fixture"]
+    assert normalize_agent_response(
+        other_goal, team_plan_context=on_demand_context
+    )["proposals"] == []
+
+    unresolved = normalize_agent_response(
+        envelope, team_plan_context={**on_demand_context}
+    )
+    assert [item["kind"] for item in unresolved["proposals"]] == [
+        "steward_team_plan_preview"
+    ]
+    gaps_only = normalize_agent_response(
+        other_goal,
+        team_plan_context={
+            "registered_agents_by_goal": {"some-other-goal": []},
+            "supported_action_kinds": ["implement"],
+        },
+    )
+    # A Goal the host says has no registered Agents is a fact: the lane becomes
+    # a typed gap instead of the preview disappearing without explanation.
+    assert gaps_only["proposals"][0]["preview"]["gaps"] == [
+        {"lane_id": "lane-alpha", "reason_code": "agent_not_registered"}
+    ]
 
     # A malformed preview is dropped like any other proposal the normalizer
     # cannot accept, and the owner's answer text still arrives.
@@ -189,3 +239,62 @@ def test_the_chat_normalizer_admits_a_preview_only_with_host_facts() -> None:
     assert normalize_agent_response(todo)["proposals"] == [
         {"kind": "todo", "text": "Do one thing", "priority": "P2", "rationale": "why"}
     ]
+
+
+def test_the_steward_turn_resolves_admission_facts_per_goal(tmp_path) -> None:
+    """The Turn owner hands the segment a lookup, not one Goal's facts."""
+
+    import json as _json
+
+    from loopx.chat_runtime import ChatRuntimeController
+    from loopx.chat_store import ChatSessionStore
+
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        _json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "goals": [
+                    {
+                        "id": goal_id,
+                        "domain": goal_id,
+                        "status": "active-read-only",
+                        "coordination": {"registered_agents": [agent_id]},
+                    }
+                    for goal_id, agent_id in (
+                        ("authorized-goal", "agent-alpha"),
+                        ("other-goal", "agent-beta"),
+                    )
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = ChatSessionStore(tmp_path / "runtime")
+    runtime = ChatRuntimeController(
+        store=store,
+        codex_bin="missing-codex",
+        registry_path=registry_path,
+        manager_scope_resolver=lambda session: ["authorized-goal"],
+    )
+
+    # Only the manager channel proposes teams; every other channel is untouched.
+    assert runtime._team_plan_admission_context({"channel_id": "lark:topic"}) is None
+
+    # The owner's own channel is not scoped to a subset of Goals.
+    owner_context = runtime._team_plan_admission_context({"channel_id": "manager"})
+    resolve = owner_context["resolve_registered_agents"]
+    assert resolve("authorized-goal") == ["agent-alpha"]
+    assert resolve("other-goal") == ["agent-beta"]
+    assert resolve("no-such-goal") is None
+    assert "implement" in owner_context["supported_action_kinds"]
+
+    # An external manager channel resolves only the Goals it is bound to, so a
+    # plan naming any other Goal cannot be validated at all.
+    external = runtime._team_plan_admission_context(
+        {"channel_id": "manager.external." + "a" * 24}
+    )
+    external_resolve = external["resolve_registered_agents"]
+    assert external_resolve("authorized-goal") == ["agent-alpha"]
+    assert external_resolve("other-goal") is None

@@ -250,7 +250,11 @@ class ClaudeCodeAdapter:
         if visible_tail:
             visible_delta_count += 1
             event_sink("answer.delta", {"text": visible_tail})
-        response = parse_agent_response(raw_response, protected_paths=[self.work_dir])
+        response = parse_agent_response(
+            raw_response,
+            protected_paths=[self.work_dir],
+            team_plan_context=getattr(self, "team_plan_context", None),
+        )
         self.resumed = True
         event_sink("agent.phase", {"label": "正在整理回答"})
         if visible_delta_count == 0:
@@ -372,7 +376,11 @@ class DirectModelAdapter:
                 raise ValueError(f"unsupported direct model provider: {self.provider}")
         else:
             raise _provider_error(self.provider.title(), "The model exceeded the bounded read-only tool-call limit.")
-        response = parse_agent_response(raw_response, protected_paths=[self.work_dir])
+        response = parse_agent_response(
+            raw_response,
+            protected_paths=[self.work_dir],
+            team_plan_context=getattr(self, "team_plan_context", None),
+        )
         self.history.extend([
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": raw_response},

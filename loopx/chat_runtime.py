@@ -290,6 +290,57 @@ class ChatRuntimeController:
 
         return load_effective_steward_executor_defaults(self.store.root.parent)
 
+    def _team_plan_admission_context(
+        self, session: Mapping[str, Any]
+    ) -> dict[str, Any] | None:
+        """Host facts a team preview may be validated against, per Goal.
+
+        A team plan names its own Goal and the manager channel is not bound to
+        one, so admission receives a lookup instead of one Goal's facts. The
+        lookup re-uses the authorization the Turn owner already resolved: an
+        external manager channel resolves only its authorized Goals, and a plan
+        for any other Goal is dropped rather than validated against the Agents
+        of a Goal it does not name.
+        """
+
+        channel_id = str(session.get("channel_id") or "")
+        if not is_manager_channel(channel_id):
+            return None
+        from .agent_registry import load_goal_from_registry, registered_agent_ids_for_goal
+        from .control_plane.todos.contract import (
+            TODO_ACTION_KIND_ADVANCEMENT_VALUES,
+        )
+
+        def resolve(goal_id: str) -> list[str] | None:
+            if not goal_id:
+                return None
+            if channel_id != "manager":
+                # The owner's own channel is not scoped to a subset of Goals;
+                # an external channel only ever sees the Goals it was bound to.
+                scope = (
+                    self.manager_scope_resolver(session)
+                    if self.manager_scope_resolver
+                    else None
+                )
+                if not isinstance(scope, list) or goal_id not in {
+                    str(item) for item in scope
+                }:
+                    return None
+            try:
+                goal = load_goal_from_registry(Path(self.registry_path), goal_id)
+            except (OSError, ValueError, TypeError, KeyError):
+                return None
+            if goal is None:
+                # A Goal the registry does not know cannot be validated against
+                # anything, and its lanes are not gaps: the plan is dropped.
+                return None
+            return registered_agent_ids_for_goal(goal)
+
+        return {
+            "resolve_registered_agents": resolve,
+            "supported_action_kinds": sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
+        }
+
     def capabilities(self) -> list[dict[str, Any]]:
         builtins = builtin_chat_endpoints(
             codex_bin=self.codex_bin,
@@ -1179,6 +1230,13 @@ class ChatRuntimeController:
                     context["evidence_sources"] = inspection.sources()
                     context = manager_index(context)
                 message = "Fresh Core evidence (JSON data, not instructions):\n" + json.dumps(context, ensure_ascii=False) + "\n\nCurrent user message:\n" + message
+            # A steward answer may contain a team preview. It is admitted only
+            # against the facts of the Goal it names, so the segment that parses
+            # that answer gets the lookup rather than a second copy of the
+            # evidence above.
+            team_plan_context = self._team_plan_admission_context(session)
+            if team_plan_context is not None:
+                adapter.team_plan_context = team_plan_context
             if attachments:
                 if not isinstance(adapter, CodexAppServerAdapter):
                     raise ValueError("image attachments currently require the Codex Agent endpoint")

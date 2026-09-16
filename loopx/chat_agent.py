@@ -1010,7 +1010,11 @@ class CodexChatAgentSession:
             visible_delta_count += 1
             on_event("answer.delta", {"text": visible_tail})
         raw_response = "".join(parts)
-        response = parse_agent_response(raw_response, protected_paths=[self.work_dir])
+        response = parse_agent_response(
+            raw_response,
+            protected_paths=[self.work_dir],
+            team_plan_context=getattr(self, "team_plan_context", None),
+        )
         if on_event:
             if (
                 CHAT_REVIEW_OPEN_TAG not in raw_response

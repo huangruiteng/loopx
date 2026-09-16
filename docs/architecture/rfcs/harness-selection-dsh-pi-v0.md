@@ -537,20 +537,23 @@ Shipped enforcement, in delivery order:
    The receipt records the proposal digest, so a replayed settlement reuses the
    same lane Todo instead of adding a second row, and the receipt names every
    lane Todo the settlement ensured.
+4. **Admission facts.** The manager channel's Turn attaches a per-Goal lookup to
+   the segment that parses the answer, so a preview is validated against the
+   Agents of the Goal it names: the owner's own channel resolves any registered
+   Goal, an external manager channel resolves only the Goals it is bound to, and
+   a Goal the registry does not know - or one outside that channel's scope -
+   drops the preview instead of validating it against another Goal's Agents.
 
-The intake is still inert in production, and this section does not claim
-otherwise. Nothing yet supplies `team_plan_context`, so a model-authored preview
-is dropped at admission instead of being surfaced for confirmation; the adapter
-that supplies the admission facts and the settlement that re-derives them must
-stay one contract rather than two; and the apply entry point today is a governed
-capability execution journal, so a confirmed Chat preview needs that bridge
-before an owner confirmation can materialize lanes. Two further gaps belong with
-this work: a confirmed plan has no Chat-side apply path yet, and a multi-lane
-preview has no frontend confirmation surface. The readback is no longer one of
-those gaps: the apply publishes every lane Todo it ensured under a bounded
-`lane_todo_ids` field, that field is the one additive exception to the closed,
-persisted receipt field set so a receipt written before it still validates, and
-a team-plan receipt carries no monitor key because a plan is not a monitor.
+What is still missing is the effect, not the preview: a confirmed plan has no
+Chat-side apply path yet, because the apply entry point today is a governed
+capability execution journal, so an owner's confirmation has nowhere to land,
+and a multi-lane preview has no frontend confirmation surface. A materialized
+lane Todo also does not yet carry the canonical intent revision it is meant to
+advance. The readback is no longer one of those gaps: the apply publishes every
+lane Todo it ensured under a bounded `lane_todo_ids` field, that field is the one
+additive exception to the closed, persisted receipt field set so a receipt
+written before it still validates, and a team-plan receipt carries no monitor key
+because a plan is not a monitor.
 
 ### Relationship to the multi-agent and shared-authority contracts
 
