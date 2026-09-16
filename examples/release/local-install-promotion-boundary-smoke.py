@@ -98,6 +98,18 @@ def assert_untrusted_checkout_is_canary_only() -> None:
         assert "`loopx start-goal" not in loopx_entry
         assert not (skills_dir / "loopx-change-quality").exists()
         assert not (skills_dir / "loopx-material").exists()
+        # A repo-kept workflow has no scope marker and must never reach a host.
+        repo_only_skill_ids = sorted(
+            path.name
+            for path in (REPO_ROOT / "skills").iterdir()
+            if path.is_dir() and not (path / ".loopx-skill-scope").exists()
+        )
+        assert repo_only_skill_ids, "the checkout no longer carries a repo-only skill source"
+        for skill_id in repo_only_skill_ids:
+            assert not (skills_dir / skill_id).exists(), skill_id
+            assert (
+                f"repo-only skill source: {REPO_ROOT / 'skills' / skill_id}" in install.stdout
+            ), install.stdout
         readback = json.loads(
             (skills_dir / ".loopx-skill-install.json").read_text(encoding="utf-8")
         )

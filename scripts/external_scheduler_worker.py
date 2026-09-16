@@ -42,7 +42,7 @@ from loopx.extensions.process_runtime import (  # noqa: E402
 )
 
 SCHEDULER_DETAIL_KEY = "local_scheduler"
-TERMINAL_ACTIONS = frozenset({"stop_until_explicit_resume"})
+LOCAL_SCHEDULER_STOP_DIRECTIVE = "stop"
 PROCESS_OUTPUT_LIMIT_BYTES = 1_000_000
 
 
@@ -89,9 +89,36 @@ def _extract_reset_token(payload: dict[str, Any]) -> str:
     return str(reset_policy.get("reset_token") or "").strip()
 
 
+def _local_scheduler_directive(hint: dict[str, Any]) -> str:
+    unchanged_poll = _mapping(hint.get("unchanged_poll"))
+    return str(unchanged_poll.get(SCHEDULER_DETAIL_KEY) or "").strip()
+
+
 def parse_tick(payload: dict[str, Any]) -> TickDecision:
     hint = _mapping(payload.get("scheduler_hint"))
     action = str(hint.get("action") or "").strip()
+    cadence_class = str(hint.get("cadence_class") or "").strip()
+    reason = str(hint.get("reason") or payload.get("state") or "").strip()
+    should_run = bool(payload.get("should_run"))
+    if _local_scheduler_directive(hint) == LOCAL_SCHEDULER_STOP_DIRECTIVE:
+        # Terminal packets intentionally omit cold-path cadence detail: no
+        # further wake is legal, so an interval cannot affect the decision.
+        # The producer-owned directive covers every stop action without a
+        # second consumer-side action vocabulary.
+        return TickDecision(
+            should_run=should_run,
+            action=action,
+            cadence_class=cadence_class,
+            reason=reason,
+            interval_minutes=1,
+            progression=(1,),
+            unchanged_limit=None,
+            after_limit="stop_tick_loop",
+            final_probe_enabled=False,
+            final_probe_action="",
+            reset_token=_extract_reset_token(payload),
+            terminal=True,
+        )
     local = _extract_local_scheduler(payload)
 
     progression_values = local.get("example_progression_minutes")
@@ -125,10 +152,6 @@ def parse_tick(payload: dict[str, Any]) -> TickDecision:
             "action rerun_quota_should_run_once"
         )
 
-    cadence_class = str(hint.get("cadence_class") or "").strip()
-    reason = str(hint.get("reason") or payload.get("state") or "").strip()
-    should_run = bool(payload.get("should_run"))
-
     return TickDecision(
         should_run=should_run,
         action=action,
@@ -141,7 +164,7 @@ def parse_tick(payload: dict[str, Any]) -> TickDecision:
         final_probe_enabled=bool(final_probe.get("enabled")),
         final_probe_action=str(final_probe.get("action") or "").strip(),
         reset_token=_extract_reset_token(payload),
-        terminal=action in TERMINAL_ACTIONS,
+        terminal=False,
     )
 
 

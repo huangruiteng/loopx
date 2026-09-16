@@ -354,11 +354,16 @@ uv run --extra test python -m pytest -q
 uv run --extra test loopx canary premerge --from-git-diff
 # For a fork whose PR base is upstream/main, use this instead:
 uv run --extra test loopx canary premerge --from-git-diff --git-diff-base upstream/main
-# Run one semantic smoke or check its generated inventory:
+# Validate semantics; optionally inspect the full-tree inventory without writing it:
 uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py
-uv run python scripts/generate_semantic_inventory.py --check
+uv run python scripts/generate_semantic_inventory.py
 git diff --check
 ```
+
+The semantic inventory is computed from the full tracked tree, not committed.
+Use `--output .local/semantic-inventory.json` only when an exported report is useful;
+`--output <path> --check` checks that explicit report without repairing it.
+词表、owner 与预算继续入库并受检查；结构清单按需计算，无须为普通 PR 补生成文件。
 
 Confirm the interpreter and imported checkout when diagnosing a mismatch:
 

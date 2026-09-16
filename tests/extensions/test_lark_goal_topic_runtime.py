@@ -26,6 +26,67 @@ def test_goal_topic_runtime_exposes_the_inbox_bridge() -> None:
     assert callable(getattr(module, "process_lark_goal_topic_event", None))
 
 
+def test_a_stale_steward_session_names_the_rebind_instead_of_a_generic_failure(
+    tmp_path: Path,
+) -> None:
+    """A machine that changed its steward executor must say what repairs it."""
+
+    from types import SimpleNamespace
+
+    from loopx.extensions.lark.goal_topic_runtime import (
+        LarkGoalTopicTurnFailed,
+        answer_lark_goal_topic,
+    )
+    from loopx.extensions.lark.manager_context import manager_failure_reply
+
+    controller = SimpleNamespace(
+        steward_executor_defaults=lambda: {
+            "schema_version": "steward_executor_effective_defaults_v0",
+            "status": "ready",
+            "source": "machine_configuration",
+            "executor_endpoint": "dsh",
+            "executor_model": "deepseek-v4-flash",
+            "executor_reasoning_effort": "high",
+        },
+        store=SimpleNamespace(
+            load_session=lambda _session_id: {
+                "session_id": "manager-session",
+                "agent_id": "codex",
+                "channel_id": "manager.external.public_fixture",
+                "status": "ready",
+            }
+        ),
+    )
+    route = {
+        "schema_version": "lark_goal_topic_route_v0",
+        "goal_id": "goal-alpha",
+        "conversation_kind": "manager",
+        "ingress_mode": "session_queue",
+        "session_id": "manager-session",
+        "manager_channel_id": "manager.external.public_fixture",
+        "message_id": "om_manager_stale_endpoint",
+        "topic_root_message_id": "om_manager_topic_root",
+        "app_ref": "cli_public_fixture",
+        "target_ref": "public_fixture_target",
+    }
+
+    with pytest.raises(LarkGoalTopicTurnFailed) as failure:
+        answer_lark_goal_topic(
+            route=route,
+            text="@LoopX 管家 status",
+            work_dir=str(tmp_path),
+            objective="worker objective",
+            runtime_controller=controller,
+        )
+
+    assert failure.value.error_code == "manager_channel_executor_rebind_required"
+    code, text = manager_failure_reply(failure.value)
+    assert code == "manager_channel_executor_rebind_required"
+    # The reply names the operator action instead of the opaque manager label.
+    assert "重新应用" in text
+    assert "管家处理失败" not in text
+
+
 def test_existing_collector_uses_the_real_compact_event_schema() -> None:
     projection = _jq_projection("oc_public_fixture")
 

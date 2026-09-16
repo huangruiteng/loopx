@@ -21,6 +21,7 @@ import { withReportScheduleTimezone } from "./periodic-report-schedule-field";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
 import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus, orderCapabilitiesForPresentation } from "./capability-workbench";
 import { useWorkspaceI18n } from "./i18n";
+import { OperatorCredentialSettings } from "./operator-credential-settings";
 
 type CapabilityDescriptor = CapabilityConfigurationCatalog["capabilities"][number];
 type EditorMode = "guided" | "json";
@@ -299,6 +300,8 @@ export function MachineConfigurationSettings() {
           <p>{t("machine.invalidStoredConfigurationDescription")}</p>
         </section>
       ) : null}
+
+      <OperatorCredentialSettings />
 
       <div className="personal-capability-layout">
         <CapabilityCatalogNavigation capabilities={capabilities} locale={locale} onSelect={setSelectedCapabilityId} scope="machine" selectedCapabilityId={selected.capability_id} t={t} />

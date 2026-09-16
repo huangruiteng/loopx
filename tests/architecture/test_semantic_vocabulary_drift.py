@@ -32,7 +32,7 @@ def test_semantic_vocabulary_registry_matches_the_code() -> None:
         check=False,
     )
     assert completed.returncode == 0, (
-        "semantic vocabulary drift smoke failed; the registry, the inventory, or an "
+        "semantic vocabulary drift smoke failed; the registry, computed inventory, or an "
         "anchor no longer matches the code:\n" + completed.stdout + completed.stderr
     )
     assert completed.stdout.startswith("semantic-vocabulary-drift-smoke: ok"), (
@@ -249,3 +249,22 @@ def test_explicit_output_evidence_cannot_be_removed_or_redirected(metadata, name
     registry['vocabularies'][name][metadata] = {}
     with pytest.raises(smoke['Drift'], match='anchored output evidence'):
         smoke['check_coverage_floor'](registry)
+
+
+@pytest.mark.parametrize("legacy_report", [None, "not even JSON"])
+def test_live_inventory_ignores_missing_or_stale_reports(tmp_path, monkeypatch, legacy_report):
+    smoke = runpy.run_path(str(SMOKE))
+    registry = smoke["load_registry"]()
+    sources = smoke["load_sources"](REPO_ROOT)
+    if legacy_report is not None:
+        path = tmp_path / "loopx/semantics/inventory_v0.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(legacy_report)
+    monkeypatch.setitem(smoke["check_inventory"].__globals__, "REPO_ROOT", tmp_path)
+    inventory, _ = smoke["check_inventory"](registry, sources)
+    assert inventory["summary"]["source_files"] == len(sources)
+    # A newly observed duplicate must still fail; an old or missing report cannot hide it.
+    duplicate = [smoke["SourceFile"](f"loopx/q9_{name}.py", ".py", 'Q9_DUPLICATE = "same"\n')
+                 for name in ("first", "second")]
+    with pytest.raises(smoke["Drift"], match="same_runtime_forks grew"):
+        smoke["check_inventory"](registry, sources + duplicate)

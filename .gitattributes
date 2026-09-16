@@ -1,2 +1,5 @@
 # Vite bundles may retain whitespace-only lines inside generated template literals.
 loopx/web/chat/assets/*.js whitespace=-blank-at-eol
+
+# Preserve the immutable archive's bytes even with core.autocrlf=true.
+benchmark/deepswe-gptxhigh-v1/** text eol=lf

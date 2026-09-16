@@ -1,19 +1,12 @@
 import { stat } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { resolveLoopXCommand, runFile } from './cli.ts'
 import type { FileRunner, LoopXCommand } from './cli.ts'
 
 export const MANAGED_LAUNCHER_NAME = 'loopx_cli.py'
 export const MANAGED_SITE_PACKAGES_NAME = 'site-packages'
-
-const PYTHON_CANDIDATES = Object.freeze([
-  'python3',
-  'python3.14',
-  'python3.13',
-  'python3.12',
-  'python3.11',
-])
 
 export interface LoopXRuntimeOptions {
   readonly runner?: FileRunner | undefined
@@ -35,7 +28,26 @@ export function pluginPythonCandidates(
   options: LoopXRuntimeOptions,
 ): readonly string[] {
   const explicit = configuredPluginPython(options)
-  return explicit === undefined ? PYTHON_CANDIDATES : [explicit]
+  if (explicit !== undefined) return [explicit]
+  const env = options.env ?? process.env
+  const searchPath = env.PATH ?? env.Path
+  const discovered = new Map<string, number>()
+  for (const directory of searchPath?.split(delimiter) ?? []) {
+    try {
+      for (const entry of readdirSync(directory || '.', { withFileTypes: true })) {
+        const match = /^python3\.(\d+)(?:\.exe)?$/i.exec(entry.name)
+        if (match?.[1] !== undefined && !entry.isDirectory()) {
+          discovered.set(entry.name, Number(match[1]))
+        }
+      }
+    } catch {
+      // Missing or unreadable PATH entries are not interpreter candidates.
+    }
+  }
+  // Preserve python3-first behavior; callers still probe the actual version/pip.
+  return ['python3', ...[...discovered]
+    .sort(([nameA, minorA], [nameB, minorB]) => minorB - minorA || nameA.localeCompare(nameB))
+    .map(([name]) => name)]
 }
 
 export function pluginAgentsHome(options: LoopXRuntimeOptions): string {

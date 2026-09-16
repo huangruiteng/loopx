@@ -31,7 +31,9 @@ bundle and its runtime as well as the CLI. `loopx doctor` exposes
 still does not prove which App process is running. Upgrade the App and its
 bundled runtime together, then restart and verify the App, CLI and service
 source revisions. Never claim a desktop upgrade from CLI/HTTP checks alone:
-opening an older App can replace a separately upgraded CLI with its bundle.
+current App builds ask before replacing a different CLI runtime (update the
+App, or align the CLI to the App's bundled runtime), while an older build can
+still replace a separately upgraded CLI with its bundle.
 Keep SSH host verification separate; a host without an App needs no App install.
 
 When the visible user message is exactly a LoopX slash command or starts with a

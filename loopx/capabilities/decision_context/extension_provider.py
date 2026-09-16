@@ -21,7 +21,13 @@ from ..context_providers.base import (
 
 
 EXTENSION_CONTEXT_PROVIDER_ID = "extension"
-DECISION_CONTEXT_CAPABILITY_ID = "decision-context"
+# Extension-binding namespace. Catalog entry ids, CLI command names and
+# extension capability bindings all use the hyphenated spelling (every
+# loopx/capabilities/*/catalog_entry.py id, e.g. "material-lifecycle"). This
+# value is looked up through the extension runtime, so it must stay equal to
+# DECISION_CONTEXT_CATALOG_ENTRY["id"]; it is a different slot from the
+# underscore packet-contract id in packets.py and must not be unified with it.
+DECISION_CONTEXT_EXTENSION_CAPABILITY_ID = "decision-context"
 DECISION_CONTEXT_ADVISORY_PROVIDER_PROTOCOL = (
     "decision_context_advisory_provider_v0"
 )
@@ -244,7 +250,7 @@ class DecisionContextExtensionProvider:
         resolution = resolve_optional_capability_binding(
             state_file=self.state_file,
             extension_id=self.extension_id,
-            capability_id=DECISION_CONTEXT_CAPABILITY_ID,
+            capability_id=DECISION_CONTEXT_EXTENSION_CAPABILITY_ID,
             protocol=DECISION_CONTEXT_ADVISORY_PROVIDER_PROTOCOL,
             permission=DECISION_CONTEXT_ADVISORY_PERMISSION,
         )

@@ -28,6 +28,7 @@ TODO_ID = "todo_fixture_settlement"
 ALTERNATIVE_TODO_ID = "todo_fixture_alternative"
 SECOND_ALTERNATIVE_TODO_ID = "todo_fixture_second_alternative"
 OUTSIDE_BOUNDED_PORTFOLIO_TODO_ID = "todo_fixture_outside_portfolio"
+DEEP_ALTERNATIVE_TODO_ID = "todo_fixture_deep_alternative"
 REENTRY_TODO_ID = "todo_fixture_network_reentry"
 DUE_MONITOR_TODO_ID = "todo_fixture_due_monitor"
 TURN_ID = "turn-settlement-cli-1"
@@ -2687,6 +2688,86 @@ def test_agent_can_select_eligible_todo_outside_bounded_suggestions(
         OUTSIDE_BOUNDED_PORTFOLIO_TODO_ID
     )
     assert _heartbeat_receipt_count(runtime, turn_instance_id) == 2
+
+
+def _configure_deep_alternative(project: Path, *, fillers: int = 9) -> None:
+    """Add one owned advancement Todo beyond every bounded suggestion lane."""
+
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    filler_rows = "".join(
+        f"- [ ] [P1] Advance filler delivery {index}.\n"
+        f"  <!-- loopx:todo todo_id=todo_fixture_filler_{index} status=open "
+        "task_class=advancement_task action_kind=implement -->\n"
+        for index in range(fillers)
+    )
+    state_path.write_text(
+        state_path.read_text(encoding="utf-8").rstrip()
+        + "\n"
+        + filler_rows
+        + "- [ ] [P1] Advance the deep alternative delivery.\n"
+        + "  <!-- loopx:todo "
+        + f"todo_id={DEEP_ALTERNATIVE_TODO_ID} status=open "
+        + "task_class=advancement_task action_kind=implement -->\n",
+        encoding="utf-8",
+    )
+
+
+def test_agent_can_select_an_owned_todo_outside_every_bounded_lane(
+    tmp_path: Path,
+) -> None:
+    """The display lanes are a presentation budget, not the eligible Todo set."""
+
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    _configure_deep_alternative(project)
+    turn_instance_id = "turn-agent-selection-beyond-lanes"
+    guard_args = (
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        turn_instance_id,
+        "--scan-path",
+        str(project),
+    )
+    first_rc, first = _run_cli(registry_path, runtime, *guard_args)
+    selected_rc, selected = _run_cli(
+        registry_path,
+        runtime,
+        *guard_args,
+        "--todo-id",
+        DEEP_ALTERNATIVE_TODO_ID,
+    )
+
+    assert first_rc == 0, first
+    # The row is a real, open, typed advancement Todo that this Agent owns, and
+    # no bounded presentation lane lists it.
+    assert DEEP_ALTERNATIVE_TODO_ID not in {
+        item["todo_id"] for item in first["action_portfolio"]["suggested_actions"]
+    }
+    # Every bounded lane this payload publishes must not list it either; the
+    # count guard keeps the check from passing vacuously on an empty payload.
+    bounded_lanes = [
+        (key, items)
+        for key, items in first["agent_todo_summary"].items()
+        if key.endswith("executable_items") and isinstance(items, list)
+    ]
+    assert bounded_lanes, sorted(first["agent_todo_summary"])
+    for key, items in bounded_lanes:
+        assert DEEP_ALTERNATIVE_TODO_ID not in {
+            item["todo_id"] for item in items
+        }, key
+    assert selected_rc == 0, selected
+    assert selected["ok"] is True
+    assert selected["selected_todo"]["todo_id"] == DEEP_ALTERNATIVE_TODO_ID
+    assert selected["selected_todo"]["selection_binding"] == "heartbeat_receipt"
+    assert selected["heartbeat_receipt"]["status"] == "upgraded"
+    assert selected["heartbeat_receipt"]["settlement_identity"]["todo_id"] == (
+        DEEP_ALTERNATIVE_TODO_ID
+    )
 
 
 def test_same_turn_can_select_eligible_todo_created_after_unbound_receipt(

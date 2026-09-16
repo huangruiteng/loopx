@@ -1515,6 +1515,62 @@ def test_turn_cli_consumes_live_state_without_writes(
     assert before == after
 
 
+def test_turn_cli_resolves_its_decision_through_the_shared_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``turn`` must not re-inline the chain it shares with the managed step.
+
+    A private copy inside ``loopx/cli_commands/turn.py`` is not a formatting
+    problem: adding one decision input to the shared owner would then move only
+    one subcommand, and ``run-once`` and ``managed-step`` would disagree about
+    what the current Turn should do. Reading the live status through the shared
+    owner is the fact that identifies a private copy.
+    """
+
+    from loopx.cli_commands import turn_decision
+
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    status_reads: list[dict[str, Any]] = []
+    real_collect_status = turn_decision.collect_status
+
+    def recording_collect_status(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        status_reads.append(dict(kwargs))
+        return real_collect_status(*args, **kwargs)
+
+    monkeypatch.setattr(turn_decision, "collect_status", recording_collect_status)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "plan",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 0, payload
+    assert payload["turn_envelope"]["schema_version"] == "loopx_turn_envelope_v0"
+    assert len(status_reads) == 1, (
+        "`turn` must read its live status through the shared Turn decision "
+        "owner so run-once and managed-step cannot drift; shared-owner status "
+        f"reads: {len(status_reads)}"
+    )
+
+
 def test_turn_cli_projects_explicit_fresh_iteration_context(
     tmp_path: Path,
 ) -> None:

@@ -53,7 +53,7 @@ C1、开销、保留与 Mode B 各行。
 | 角色 | 来源 | 当前选型 | 晋级门槛 |
 | --- | --- | --- | --- |
 | 默认托管执行宿主 | LoopX Turn 加 `dsh` 宿主适配器，并绑定到运维方提供的模型端点 | 出货默认值：配置了运维方凭据时托管有界 Turn 走 `dsh`，没有凭据时走个体 `codex-cli`；显式 `LOOPX_TURN_HOST` 可改指，显式 `--host` 优先 | 保持类型化 host request/result、独立验证与凭据归属运维方的边界；没有同等或更强的契约不替换 |
-| 管家通道执行器 | 管家回答所依赖的交互式 Chat 传输 | 出货默认值：`codex`，每台机器一致；`LOOPX_MANAGER_ENDPOINT` 可改指，显式选择托管宿主（`dsh`）时执行器、模型与推理档位一起跟随；选型由 PR #4446 落地，无条件默认值与单段传输随本次变更落地 | 单段传输的类型化边界（无流式、无跨 turn 宿主会话、沙箱只读）必须持续披露并可回读；任何托管通道都不得依赖个人订阅 |
+| 管家通道执行器 | 管家回答所依赖的交互式 Chat 传输 | 三层依次决定：本机 `steward_executor` machine-config 命名空间（前端可改，`loopx machine-config describe`/`inspect` 可回读，2026-09-16 落地）、`LOOPX_MANAGER_ENDPOINT`（用于引导或指向未列出的适配器）、出货默认值 `codex`（每台机器一致）；选择托管宿主（`dsh`）时执行器、模型与推理档位一起跟随 | 单段传输的类型化边界（无流式、无跨 turn 宿主会话、沙箱只读）必须持续披露并可回读；任何托管通道都不得依赖个人订阅；该命名空间不保存凭据、不授予任何权限 |
 | 受支持的替代 Turn 宿主 | LoopX Turn 加 `codex-cli` 适配器 | 可显式选择，也是上一行托管默认值在没有 operator 凭据的机器上的解析结果；它属于 `individual` 执行器类型，账落在某个人的 CLI 登录上 | 任何托管通道都不得*静默*依赖某个人的 CLI 订阅：个体宿主只会作为那条凭据解析默认值被走到，并以 `no_operator_credential` 回读，绝不被替换成运维方已选定的宿主 |
 | L1 事件源与会话归属 runtime 候选 | DSH | opt-in，未晋级；有界 Turn 宿主角色见上一行默认值 | 本文 C0、C1、开销、保留与 Mode B 各行被真实执行并通过评审 |
 | 可选的可见宿主循环 | Pi | 不是 managed runtime | 先声明按绑定持久化且可回读的会话模式，证明重启下的单执行器行为、"对话不是回执"、宿主本地状态非权威，并提供一条真实宿主重启行 |
@@ -80,13 +80,23 @@ LoopX **选择**托管有界 Turn 的默认宿主，而从不由启动时的意�
 回读，而不是禁止这条已披露的默认值。
 
 管家通道是**另一个**面；经上文记录的两次修订后，它的默认值是一个端点而不是一条规则：
-每台机器都是 `codex`，即交互式 CLI 端点。`LOOPX_MANAGER_ENDPOINT` 可改指；显式选择
-托管宿主（`dsh`）时，执行器、模型与推理档位一起移动，通道不可能出现"operator 模型
-跑在个人 CLI 登录上"的组合。这里凭据的作用与 Turn 行**相反**：凭据为被选中的端点
-提供认证，从不会改指这个人正在对话的面——环境里冒出一个 key，不该让一段对话中途
-换手。回读仍会给出端点来自哪里（`executor_endpoint_source`），以及出货默认值对应的是
-哪一条决定（`executor_endpoint_default_reason`），因此运维方读到的是一个已决定的
-默认值，而不是从解析出的宿主名去反推。
+每台机器都是 `codex`，即交互式 CLI 端点。三层按同一顺序决定它：本机
+`steward_executor` machine-config 命名空间、`LOOPX_MANAGER_ENDPOINT`、出货默认值。
+选择托管宿主（`dsh`）时，执行器、模型与推理档位一起移动，通道不可能出现"operator
+模型跑在个人 CLI 登录上"的组合。这里凭据的作用与 Turn 行**相反**：凭据为被选中的
+端点提供认证，从不会改指这个人正在对话的面——环境里冒出一个 key，不该让一段对话中途
+换手。回读仍会给出端点来自哪里（`executor_endpoint_source`，现在包含
+`machine_configuration`），以及出货默认值对应的是哪一条决定
+（`executor_endpoint_default_reason`），因此运维方读到的是一个已决定的默认值，而不是
+从解析出的宿主名去反推。
+
+管家连接不会保存这份决定的第二份副本。连接记录把解析出的端点连同来源作为**观测值**
+存下来；所有读取路径——Lark 路由、授权连接解析、以及在该通道上应答的 Turn——都重新
+从本机解析。因此在另一个默认值仍生效时写下的记录，无法继续在被运维方替换过的端点上
+应答——而这正是"回读说 `dsh`、管家却仍在 `codex` 上跑"的来路。当本机确实改了选择时，
+通道上已绑定的 Session 仍跑在旧端点上；该 Turn 会以类型化回执
+`manager_channel_executor_rebind_required` 被拒绝，回复直接给出唯一能修复它的动作——
+重新应用一次该连接，把通道 Session 开在本机当前选择的端点上。
 
 两个托管面从同一个所有者解析**执行档位**
 （`loopx/control_plane/turn_driver/execution_profile.py`）：provider
@@ -321,6 +331,119 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 `examples/loopx-steward-managed-chat-smoke.py` 用真实内置 dsh 片段对接本地 mock 模型
 端点，断言解析出的绑定、真正上线的模型与档位、已持久化的回答，以及只读沙箱确实拒绝
 一次写入。真实管家会话的人设与受众不进入本文件。
+
+## 管家执行器的 Machine Configuration（2026-09-16）
+
+此前管家执行器只能通过 Chat 服务环境变量选择，于是"本机决定"落在启动文件里，而不是
+落在产品设置上：没有任何界面能展示它，也没有任何界面能修改它，读者必须知道当时进程
+里有哪些变量。现在执行器、模型与推理档位是一个类型化的 machine-config 命名空间
+`steward_executor`（`loopx/capabilities/steward_executor/machine_defaults.py`），
+本机的管家选择因此成为一等公民。
+
+该命名空间只有三个字段，且不保存任何凭据：
+
+```json
+{
+  "schema_version": "steward_executor_machine_defaults_v0",
+  "executor_endpoint": "codex",
+  "executor_model": null,
+  "executor_reasoning_effort": null
+}
+```
+
+`executor_endpoint` 必填，且仅限 LoopX 作为通道执行器出货的端点；模型或推理档位留空
+表示本机对该字段不做决定，通道继续从更低层解析。未知字段、未知 schema 版本、未列出
+的端点、不支持的档位都会在任何生效前 fail closed。需要命名空间未列出适配器的运维方
+仍然可以使用 `LOOPX_MANAGER_ENDPOINT`。
+
+优先级只在通道所有者（`loopx/chat_manager.py`）声明一次：machine configuration、
+服务环境变量、出货默认值。机器层才是产品界面拥有的那一层，因此
+`loopx machine-config describe` 发布模板，前端通过既有的 revision 锁定事务编辑同一份
+文档；通道回读新增 `executor_endpoint_source: machine_configuration` 以及该文档的
+`status` 与 `configuration_revision`，无需读取存储即可区分"机器决定"与"服务环境值"。
+
+本次不做改变的边界：出货默认值在每台机器上仍是 `codex`；凭据仍然只做认证、不做选择；
+托管宿主仍然需要自己的凭据与 runtime；该选择不授予任何权限——它只命名一个由运维方
+计费的 runtime，`manager_runtime` 仍是另一项机器决定。管家值损坏或存储不可读时，回落
+到更低层并给出类型化原因（`configuration_invalid`、`unavailable`），而不是让人正在
+对话的界面失败；**兄弟**命名空间损坏也不会改写有效的管家选择。
+
+验证：`tests/capabilities/test_steward_executor_machine_defaults.py`、
+`tests/test_manager_channel_binding.py`、`tests/test_chat_machine_configuration_api.py`、
+`tests/capabilities/test_capability_configuration_ui.py`，以及
+`examples/loopx-steward-channel-binding-smoke.py`。
+
+## 管家团队入端口径（2026-09-16）
+
+管家负责回答问题。自 2026-09-16 起，它的出厂指引里还带了一段有界流程，用于另一类请求：
+业主一句话要的是**团队**而不是单个任务。本节记录这条入端口径被强制的契约、其中已经落地的
+部分，以及仍然缺失的部分。
+
+入端口径是既有的受治理提案所有者
+（`loopx/control_plane/work_items/governed_transition_proposal.py`），不是新的 CLI 命令，
+也不是新的能力。该所有者本就按 kind 分派提案、产出带 proposal digest 的类型化回执，而
+Chat Turn 也早已把 `response.proposals` 投影成 `proposal.ready` 事件。因此"团队请求"是
+**一种新 kind 的提案**，而不是在既有路径旁再开一条入端口。没有第二个调用方的命令、以及
+完全没有调用方的 builder 模块都不新增：本仓库要求未获调用的抽象先留在设计态。
+
+kind 为 `steward_team_plan_preview`（`steward_team_plan_preview_v0`）的提案，在任何落地
+之前先被校验；校验通过的预览必须点名、且不得编造：
+
+- 每条 lane 及其运行的 Agent，且只能来自 Core 已为该 Goal 注册的 Agent，最多 8 条 lane；
+- 该 lane 的首个有界 Todo，含其声明优先级（P0..P3）、task class 与 action kind；
+- 约束这些 lane 的 quota 包络；
+- 结束每条 lane 的验收信号；
+- 结束整个团队的终止条件。
+
+配不齐的 lane 是类型化的 gap——`agent_not_registered`、`capability_not_granted` 或
+`audience_not_authorized`——并且该 gap 会把没配上人的那份工作留在 `declined_first_todo`
+里，让业主看到"要了什么、缺了什么"，而不是一条被悄悄填上或被丢掉的 lane；声明 gap 的
+lane 不得再声明工作。计划是**预览**：校验通过的载荷带 `applies: false`；只有业主对这份确切
+预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——Agent 注册、
+Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩大已确认范围，也不得把团队计划
+当作工作已完成的结算。
+
+按交付顺序，已经落地并受强制的部分：
+
+1. **契约与校验器**（`#4519`，`3acd07697`）：kind、schema、lane 上限、优先级与 gap 词表、
+   公开安全文本，以及"拒绝编造 staffing"的行为。
+2. **聊天准入**（`#4522`，`3c8c832cb`）：`normalize_agent_response` 只在宿主提供
+   `team_plan_context`（本 Goal 已注册 Agent + 本机支持的 advancement action kind）时才让
+   预览通过；否则与其它无法接受的提案一样被丢弃，而答案正文仍然到达业主。
+3. **落地**（`#4524`，`c159a15b3`）：受治理提案所有者在 `PRE_SETTLEMENT` 相位分派该 kind，
+   落地时重新按本 Goal 已注册 Agent 与本机 shipment 的 advancement action kind 校验，经
+   canonical Todo owner 为每条 **ready** lane 创建首个有界 Todo，gap lane 不创建任何东西，
+   未知 Goal 在任何写入前就被拒绝，回执记录 proposal digest，因此重放结算复用同一条 lane
+   Todo 而不会新增第二行。
+
+这条入端口径目前在线上仍是**惰性**的，本节不作相反声明：还没有任何生产调用方传入
+`team_plan_context`，因此模型产出的预览会在准入处被丢弃，而不会浮现给业主确认；提供准入事实
+的适配器与重新推导这些事实的结算必须保持同一份契约而不是两份；而今天的落地入口是受治理能力
+执行 journal，所以被确认的 Chat 预览还需要那座桥，业主确认才能真正建成 lane。另有两处缺口
+属于这条工作线：已发布回执只带第一条 lane Todo 的身份，而不是它创建的全部 lane 身份（apply
+结果里算了完整的 `lane_todo_ids`，但回执字段集是封闭且持久化的，发布它是一次有界的兼容性
+变更）；以及多 lane 预览还没有前端确认面。
+
+### 与 multi-agent 契约的关系
+
+这条入端口径是既有 multi-agent 契约所定义内核之上的**用户层**便利：它不新增第二套团队
+runtime。
+
+- 对应 `multi_agent_three_layer_minimality_contract_v0`
+  （`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`）：业主那一句话是用户
+  层，管家那段有界流程是 preset 层，而 lanes、首个有界 Todo、quota 包络、验收与终止条件是
+  内核机制消费的声明数据。入端口径不得拥有 runner、pane、per-agent vision 预算或证据回路；
+  它只经 canonical Todo owner 建出 Goal 工作 lane，这正是它不会变成产品专用 runner 的原因。
+- 对应 `multi_agent_visible_launcher_v0`
+  （`docs/reference/protocols/multi-agent-visible-launcher-v0.md`）：launcher 从
+  `generic_multi_agent_launch_spec_v0` 启动可见本地 pane，而这条入端口径是同一意图从 Chat
+  进入。两者按身份相连（`goal_id`、`agent_id` 与该 lane 的首个 Todo），而不是互相调用；
+  launcher 自身那条规则对入端口径同样成立：不得成为 leader agent、隐藏调度器、晋升权威或
+  第二真源。需要可见 pane、pane 内 A2A tick 或晋升证据的计划，必须把它声明为受支持的
+  action kind，而不是塞进预览里。
+
+这条契约不授权什么：管家仍然只提议与委托；选择管家执行器或存凭据都不带来这些 effect；
+这里也不会扩大 OS、provider、受众或工作状态权限。
 
 ## 按里程碑看管家通道的就绪度（2026-09-15）
 

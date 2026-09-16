@@ -4,7 +4,7 @@ The inventory is the map behind the semantic vocabulary registry. These tests
 pin the classification rules from the RFC rather than from scanner output:
 which carriers count as closed sets, how duplicate constants split into
 cross-runtime twins, same-runtime forks, and conflicting values, and that the
-committed inventory is regenerated with the code it describes.
+inventory is computed from the whole tracked tree without a committed snapshot.
 """
 
 from __future__ import annotations
@@ -190,14 +190,59 @@ def test_render_is_deterministic_valid_json(repo: Path) -> None:
     assert '    {"name": "Kind", "module": "loopx/a.py", "values": ["one", "two"]}' in rendered
 
 
-def test_committed_inventory_matches_the_tree() -> None:
-    result = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "scripts" / "generate_semantic_inventory.py"), "--check"],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-    )
-    assert result.returncode == 0, result.stderr
+def test_inventory_cli_defaults_to_json_without_writing(repo: Path, monkeypatch, capsys) -> None:
+    from scripts import generate_semantic_inventory as generator
+
+    legacy = repo / "loopx/semantics/inventory_v0.json"
+    _write(repo, "loopx/semantics/inventory_v0.json", "obsolete report, not JSON")
+    monkeypatch.setattr(generator, "ROOT", repo)
+    monkeypatch.setattr(sys, "argv", ["generate_semantic_inventory"])
+    assert generator.main() == 0
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["schema_version"] == INVENTORY_SCHEMA_VERSION
+    assert emitted["summary"]["source_files"] == 3
+    assert legacy.read_text() == "obsolete report, not JSON"
+
+
+def test_optional_inventory_report_check_never_repairs(repo: Path, monkeypatch, capsys) -> None:
+    from scripts import generate_semantic_inventory as generator
+
+    output = repo / ".local/reports/inventory.json"
+    monkeypatch.setattr(generator, "ROOT", repo)
+    args = ["generate_semantic_inventory", "--output", str(output)]
+    monkeypatch.setattr(sys, "argv", args + ["--check"])
+    assert generator.main() == 1
+    assert not output.exists()
+    monkeypatch.setattr(sys, "argv", args)
+    assert generator.main() == 0
+    saved = output.read_bytes()
+    monkeypatch.setattr(sys, "argv", args + ["--check"])
+    assert generator.main() == 0
+    with (repo / "loopx/a.py").open("a") as stream:
+        stream.write('ADDED = ("new", "carrier")\n')
+    assert generator.main() == 1
+    assert output.read_bytes() == saved
+    assert "stale or missing" in capsys.readouterr().err
+
+
+def test_snapshot_check_requires_an_explicit_report(monkeypatch, capsys) -> None:
+    from scripts import generate_semantic_inventory as generator
+
+    monkeypatch.setattr(sys, "argv", ["generate_semantic_inventory", "--check"])
+    with pytest.raises(SystemExit) as exc:
+        generator.main()
+    assert exc.value.code == 2
+    assert "--check requires --output" in capsys.readouterr().err
+
+
+def test_full_tree_scan_detects_a_collision_with_an_unchanged_file(repo: Path) -> None:
+    _write(repo, "loopx/old.py", 'Q9_SHARED = "existing"\n')
+    subprocess.run(["git", "-C", str(repo), "add", "loopx/old.py"], check=True)
+    assert not any(row["name"] == "Q9_SHARED" for row in build_inventory(repo)["duplicate_definitions"]["same_runtime_forks"])
+    _write(repo, "loopx/new.py", 'Q9_SHARED = "existing"\n')
+    subprocess.run(["git", "-C", str(repo), "add", "loopx/new.py"], check=True)
+    fork = next(row for row in build_inventory(repo)["duplicate_definitions"]["same_runtime_forks"] if row["name"] == "Q9_SHARED")
+    assert set(fork["modules"]) == {"loopx/old.py", "loopx/new.py"}
 
 
 def test_untracked_sources_do_not_change_inventory(repo: Path) -> None:

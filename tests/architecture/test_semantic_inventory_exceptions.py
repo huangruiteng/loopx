@@ -163,7 +163,6 @@ def test_active_inventory_check_calls_existing_evaluator_and_enforces_lifecycle(
     )
     path = tmp_path / "inventory.json"
     path.write_text(smoke["render_inventory"](inventory))
-    registry["inventory"] = str(path)
     namespace = smoke["check_inventory"].__globals__
     monkeypatch.setitem(namespace, "build_inventory", lambda *a, **kw: inventory)
     calls = []
@@ -182,7 +181,8 @@ def test_active_inventory_check_calls_existing_evaluator_and_enforces_lifecycle(
     _, report = smoke["check_inventory"](registry, [])
     assert "reviewed_inventory_exceptions=1" in report
     assert calls[-1][1] is policy
-    # Freshness remains a hard precondition, outside the exception lifecycle.
-    path.write_text("{}")
-    with pytest.raises(smoke["Drift"], match="stale"):
-        smoke["check_inventory"](registry, [])
+    # Q9: the inventory is computed from the tracked tree on every run, so there is
+    # no committed snapshot whose freshness could be a precondition. A report file
+    # on disk is ignored rather than compared.
+    _, again = smoke["check_inventory"](registry, [])
+    assert "reviewed_inventory_exceptions=1" in again

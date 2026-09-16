@@ -7,6 +7,7 @@ import {
   applyAuthorityStateDelta,
   authorityStateCheckpointCursor,
   authorityStateDelta,
+  authorityStateDeltaReconstructs,
   authorityStateDigest,
   authorityStateReplayBudget,
   decodeAuthorityStateDelta,
@@ -90,6 +91,36 @@ test("authority state delta decoding fails closed at the storage boundary", () =
     assert.throws(() => applyAuthorityStateDelta(previous, decoded), /path|splice|never stored/u);
     assert.throws(() => applyAuthorityStateDelta({other: 1}, decoded), /path|splice|never stored/u);
   }
+});
+
+test("the reconstruction rule answers for every JSON object key and a broken delta", () => {
+  // One owner decides "this delta rebuilds exactly this projection" for both
+  // the live writer and the V1 migration, so this test is about the rule's own
+  // contract: it answers for a projection keyed with `""` or `__proto__`, and a
+  // delta that cannot be decoded or applied is a failed reconstruction rather
+  // than a thrown error or a partial state.
+  const special = JSON.parse(
+    '{"": {"marker": "empty"}, "__proto__": {"marker": "proto"}, "todos": [{"id": "a"}]}',
+  ) as Record<string, unknown>;
+  const nested = JSON.parse('{"scope": {"": {"__proto__": {"depth": 1}}}}') as Record<string, unknown>;
+  for (const projection of [{}, special, nested]) {
+    assert.equal(authorityStateDeltaReconstructs({}, authorityStateDelta({}, projection), projection), true);
+  }
+  // A delta that decodes but describes a different projection is a failed
+  // reconstruction, not a different outcome the caller has to interpret.
+  const mismatched = decodeAuthorityStateDelta({schema_version: AUTHORITY_STATE_DELTA_SCHEMA,
+    operations: [{op: "set", path: ["a"], value: 2}]});
+  assert.equal(authorityStateDeltaReconstructs({}, mismatched, {a: 1}), false);
+  assert.equal(authorityStateDeltaReconstructs({}, mismatched, {a: 2}), true);
+  assert.equal(authorityStateDeltaReconstructs({}, mismatched, {}), false);
+  // An undecodable delta, and a delta whose path leaves the previous state,
+  // both fail closed through the same answer instead of propagating.
+  const undecodable = {schema_version: AUTHORITY_STATE_DELTA_SCHEMA,
+    operations: [{op: "set", path: [], value: 1}]} as never;
+  assert.equal(authorityStateDeltaReconstructs({}, undecodable, {}), false);
+  const missingPath = decodeAuthorityStateDelta({schema_version: AUTHORITY_STATE_DELTA_SCHEMA,
+    operations: [{op: "splice", path: ["absent"], index: 0, remove: 0, insert: []}]});
+  assert.equal(authorityStateDeltaReconstructs({}, missingPath, {}), false);
 });
 
 test("authority state digests and checkpoint windows are stable and bounded", () => {

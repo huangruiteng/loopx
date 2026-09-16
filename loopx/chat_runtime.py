@@ -13,11 +13,12 @@ from typing import Any, Callable, Mapping, Protocol
 from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, MANAGER_CONTEXT_VERSION,
     is_manager_channel, manager_agent_objective, manager_model_config,
-    manager_workspace, manager_skill_text,
+    manager_workspace, manager_skill_text, operator_credential_pair, operator_credential_resolution,
 )
 from .capabilities.manager_runtime import (
     load_effective_manager_runtime_profile, manager_runtime_session_fields,
 )
+from .capabilities.steward_executor import load_effective_steward_executor_defaults
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError, agent_endpoint_error
 from .chat_dsh import DshChatAdapter
@@ -278,11 +279,23 @@ class ChatRuntimeController:
             channel_id=channel_id,
         )
 
+    def steward_executor_defaults(self) -> dict[str, Any]:
+        """Return this machine's configured steward executor, model and effort.
+
+        The machine configuration is the operator's persistent choice for this
+        machine, and the controller already owns the runtime root it lives in, so
+        every steward entry point reads the same document instead of deriving a
+        second answer from its own environment.
+        """
+
+        return load_effective_steward_executor_defaults(self.store.root.parent)
+
     def capabilities(self) -> list[dict[str, Any]]:
         builtins = builtin_chat_endpoints(
             codex_bin=self.codex_bin,
             claude_bin=self.claude_bin,
             kiro_cli_bin=self.kiro_cli_bin,
+            runtime_root=self.store.root.parent,
         )
         return [*builtins, *(endpoint.public_summary() for endpoint in self.endpoint_registry.list())]
 
@@ -381,7 +394,15 @@ class ChatRuntimeController:
                     if manager_profile is not None
                     else None
                 ),
-                **(manager_model_config() if goal_id == MANAGER_AGENT_GOAL_ID and not execution_mode else {}),
+                # The steward channel's executor, model and effort come from the
+                # machine configuration this controller owns.
+                **(
+                    manager_model_config(
+                        machine_defaults=self.steward_executor_defaults()
+                    )
+                    if goal_id == MANAGER_AGENT_GOAL_ID and not execution_mode
+                    else {}
+                ),
                 **({"dynamic_tools": [READ_TOOL]} if goal_id == MANAGER_AGENT_GOAL_ID and not execution_mode else {}),
             )
         if agent_id == "claude-code":
@@ -395,13 +416,13 @@ class ChatRuntimeController:
         if agent_id == MANAGED_TURN_HOST:
             # The managed host has no interactive session transport, so this
             # channel holds one bounded segment per turn on the resolved managed
-            # execution profile. The manager channel may still re-point the
-            # model and effort with its own overrides.
-            profile = managed_execution_profile()
+            # execution profile, authenticated by the operator credential.
+            operator_environ = operator_credential_resolution(self)["environ"]
+            profile = managed_execution_profile(operator_environ)
             model = str(profile["model"])
             reasoning_effort = str(profile["reasoning_effort"])
             if goal_id == MANAGER_AGENT_GOAL_ID:
-                manager_config = manager_model_config()
+                manager_config = manager_model_config(operator_environ, machine_defaults=self.steward_executor_defaults())
                 model = manager_config["model"]
                 reasoning_effort = manager_config["reasoning_effort"]
             return DshChatAdapter(
@@ -416,6 +437,7 @@ class ChatRuntimeController:
                 # A segment is fresh, so this adapter carries the visible history
                 # itself instead of relying on a host session to remember it.
                 history=list(history or []),
+                credential=operator_credential_pair(self),
             )
         if agent_id in {"anthropic-api", "openai-api"}:
             return direct_model_from_environment(

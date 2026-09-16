@@ -1,13 +1,13 @@
 # RFC: Semantic Vocabulary Convergence and Commit-Time Drift Checks (v0)
 
 - **RFC status:** Draft
-- **Delivery maturity:** Partial (M0 registry, generated inventory, and drift smoke ship with this RFC)
+- **Delivery maturity:** Partial (M0 registry, computed inventory, and drift smoke ship with this RFC)
 - **Authors / owners:** LoopX contributors; control-plane kernel maintainers own approval
 - **Created:** 2026-09-15
-- **Last normative revision:** 2026-09-15
+- **Last normative revision:** 2026-09-16
 - **Implementation baseline:** `1dc6ad8d8`
 - **Related contracts:** `loopx/semantics/vocabulary_v0.json`,
-  `loopx/semantics/inventory_v0.json`,
+  `loopx/semantics/inventory.py`,
   `loopx/control_plane/turn_transaction_contract.json`,
   `loopx/control_plane/coordination/coordination_state_contract_v0.json`,
   [Turn Envelope v0](../../reference/protocols/turn-envelope-v0.md),
@@ -34,20 +34,20 @@ not amend normative sections.
 
 ## 1. Decision summary
 
-1. **What becomes authoritative.** Two files under `loopx/semantics/`. The
+1. **What becomes authoritative.** A curated registry and a computed inventory under `loopx/semantics/`. The
    curated registry `vocabulary_v0.json` names each kernel and cross-runtime
    vocabulary, the exact `module::Symbol` allowed to define it, the relations
    between vocabularies (same concept, shared field name, subset), the total
    projections, and the budgets the repository ratchets down. The generated
-   inventory `inventory_v0.json` maps every closed-set carrier under `loopx/`:
+   inventory maps every closed-set carrier under `loopx/`:
    string enums, `Literal` aliases, named closed sets, TypeScript `as const`
    arrays, and every constant name defined in more than one module. A public
    smoke, `examples/semantic-vocabulary-drift-smoke.py`, checks the code against
    both inside the default `pytest` sweep on every pull request; premerge and
    the full-public fleet are additional surfaces (Section 10). A change that widens a
-   vocabulary, forks a constant, adds a carrier, or weakens the registry must
-   edit the registry or regenerate the inventory in the same diff, so the
-   reviewer sees the semantic change as a change.
+   vocabulary, forks a constant, or changes a budget must carry the required
+   owner/registry edits in the same diff. Ordinary new carriers are discovered
+   automatically and do not require a generated snapshot commit (Q9).
 2. **Authority and generation.** Each enum lives in its owner module; the
    registry is checked against code by AST and text scan, and product code never
    imports it. The M1 generator derives the TypeScript effective-action binding
@@ -59,7 +59,7 @@ not amend normative sections.
 4. **Principal constraint.** Fail closed, deterministic, and not weakenable by
    a data edit alone. An unregistered literal in either runtime, a second
    defining module, a budget overrun, a registry value no module carries, a
-   stale inventory, an owner declared without a symbol, or a coverage count
+   stale generated binding, an owner declared without a symbol, or a coverage count
    below the recorded floor each fails the smoke. The dispatch forms the scan
    recognises live in the smoke, not in the registry. The smoke reads only
    tracked sources and prints no private data.
@@ -174,10 +174,9 @@ the TypeScript runtime each own one spelling of the same idea.
   compares with `<=`, which lets a budget tightened below the anchor be raised
   back to the anchor later without any code edit. Equality makes every
   tightening a two-file diff and every loosening a code edit a reviewer sees.
-  Q7 permits a separately reviewed, magnitude-bounded inventory overrun without
-  changing its target; invalid, stale or exceeded exceptions fail.
-- **I6 Same-diff visibility.** A semantic change and its registry edit or
-  inventory regeneration land in one reviewable diff.
+- **I6 Same-diff visibility.** A semantic change and its required owner, registry or budget
+  edits land in one reviewable diff. Computed inventory reports are evidence,
+  not committed authority.
 - **I7 Deterministic and public-safe.** The check reads tracked sources only,
   needs no network or credentials, and its failure text names files and
   values, never private data.
@@ -230,7 +229,7 @@ the TypeScript runtime each own one spelling of the same idea.
 ### In scope
 
 - The registry file, its schema, and the ownership rule for editing it.
-- The generated inventory, its generator with `--check`, and its unit test.
+- The computed inventory, optional report export/check commands, and their tests.
 - The drift smoke and its placement in the premerge and full-public fleets.
 - The vocabularies registered at M0: the four Turn-kernel sets
   (`turn_result_kind`, `turn_route`, `loop_disposition`, `effective_action`),
@@ -262,8 +261,8 @@ the TypeScript runtime each own one spelling of the same idea.
   `coordination_state_contract_v0.json`. Those remain the owners of their
   phases and records; this registry may reference them, not restate them.
 - Replacing `maintainability_ratchet.py`. It owns module metrics and dependency
-  direction; this registry owns vocabulary shape. Q7 reuses its exception
-  evaluator while keeping the findings, targets and exception maps separate.
+  direction; this registry owns vocabulary shape. Whether their exception
+  lifecycles merge is Section 12, Q7.
 - A prose glossary as the enforcement mechanism. A glossary is a useful
   companion and is tracked in Section 12, but it cannot fail a build.
 
@@ -448,8 +447,7 @@ The checks cover finite vocabularies, supported output forms and generated artif
 consistency. They do not prove whole-program semantic completeness, reachability of
 all branches or arbitrary variable-flow safety.
 
-The cost is regenerating bindings after owner changes, potentially regenerating the
-inventory after carrier changes or main synchronization, and installing the locked
+The cost is regenerating bindings after owner changes and installing the locked
 TypeScript parser for local scans. Reusing existing CI jobs still adds job work and
 contributor repair effort; no new required job does not mean no new obligation.
 First classify a failure: replace bare actions with owner references; accompany a
@@ -542,7 +540,7 @@ The minimum semantic obligations are:
 
 These are different proof obligations. M0 establishes owner-set equality,
 cross-runtime parity, the declared executable projection, and inventory
-freshness. Fixed literal forms and closed-set carriers provide bounded evidence,
+computed from the current tracked tree. Fixed literal forms and closed-set carriers provide bounded evidence,
 not whole-program proof. M0.5 adds bounded producer and scope checks. Producer
 discovery over dynamic code, behavioural equivalence of `same_concept`, and
 persisted-reader compatibility remain unproved until their source-to-sink
@@ -633,18 +631,19 @@ vocabulary key fails the smoke.
 | `schema_versions.<name>` | constant name, value, owner modules | The only defining modules are the listed owners and all carry the value (I1) |
 | `retirement_ledger.<group>.fields` | per-field Python and TypeScript module budgets | Actual module counts are at or below budget, and the field set and every budget match `RETIREMENT_ANCHOR` (I5) |
 | `dual_runtime_twins` | root and module budget | Tracked same-basename `.py`/`.ts` pair count is at or below budget; root and budget equal their code anchors (I5) |
-| `inventory_ratchets` | budgets for same-runtime fork names and definitions, conflicting names and definitions, schema-version forks, multi-value twins and forks, and the shared-vocabulary conflict and fork subsets | Every budget equals its `BUDGET_ANCHOR`; overruns use the Q7 reviewed-exception lifecycle, empty by default (I5, I9) |
+| `inventory_ratchets` | budgets for same-runtime fork names and definitions, conflicting names and definitions, schema-version forks, multi-value twins and forks, and the shared-vocabulary conflict and fork subsets | Inventory summary counts are at or below budget, and each budget equals its `BUDGET_ANCHOR` entry (I5, I9) |
 
-`loopx/semantics/inventory_v0.json`, `schema_version`
-`loopx_semantic_inventory_v0`, is generated by
-`scripts/generate_semantic_inventory.py` and must equal a fresh build. It
+The inventory retains `schema_version=loopx_semantic_inventory_v0`.
+The guard builds it in memory from the complete tracked `loopx/` tree, once per
+run, and uses that result for owner, scope and budget checks. No report file is
+read. `scripts/generate_semantic_inventory.py` exports the same map on demand. It
 lists Python enums, closed sets, `Literal` aliases, TypeScript `as const`
 arrays, and duplicate definitions split into cross-runtime twins, same-runtime
 forks, conflicting values, and multi-value twins and forks, one entry per line.
 Every multi-value collision carries each defining module and its value set, so
 the divergence itself is reviewable rather than only its count. Consumer counts are printed by `--report`; merge-candidate groups are available
-through `merge_candidate_groups` and not committed, so an
-ordinary consumer edit does not touch the file; merge candidates are advisory
+through `merge_candidate_groups`; all inventory output is uncommitted.
+Merge candidates are advisory
 because an equal value set is not proof of one concept. Single-module string
 constants are counted, not listed.
 
@@ -666,8 +665,8 @@ New vocabularies are added by a PR that adds the registry entry, raises the
 coverage floor, and, where a TypeScript owner exists, names its `as const`
 array. A vocabulary qualifies for curation when it is dispatched on by more
 than one module or crosses the Python/TypeScript boundary; everything else is
-mapped by the inventory without curation. Adding any carrier regenerates the
-inventory in the same PR.
+mapped by the inventory without curation. Adding a carrier is discovered
+on the next full-tree scan; genuine shared-contract changes still need review.
 
 ## 6. Alternatives and design choices
 
@@ -678,9 +677,9 @@ inventory in the same PR.
 | Documentation glossary only | Cannot fail a build; the repository already has eleven documents calling themselves a mental model and no glossary, which is the symptom. |
 | Generate bindings from the registry immediately | Premature until owners are settled. Generation is M2 and follows the coordination contract precedent. |
 | Grep-based lint in CI without a registry | Encodes the allowed set in the linter, which becomes a second registry with no review trail. |
-| Extend `maintainability_ratchet.py` instead of a new registry | Its subject is module metrics and dependency direction with per-module ceilings; vocabulary shape needs values, owners, and relations. Q7 reuses the exception evaluator, while the two retain separate findings, targets and exception maps. |
+| Extend `maintainability_ratchet.py` instead of a new registry | Its subject is module metrics and dependency direction with per-module ceilings; vocabulary shape needs values, owners, and relations. The two share the ratchet idea, not the data model. Merging exception lifecycles is Q7. |
 | Put the scan regex in the registry | A regex in data can be narrowed in the same edit that widens a vocabulary; the M0 review showed the first pattern missed every TypeScript `===` site. Forms are fixed in the smoke and the suffix set is floored. |
-| Commit consumer counts in the inventory | Every consumer edit would churn the file and make the freshness check noise. Counts stay advisory via `--report`. |
+| Commit the computed inventory or consumer counts | Structural churn adds merge conflicts without new authority. Compute the full tree and expose optional reports; consumer counts remain advisory. |
 
 ## 7. Safety, privacy, and compatibility
 
@@ -688,7 +687,7 @@ inventory in the same PR.
   with the check present or absent.
 - The scanner uses `git ls-files --cached -z` and reads the indexed source paths
   from the working tree. Untracked and ignored files are excluded; stage a new
-  source path before regenerating the inventory. Tracked symlinks and invalid
+  source path before running the inventory scan. Tracked symlinks and invalid
   Python syntax fail closed. A checkout with Git metadata is required.
 - Literal and TypeScript carrier scans recognize both single and double quotes.
   They remain structural text scans, not complete parsers or data-flow analysis.
@@ -720,14 +719,14 @@ inventory in the same PR.
 | Claim | Test or evidence | Required result | Boundary / exclusions |
 | --- | --- | --- | --- |
 | Registry and inventory match the code at baseline | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` with coverage, ratchet, budget, and twin report | Proves parity for registered vocabularies and mapped carriers only |
-| Inventory is fresh | `uv run python scripts/generate_semantic_inventory.py --check` | exit 0 | Structural map only |
+| Inventory is computed on demand | `uv run python scripts/generate_semantic_inventory.py` | valid JSON on stdout, no repository writes | Full tracked tree, not only the PR diff |
 | Scanner classification rules | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass | Fixture repository; rules from this RFC, not from output |
 | A widened `effective_action` set fails closed in Python | Add an unregistered literal via `==`, membership, or conditional expression | Failure names the value and file | Mutation exercise; not a committed test |
 | A widened `effective_action` set fails closed in TypeScript | Add an unregistered literal via `===` or a ternary | Same | Same |
-| A forked constant fails closed | Redefine `TURN_ENVELOPE_SCHEMA_VERSION` or `HANDOFF_MODES` in a non-owner module, regenerate the inventory | Failure lists the extra defining module or the fork budget | Same |
+| A forked constant fails closed | Redefine `TURN_ENVELOPE_SCHEMA_VERSION` or `HANDOFF_MODES` in a non-owner module, run the smoke | Failure lists the extra defining module or the fork budget | Same |
 | Python and TypeScript owners cannot diverge | Remove one entry from a registered `as const` array, or widen a registered enum | Failure names the missing or unregistered value | Same |
 | The registry cannot be weakened by data alone | Declare a bare-module owner; drop an owner; narrow suffixes to `.py`; rename a vocabulary another relation references; add an unknown key | Each fails naming the rule | Same |
-| A new carrier is visible | Add an enum without regenerating | Failure says the inventory is stale | Same |
+| A new carrier is visible | Add a tracked enum without exporting a report | Current scan includes it; no freshness-only failure | A duplicate spanning changed and unchanged files still fails its budget |
 | Conflicting spellings cannot grow | Add a third value for an already-conflicting name, regenerate | Failure names the definitions budget | Same |
 | A multi-value collision cannot grow | Define one closed-set name in two modules with divergent values, or with equal values, and regenerate | `multi_value_forks` or `multi_value_twins` fails naming the new name | Mutation exercise; not a committed test |
 | The registry cannot relax its own ratchet | Lower any `coverage_floor` count, raise any `inventory_ratchets` budget, or raise a retirement budget, in the same diff that removes the coverage it counts | `COVERAGE_ANCHOR`, `BUDGET_ANCHOR`, or `RETIREMENT_ANCHOR` fails naming the anchored value | Mutation exercise; moving an anchor is a code edit a reviewer sees |
@@ -738,11 +737,11 @@ inventory in the same PR.
 | No behavior change from the two owner fixes | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `uv run --extra test loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
 | Docs governance accepts the RFC pair | `python3 examples/docs-governance-smoke.py` | pass | Checks mirror, links, index |
 | Retirement budgets use standalone field tokens | `count_identifier_modules()` uses identifier boundaries for the six fields | `goal_boundary`: 30 Python modules under the new metric; the old substring metric was 35 | Conservative lexical measure; it removes compound-name false positives but does not prove semantic reader absence |
-| The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and regenerate | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
+| The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and scan | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
 | A registered value nobody produces fails (M0.5) | Run the production-form scan on the baseline | Fails naming `effective_action` and `skip`; passes after `skip` is removed or listed `compatibility_only` | First expected I12 failure; a compared-only value is not carried |
 | A producer of an unregistered value fails (M0.5) | Write `effective_action: "brand_new"` in a listed producer site | Fails naming the site and the value even though no consumer compares it | I13; production is stricter than comparison |
 | A bounded-context name leaves only the semantic fork budget by declaration (M0.5a) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | Raw `multi_value_forks` stays 4, `multi_value_forks_semantic` is 3; a rename alone changes neither semantic accounting nor declaration | I14; the honest fix is a registry edit a reviewer sees, the rename is not a repair |
-| An upstream merge can stale the committed inventory | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Measured cost of committing a snapshot; the handling rule is Section 10 and Section 12 Q9 |
+| Historical committed snapshots could become stale across merges | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Historical cost motivating Q9; current checks compute the combined tree without a committed snapshot |
 | The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, candidate decision, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
 
 Known limits, stated so the check is not over-trusted:
@@ -790,19 +789,23 @@ for a diff touching `loopx/control_plane/` alone, and the fleet workflow is
 deliberately not a PR-required check. A fleet-discovered smoke is not a
 commit-time check until a required PR job collects it.
 
-**Merge-order hazard.** `inventory_v0.json` is a committed snapshot of the
-whole `loopx/` tree, and the smoke fails when the tree and the snapshot differ.
-Two pull requests that each add a carrier and each regenerate the inventory are
-both green against the `main` they were built on; whichever merges second
-leaves `main` with a snapshot missing the first one's entries, and the sweep on
-`main` is red until someone regenerates. On the last twenty merges to
-`upstream/main`, eight changed at least one carrier, so this is a weekly event,
-not a corner case. The first upstream sync of this branch reproduced it: twelve
-merged commits added one enum and three closed sets and the check failed
-until regenerated. The handling rule is Section 12 Q9; until it is decided, the
-rule is that the person who merges a PR after a red `main` regenerates the
-inventory in a follow-up commit that touches only `inventory_v0.json`, and the
-smoke's failure text names that command.
+**On-demand inventory (Q9).** The former committed snapshot imposed a second
+synchronization obligation on otherwise valid PRs. It is removed. Let `f(T)` be
+the full tracked-tree inventory and `G(f(T), R)` the existing registry, owner,
+scope and budget predicates. Checks still evaluate `G(f(T), R)`; only the extra
+condition `I_committed = f(T)` disappears. The same computed map feeds the
+checks, so stale or missing local reports cannot hide a new fork. This does not
+prove that independently valid branches cannot introduce a semantic conflict
+when combined: validate the combined tree normally. Never replace the full-tree
+scan with a diff-only scan.
+
+For inspection, run `uv run python scripts/generate_semantic_inventory.py` for
+JSON stdout or append `--output .local/semantic-inventory.json` for an optional
+report. `--output <path> --check` compares that explicit report without writing;
+`--check` alone fails with migration guidance. Reports may be attached to CI
+artifacts, but are neither committed nor required to run semantic checks.
+Bindings and the glossary remain committed generated contracts with freshness
+checks; this decision concerns only the repository census. No new CI job is added.
 
 **Interpreter and checkout.** Run the commands above from the target worktree
 with `uv run`; Python compatibility comes from `pyproject.toml` (`>=3.11`),
@@ -821,8 +824,8 @@ because the selected project or CI environment supplies it on `PATH`.
 
 The TypeScript effective-action binding and the [glossary](../../reference/glossary.md)
 are generated with `uv run python scripts/generate_semantic_bindings.py`.
-Run it after changing the Python owner or registry, then regenerate the inventory
-when carriers change. The existing drift smoke and PR pytest sweep check freshness;
+Run it after changing the Python owner or registry. Carrier changes are scanned
+automatically; exporting an inventory report is optional. The existing drift smoke and PR pytest sweep check freshness;
 no additional required CI job is introduced. Install the locked Node dependencies
 with `npm ci --ignore-scripts` before running the TypeScript production scan.
 
@@ -830,7 +833,7 @@ with `npm ci --ignore-scripts` before running the TypeScript production scan.
 
 | Milestone | Shipped behavior | Entry gate | Exit evidence | Rollback |
 | --- | --- | --- | --- | --- |
-| M0 | Registry with 26 vocabularies and 9 relations, generated inventory with `--check`, drift smoke with fixed dispatch forms and coverage floor, two owner forks removed, RFC index entry | This RFC opened | Section 9 rows green; 20 mutation classes fail closed | Delete the smoke, `loopx/semantics/`, the generator, and its test |
+| M0 | Registry with 26 vocabularies and 9 relations, computed inventory with optional export, drift smoke with fixed dispatch forms and coverage floor, two owner forks removed, RFC index entry | This RFC opened | Section 9 rows green; 20 mutation classes fail closed | Delete the smoke, `loopx/semantics/`, the generator, and its test |
 | M0.5a | `scope_declarations` with `bounded_context` and per-context owners; semantic fork count separated from raw inventory count | M0 merged | Smoke checks every declared context owner; raw `multi_value_forks` remains 4 and `multi_value_forks_semantic` is 3; undeclared forks still fail the budget | Remove the scope declarations and semantic-fork budget |
 | M0.5b | `producers` and `compatibility_only` on `kernel` vocabularies; production-form scan with the two role checks (I12, I13); retirement budgets counted by identifier with all six anchors lowered in one diff (Q11); merge-order rule from Q9 written into Section 10 | M0.5a complete; Q9 decided or its interim rule accepted | Smoke green with I11 to I14 enforced; `skip` resolved; Section 9 producer rows green; `turn_route` persistence answered for Q2 | Remove producer fields and role checks; budgets return to the pre-M0.5b anchors |
 | M1 | `EffectiveAction` typed enum in one owner module; the replay observation and frontier slots split off (Q6); producers and consumers import it; registry `literal_scan` tightened to the enum | M0.5 merged; owner module chosen (Q3); slot split decided (Q6) | Smoke green; zero bare `effective_action` literals outside the owner; parity fixtures for status/should-run unchanged | Revert to literals; registry keeps the set |
@@ -966,36 +969,20 @@ introduce a competing target state.
    capsule fields on read; new writes use the versioned reduced shape. See the
    M1 compatibility table and tests above. This decision does not authorize
    unrelated legacy-field retirement or Turn outcome enum merging.
-7. **Reviewed inventory exceptions (Q7, decided).** Adopt the existing
-   `loopx.canary.maintainability_ratchet.evaluate_maintainability_findings`
-   evaluator for semantic inventory budget overruns. The active drift smoke
-   emits `semantic_inventory_budget:<metric>` findings with the actual metric
-   and unchanged anchored target. Its code-owned
-   `REVIEWED_SEMANTIC_INVENTORY_EXCEPTIONS` map defaults to empty; no present
-   exception or budget increase is justified. A reviewed entry requires a
-   nonempty `reason`, `retirement_plan`, and exact `metric_ceilings`. Unreviewed
-   overruns, invalid entries, further magnitude growth and stale exceptions fail;
-   an exception becomes stale once its overrun disappears. Sharing the lifecycle
-   does not merge semantic-debt targets with canary module/dependency targets.
-   Anchor equality, inventory freshness, vocabulary/production gates, retirement
-   budgets and module-twin checks remain independent hard gates. Verified
-   generated twins are derivation classifications, not temporary waivers;
-   their byte-freshness proof remains mandatory. Owner: canary maintainers.
+7. **Relation to `maintainability_ratchet.py`.** Whether the inventory
+   ratchets adopt its reviewed exception lifecycle (`retirement_plan`, stale
+   exception detection) or stay plain budgets. Recommendation: adopt it in M2
+   when generation lands, so a fork with a documented reason can be excepted
+   instead of budgeted. Owner: canary maintainers.
 8. **Promotion rule from inventory to registry.** Whether a mapped carrier
    with three or more external consumer modules or a cross-runtime twin must be
    curated. Recommendation: yes as a review rule now, enforced by the smoke
    only after a quarter of inventory history exists. Owner: kernel maintainers.
-9. **Inventory freshness across merges.** The committed snapshot goes stale
-   when two carrier-adding PRs merge in sequence (Section 10, eight of the last
-   twenty upstream merges). Options: (a) branch protection requires the PR to
-   be up to date with `main`, which removes the hazard and slows every PR;
-   (b) the merger owns a regenerate-only follow-up commit, which keeps the
-   snapshot in git history and accepts a red `main` for minutes; (c) the
-   inventory is not committed and CI generates it for the PR diff only, which
-   loses `git blame` on carriers. Recommendation: (b) now, (a) if red `main`
-   exceeds once a week. Owner: repository maintainers. This is an operations
-   decision, not a code change; it belongs in the tracking issue's decision
-   list, not its task list.
+9. **Inventory freshness across merges (Q9).** Adopt on-demand full-tree
+   computation and optional untracked reports. Retire the committed census and
+   its equality obligation; preserve semantic predicates, roots, floors and
+   budgets. This supersedes regenerate-after-merge and explicitly rejects the
+   old option's diff-only scan. Section 10 defines commands and proof limits.
 10. **Target state for the Turn vocabularies.** Section 11's target table
    keeps three sets and seven redundant spellings by default because Q2
    recommends keeping both. Q2's writer/readback evidence shows that `turn_route`
@@ -1170,7 +1157,7 @@ introduce a competing target state.
 
 | Date | Decision | Owner / approval | Alternatives | Normative sections changed |
 | --- | --- | --- | --- | --- |
-| — | none recorded | — | — | — |
+| 2026-09-16 | Q9: compute the full inventory on demand; retire the committed census | Implementation for [maintainer feedback](https://github.com/huangruiteng/loopx/pull/4360#issuecomment-5692062394); PR review pending | Committed snapshot with post-merge regeneration; diff-only scan rejected | 1, I6, 3, 5, 9, 10, 12 |
 
 ## Appendix C: Evidence registry
 

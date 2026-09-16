@@ -10,6 +10,11 @@ from .control_plane.operator_credential import (
     env_text,
     operator_credential_configured,
 )
+from .control_plane.operator_provider import (
+    operator_credential_source,
+    operator_provider_environ,
+    operator_provider_host_credential,
+)
 from .control_plane.turn_driver.execution_profile import (
     REASONING_EFFORTS,
     managed_execution_profile,
@@ -19,6 +24,7 @@ from .control_plane.turn_driver.host_binding import (
     MANAGED_TURN_HOST,
     managed_executor_binding,
 )
+from .capabilities.steward_executor import load_effective_steward_executor_defaults
 from .chat_store import (
     CHAT_SESSION_MODE_ATTACHED,
     CHAT_SESSION_MODE_MANAGED,
@@ -47,7 +53,8 @@ MANAGER_AGENT_OBJECTIVE = (
     "Every Turn declares evidence_window for the dated delivery read: state the days, whether that window is the shipped default or an explicit configuration, the window bounds, per-day and total receipt limits, included versus omitted counts, and that each Goal's newest receipt is full while older in-window receipts are compact. "
     "Receipts outside that window are outside coverage, not evidence of no progress. "
     "A declared source is a host registered for LoopX evidence, not every configured SSH alias, so keep unrelated host names out of the answer. "
-    "remote_evidence declares each source's typed status and freshness: read or cached with its read time, unavailable with its reason, the last successful read and a coverage effect, not_configured for alias drift, or deferred_budget for a source outside this Turn's one-dial budget. "
+    "remote_evidence declares each source's typed status and freshness: read or cached with its read time, unavailable with its typed reason_code, its reason, the last successful read and a coverage effect, not_configured for alias drift, or deferred_budget for a source outside this Turn's one-dial budget. "
+    "When a source is unavailable, use its reason_code and reason to name the exact cause and the repair it needs in this answer, including when that repair is the owner's own action on this machine such as renewing an expired Kerberos ticket; an untyped unavailable or a cause copied from another source is a wrong answer. "
     "Use its rows as the remote evidence and answer the question with them; rows marked stale are last known rather than current, and an unread, stale or unavailable source is a named coverage gap, never evidence that a remote Goal made no progress. "
     "When the Turn declares remote_read as on_demand_tool instead, the declared sources were not read for you: read the chosen source_id with loopx_manager_read before answering, and name any source you did not read as the exact gap. "
     "Read each delivery's recorded_details: checkpoint_reason and observed_reality describe recorded findings, while result_class and probe_kind describe the reported validation. "
@@ -114,15 +121,18 @@ def is_manager_channel(value: Any) -> bool:
     return value == "manager" or str(value or "").startswith("manager.external.")
 
 
-# The steward channel resolves its executor and its model from one product
-# default plus one explicit override. The shipped default is the interactive CLI
+# The steward channel resolves its executor, its model and its reasoning effort
+# from one machine-configured default, then one service-environment override,
+# then one shipped product default. The shipped default is the interactive CLI
 # endpoint (`codex`), and it does not move: the steward is the surface a person
 # talks to, it must stay reachable on a machine that has only a personal login,
 # and a credential authenticates an endpoint rather than choosing one. An
 # operator who wants the steward on the operator-billed managed host selects it
-# explicitly (`LOOPX_MANAGER_ENDPOINT=dsh`). The resolved endpoint, the reason
-# for the product default, the model and the reasoning effort are all reported,
-# so the channel always says which of the two it is running and why.
+# explicitly -- as this machine's `steward_executor` machine configuration, or,
+# for a bootstrap or an unlisted adapter, in `LOOPX_MANAGER_ENDPOINT`. The
+# resolved endpoint, the source that selected it, the reason for the product
+# default, the model and the reasoning effort are all reported, so the channel
+# always says which executor it is running on and why.
 MANAGER_CHANNEL_BINDING_SCHEMA_VERSION = "manager_channel_binding_v0"
 MANAGER_ENDPOINT_ENV_VAR = "LOOPX_MANAGER_ENDPOINT"
 # The endpoint an operator selects to run the steward on the managed executor,
@@ -133,6 +143,11 @@ MANAGER_ENDPOINT_MANAGED = MANAGED_TURN_HOST
 MANAGER_ENDPOINT_INDIVIDUAL = "codex"
 MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT = "product_default"
 MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG = "explicit_config"
+# The operator's persistent machine choice. It outranks the service environment
+# because it is the setting a product surface owns: the Dashboard edits it and
+# `loopx machine-config describe`/`inspect` read it back, so a machine-local
+# decision cannot hide in a launch file no product surface can show.
+MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION = "machine_configuration"
 # Why the shipped default resolved the way it did. One typed reason, never
 # prose, so a reader can tell a decided default from a discovered one. The
 # steward has exactly one such decision, and it is not conditional on a
@@ -157,6 +172,9 @@ MANAGER_MODEL_ENV_VAR = "LOOPX_MANAGER_MODEL"
 MANAGER_MODEL_DEFAULT = "gpt-6-astra"
 MANAGER_MODEL_SOURCE_ENV_OVERRIDE = "env_override"
 MANAGER_MODEL_SOURCE_VENDOR_DEFAULT = "vendor_default"
+# The machine configuration can name the model too, so an operator can select
+# one executor *and* the model it runs without a second, weaker channel.
+MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION = "machine_configuration"
 # The channel runs the same managed execution profile the governed Turn surface
 # runs, so the interactive channel and the bounded work it drives cannot land on
 # two different managed models.
@@ -166,11 +184,116 @@ MANAGER_REASONING_EFFORT_DEFAULT = "high"
 MANAGER_REASONING_EFFORTS = REASONING_EFFORTS
 
 
+def steward_machine_defaults(controller: Any) -> Mapping[str, Any] | None:
+    """Return the machine-configured steward defaults this channel reads.
+
+    The runtime controller owns the runtime root and therefore the
+    machine-configuration store, so the resolution below never re-derives which
+    document is authoritative. A caller that has no such owner -- a transport
+    that does not serve the Dashboard, or a test double -- resolves through its
+    explicit configuration and the shipped default instead, which is exactly
+    what an unconfigured machine does.
+    """
+
+    resolver = getattr(controller, "steward_executor_defaults", None)
+    if not callable(resolver):
+        return None
+    resolved = resolver()
+    return resolved if isinstance(resolved, Mapping) else None
+
+
+def controller_runtime_root(controller: Any) -> Path | None:
+    """Return the runtime root a channel owner reads machine settings from."""
+
+    store = getattr(controller, "store", None)
+    root = getattr(store, "root", None)
+    return root.parent if isinstance(root, Path) else None
+
+
+def operator_credential_resolution(controller: Any) -> dict[str, Any]:
+    """Return the credential-resolved environment and source for one owner.
+
+    A key stored from a product surface lives under the runtime root the
+    controller owns, so the same owner that resolves the machine's steward
+    defaults resolves where the credential came from and what it resolved to. A
+    controller without that owner -- a transport outside the Dashboard, or a
+    test double -- resolves to an unread environment, which lets the channel
+    read the service environment exactly as it did before this machine had a
+    credential store.
+    """
+
+    runtime_root = controller_runtime_root(controller)
+    if runtime_root is None:
+        return {"environ": None, "source": "not_read"}
+    return {
+        "environ": operator_provider_environ(runtime_root),
+        "source": operator_credential_source(runtime_root),
+    }
+
+
+def operator_credential_pair(controller: Any) -> dict[str, str]:
+    """Return the credential pair a managed child host of this owner needs."""
+
+    runtime_root = controller_runtime_root(controller)
+    if runtime_root is None:
+        return {}
+    return operator_provider_host_credential(runtime_root)
+
+
+def manager_capabilities_projection(controller: Any, store: Any) -> dict[str, Any]:
+    """Compose the steward section of the shared chat capabilities payload.
+
+    Every steward entry point resolves the same three things -- this machine's
+    ``steward_executor`` defaults, the operator credential that authenticates
+    the selected executor, and the Session the channel would resume -- so they
+    are composed here once. A caller cannot publish a model argument, an
+    availability verdict and a readback that disagree about which executor and
+    which credential they describe.
+    """
+
+    from .capabilities.manager_runtime import manager_runtime_capability_projection
+
+    machine_defaults = steward_machine_defaults(controller)
+    credential = operator_credential_resolution(controller)
+    return manager_runtime_capability_projection(
+        controller,
+        manager_model_config(
+            credential["environ"], machine_defaults=machine_defaults
+        ),
+        channel_binding=manager_channel_binding(
+            environ=credential["environ"],
+            machine_defaults=machine_defaults,
+            credential_source=credential["source"],
+            session=manager_channel_session(store),
+        ),
+    )
+
+
+def _machine_default_text(
+    machine_defaults: Mapping[str, Any] | None, field: str
+) -> str:
+    """Return one selected machine value, or ``""`` when this machine decided none.
+
+    The machine document is read field by field on purpose: a machine that
+    selects only an executor keeps resolving the model and the effort from the
+    lower layers instead of inheriting whatever the last reader saw.
+    """
+
+    if not isinstance(machine_defaults, Mapping):
+        return ""
+    return str(machine_defaults.get(field) or "").strip()
+
+
 def _resolve_manager_endpoint(
     environ: dict[str, str] | None = None,
+    *,
+    machine_defaults: Mapping[str, Any] | None = None,
 ) -> tuple[str, str, str]:
     """Return the selected endpoint, its source, and the shipped-default reason."""
 
+    configured = _machine_default_text(machine_defaults, "executor_endpoint")
+    if configured:
+        return configured, MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION, ""
     explicit = env_text(MANAGER_ENDPOINT_ENV_VAR, environ)
     if explicit:
         return explicit, MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG, ""
@@ -183,31 +306,70 @@ def _resolve_manager_endpoint(
 
 def selected_manager_executor_endpoint(
     environ: dict[str, str] | None = None,
+    *,
+    machine_defaults: Mapping[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Return the selected steward executor endpoint and the source selecting it.
 
-    One explicit override decides the endpoint; otherwise the shipped default
-    applies. That default is the interactive CLI endpoint on every machine: the
-    channel runs on the executor an operator selected, and the managed host is
-    reached by selecting it rather than by discovering a credential.
+    One machine configuration decides the endpoint, then one explicit service
+    override, then the shipped default. That default is the interactive CLI
+    endpoint on every machine: the channel runs on the executor an operator
+    selected, and the managed host is reached by selecting it rather than by
+    discovering a credential.
     """
 
-    endpoint, source, _reason = _resolve_manager_endpoint(environ)
+    endpoint, source, _reason = _resolve_manager_endpoint(
+        environ, machine_defaults=machine_defaults
+    )
     return endpoint, source
 
 
 def manager_endpoint_default_reason(
     environ: dict[str, str] | None = None,
+    *,
+    machine_defaults: Mapping[str, Any] | None = None,
 ) -> str:
     """Return why the shipped default resolved as it did, or ``""`` when explicit."""
 
-    return _resolve_manager_endpoint(environ)[2]
+    return _resolve_manager_endpoint(environ, machine_defaults=machine_defaults)[2]
 
 
-def manager_executor_endpoint_default(environ: dict[str, str] | None = None) -> str:
+def manager_executor_endpoint_default(
+    environ: dict[str, str] | None = None,
+    *,
+    machine_defaults: Mapping[str, Any] | None = None,
+) -> str:
     """Return the selected steward executor endpoint."""
 
-    return selected_manager_executor_endpoint(environ)[0]
+    return selected_manager_executor_endpoint(
+        environ, machine_defaults=machine_defaults
+    )[0]
+
+
+def manager_connection_executor_endpoint(
+    runtime_root: Path | str | None,
+    *,
+    environ: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    """Return the endpoint a manager connection runs on, and the source of it.
+
+    A manager conversation is one machine-level channel, so the machine owns
+    which executor answers there. A connection record therefore stores this
+    resolution as an observation instead of a decision that would outlive the
+    machine setting that made it: reading the connection's endpoint back as
+    authority is what let a machine that had selected a managed executor keep
+    answering on the interactive CLI endpoint that was the default when the
+    connection was created.
+    """
+
+    machine_defaults = (
+        load_effective_steward_executor_defaults(Path(runtime_root))
+        if runtime_root is not None
+        else None
+    )
+    return selected_manager_executor_endpoint(
+        environ, machine_defaults=machine_defaults
+    )
 
 
 # The channel's readback quotes the mode and the status of the Session it is an
@@ -287,6 +449,8 @@ def manager_channel_binding(
     environ: dict[str, str] | None = None,
     *,
     session: Mapping[str, Any] | None = None,
+    machine_defaults: Mapping[str, Any] | None = None,
+    credential_source: str | None = None,
 ) -> dict[str, Any]:
     """Project the steward channel's resolved executor, model, and their source.
 
@@ -295,6 +459,12 @@ def manager_channel_binding(
     whether the channel can actually run there. Credential facts are reported as
     the variable name only -- never the value -- because a credential
     authenticates the selected configuration instead of selecting it.
+
+    ``machine_defaults`` is this machine's ``steward_executor`` resolution, when
+    the caller read one. It is the layer that outranks the environment, so its
+    status and revision are quoted here too: an operator reading the channel can
+    tell a machine decision from a service environment value, and a machine whose
+    stored value is invalid is named as such instead of quietly falling back.
 
     ``available`` is ``False`` only when LoopX can prove the selected endpoint
     cannot serve this channel, which is what a caller fails closed on, and
@@ -309,7 +479,9 @@ def manager_channel_binding(
     than as a mode this projection guessed.
     """
 
-    endpoint, endpoint_source, default_reason = _resolve_manager_endpoint(environ)
+    endpoint, endpoint_source, default_reason = _resolve_manager_endpoint(
+        environ, machine_defaults=machine_defaults
+    )
     executor_kind = MANAGER_ENDPOINT_KINDS.get(endpoint, "")
     credential_env = ""
     execution_profile: str | None = None
@@ -321,15 +493,33 @@ def manager_channel_binding(
         unavailable_reason: str | None = managed.get("unavailable_reason")
     else:
         available, unavailable_reason = None, None
-    model, model_source = manager_model_resolution(environ, endpoint=endpoint)
+    model, model_source = manager_model_resolution(
+        environ, endpoint=endpoint, machine_defaults=machine_defaults
+    )
     return {
         "schema_version": MANAGER_CHANNEL_BINDING_SCHEMA_VERSION,
         "executor_endpoint": endpoint,
         "executor_endpoint_source": endpoint_source,
         "executor_endpoint_default_reason": default_reason,
+        "machine_defaults_status": (
+            str(machine_defaults.get("status") or "")
+            if isinstance(machine_defaults, Mapping)
+            else "not_read"
+        ),
+        "machine_defaults_revision": (
+            str(machine_defaults.get("configuration_revision") or "")
+            if isinstance(machine_defaults, Mapping)
+            else ""
+        ),
         "executor_kind": executor_kind,
         "credential_env_var": credential_env,
         "operator_credential_configured": operator_credential_configured(environ),
+        # Where the credential that authenticates the resolved executor came
+        # from. A key stored from a product surface and a key exported by the
+        # service readback the same value but a different source, and an
+        # operator who has to edit a launch file to change one is owed the
+        # difference between them.
+        "operator_credential_source": credential_source or "not_read",
         "execution_profile": execution_profile,
         "available": available,
         "unavailable_reason": unavailable_reason,
@@ -343,19 +533,25 @@ def manager_model_resolution(
     environ: dict[str, str] | None = None,
     *,
     endpoint: str | None = None,
+    machine_defaults: Mapping[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Return the steward channel's model and the source that set it.
 
-    The model follows the resolved executor: an explicit
-    ``LOOPX_MANAGER_MODEL`` always wins, a managed endpoint takes the managed
-    execution profile's model, and the interactive CLI endpoint keeps its vendor
-    default. A credential never picks a model.
+    The model follows the resolved executor. One machine-configured model wins,
+    then an explicit ``LOOPX_MANAGER_MODEL``, then a managed endpoint's managed
+    execution profile, and otherwise the interactive CLI endpoint keeps its
+    vendor default. A credential never picks a model.
     """
 
+    configured = _machine_default_text(machine_defaults, "executor_model")
+    if configured:
+        return configured, MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION
     override = env_text(MANAGER_MODEL_ENV_VAR, environ)
     if override:
         return override, MANAGER_MODEL_SOURCE_ENV_OVERRIDE
-    resolved_endpoint = endpoint or _resolve_manager_endpoint(environ)[0]
+    resolved_endpoint = (
+        endpoint or _resolve_manager_endpoint(environ, machine_defaults=machine_defaults)[0]
+    )
     if MANAGER_ENDPOINT_KINDS.get(resolved_endpoint) == MANAGER_EXECUTOR_KIND_MANAGED:
         profile = managed_execution_profile(environ)
         return str(profile["model"]), MANAGER_MODEL_SOURCE_MANAGED_PROFILE
@@ -385,7 +581,9 @@ def open_manager_session(
     resolved_endpoint = (
         str(executor_endpoint_id).strip()
         if executor_endpoint_id
-        else manager_executor_endpoint_default()
+        else manager_executor_endpoint_default(
+            machine_defaults=steward_machine_defaults(controller)
+        )
     )
     return controller.open_session(
         goal_id=goal_id,
@@ -405,19 +603,29 @@ def manager_skill_text() -> str:
     return (Path(__file__).parent / "capabilities/manager_context/skills/loopx-manager/SKILL.md").read_text(encoding="utf-8")
 
 
-def manager_model_config(environ: dict[str, str] | None = None) -> dict[str, str]:
+def manager_model_config(
+    environ: dict[str, str] | None = None,
+    *,
+    machine_defaults: Mapping[str, Any] | None = None,
+) -> dict[str, str]:
     """Return the manager host arguments: model and reasoning effort.
 
-    Each field has exactly one environment override, and both follow the
-    resolved executor: a managed endpoint takes the managed execution profile,
-    the interactive CLI endpoint keeps its vendor default. The managed effort
-    comes from that same profile, so the channel and the bounded Turns it drives
-    run the effort the operator configured once.
+    Each field has exactly one machine-configured value and one environment
+    override, and both follow the resolved executor: a managed endpoint takes
+    the managed execution profile, the interactive CLI endpoint keeps its vendor
+    default. The managed effort comes from that same profile, so the channel and
+    the bounded Turns it drives run the effort the operator configured once.
     """
 
-    endpoint = _resolve_manager_endpoint(environ)[0]
-    model, _source = manager_model_resolution(environ, endpoint=endpoint)
-    effort = env_text(MANAGER_REASONING_EFFORT_ENV_VAR, environ)
+    endpoint = _resolve_manager_endpoint(
+        environ, machine_defaults=machine_defaults
+    )[0]
+    model, _source = manager_model_resolution(
+        environ, endpoint=endpoint, machine_defaults=machine_defaults
+    )
+    effort = _machine_default_text(machine_defaults, "executor_reasoning_effort")
+    if not effort:
+        effort = env_text(MANAGER_REASONING_EFFORT_ENV_VAR, environ)
     if not effort and MANAGER_ENDPOINT_KINDS.get(endpoint) == MANAGER_EXECUTOR_KIND_MANAGED:
         effort = str(managed_execution_profile(environ)["reasoning_effort"])
     effort = effort or MANAGER_REASONING_EFFORT_DEFAULT

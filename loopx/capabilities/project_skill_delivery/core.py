@@ -111,6 +111,47 @@ def discover_project_scoped_skill_ids(skills_root: Path) -> tuple[str, ...]:
     return tuple(result)
 
 
+def classify_host_skill_sources(skills_root: Path) -> dict[str, tuple[str, ...]]:
+    """Split skill sources by what a fixed host install may deliver.
+
+    ``global`` is the only scope a host install may materialize. A source with a
+    ``project`` marker is installed explicitly per project, and a source with no
+    marker is repo-only: it stays in the checkout, and no delivery path may copy
+    it onto a host that did not deliberately adopt it. An unrecognized marker is
+    a configuration error rather than a silent skip.
+    """
+    deliverable: list[str] = []
+    project_scoped: list[str] = []
+    repo_only: list[str] = []
+    if not skills_root.is_dir():
+        return {
+            "deliverable_skill_ids": (),
+            "project_skill_ids": (),
+            "repo_only_skill_ids": (),
+        }
+    for candidate in sorted(skills_root.iterdir()):
+        if not candidate.is_dir():
+            continue
+        scope_file = candidate / PROJECT_SKILL_SCOPE_FILE
+        if not scope_file.is_file():
+            repo_only.append(candidate.name)
+            continue
+        scope = scope_file.read_text(encoding="utf-8").strip()
+        if scope == GLOBAL_SKILL_SCOPE:
+            deliverable.append(candidate.name)
+        elif scope == PROJECT_SKILL_SCOPE:
+            project_scoped.append(candidate.name)
+        else:
+            raise ValueError(
+                f"skill scope must be 'global' or 'project', got {scope!r}: {scope_file}"
+            )
+    return {
+        "deliverable_skill_ids": tuple(deliverable),
+        "project_skill_ids": tuple(project_scoped),
+        "repo_only_skill_ids": tuple(repo_only),
+    }
+
+
 def _read_scope(source_root: Path) -> str:
     scope_path = source_root / PROJECT_SKILL_SCOPE_FILE
     if not scope_path.is_file():

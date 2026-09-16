@@ -53,6 +53,27 @@ def _render(payload: dict[str, object]) -> str:
         lines.append(
             f"- changed_namespaces: `{', '.join(map(str, namespaces)) or 'none'}`"
         )
+    api_key = payload.get("provider_key")
+    if isinstance(api_key, dict):
+        # The key itself is never printed: the fingerprint is what an operator
+        # compares, and the source is what tells them where to change it.
+        lines.append(
+            "- api_key: `configured={configured} source={source} fingerprint={fingerprint}`".format(
+                configured=api_key.get("configured"),
+                source=api_key.get("source"),
+                fingerprint=api_key.get("fingerprint") or "none",
+            )
+        )
+    base_url = payload.get("base_url")
+    if isinstance(base_url, dict):
+        lines.append(
+            "- base_url: `value={value} source={source}`".format(
+                value=base_url.get("value") or "none",
+                source=base_url.get("source"),
+            )
+        )
+    if payload.get("repair"):
+        lines.append(f"- repair: {payload.get('repair')}")
     catalog_namespaces = payload.get("namespaces")
     if isinstance(catalog_namespaces, list):
         lines.extend(["", "## Registered Namespaces", ""])
@@ -142,6 +163,50 @@ def register_machine_configuration_commands(
         help="Exact plan_revision returned by the preceding rollback preview.",
     )
     rollback.add_argument("--execute", action="store_true")
+    credential = commands.add_parser(
+        "credential",
+        help=(
+            "Read or write the operator model credential this machine's "
+            "steward channel and managed host authenticate with."
+        ),
+    )
+    credential_commands = credential.add_subparsers(
+        dest="machine_credential_command", required=True
+    )
+    credential_status = credential_commands.add_parser(
+        "status",
+        help="Print the redacted credential status. The key is never read back.",
+    )
+    add_subcommand_format(credential_status)
+    credential_set = credential_commands.add_parser(
+        "set",
+        help=(
+            "Store, update, or clear the credential. Pass the value on stdin "
+            "with `--config-json -` so it stays out of shell history and argv."
+        ),
+    )
+    add_subcommand_format(credential_set)
+    credential_set.add_argument(
+        "--config-json",
+        help=(
+            "A JSON object with provider_key and/or base_url; `-` reads stdin. "
+            "Omitted entirely clears nothing and changes nothing."
+        ),
+    )
+    credential_set.add_argument(
+        "--clear-api-key",
+        action="store_true",
+        help="Remove the stored key so the service environment applies again.",
+    )
+    credential_set.add_argument(
+        "--clear-base-url",
+        action="store_true",
+        help="Remove the stored base URL so the service environment applies again.",
+    )
+    credential_clear = credential_commands.add_parser(
+        "clear", help="Remove every stored credential field for this machine."
+    )
+    add_subcommand_format(credential_clear)
 
 
 def handle_machine_configuration_command(
@@ -163,7 +228,42 @@ def handle_machine_configuration_command(
         registry_path=registry_path,
     )
     try:
-        if args.machine_config_command == "describe":
+        if args.machine_config_command == "credential":
+            from ...control_plane.operator_provider import (
+                clear_operator_provider,
+                operator_provider_projection,
+                write_operator_provider,
+            )
+
+            if args.machine_credential_command == "status":
+                payload = {
+                    "ok": True,
+                    **operator_provider_projection(runtime_root),
+                }
+            elif args.machine_credential_command == "clear":
+                payload = {
+                    "ok": True,
+                    "action": "cleared",
+                    **clear_operator_provider(runtime_root),
+                }
+            else:
+                configuration = (
+                    _load_json_object(args.config_json)
+                    if args.config_json
+                    else {}
+                )
+                payload = {
+                    "ok": True,
+                    "action": "stored",
+                    **write_operator_provider(
+                        runtime_root=runtime_root,
+                        api_key=configuration.get("provider_key"),
+                        base_url=configuration.get("base_url"),
+                        clear_api_key=bool(args.clear_api_key),
+                        clear_base_url=bool(args.clear_base_url),
+                    ),
+                }
+        elif args.machine_config_command == "describe":
             payload = {
                 "ok": True,
                 **registry.public_catalog(),

@@ -209,8 +209,19 @@ def read_remote(
             text=True,
             timeout=timeout_seconds,
         )
-        if result.returncode or len(result.stdout) > 100000:
-            raise ValueError("remote read unavailable")
+        if result.returncode:
+            code, reason = _remote_read_failure(
+                returncode=int(result.returncode),
+                stderr=str(getattr(result, "stderr", "") or ""),
+            )
+            return _unavailable_read(args, code, reason)
+        if len(result.stdout) > 100000:
+            code, reason = _remote_read_failure(
+                returncode=0,
+                stderr="",
+                protocol=True,
+            )
+            return _unavailable_read(args, code, reason)
         packet = json.loads(result.stdout)
         if (
             not isinstance(packet, dict)
@@ -218,7 +229,10 @@ def read_remote(
             or not isinstance(packet.get("rows"), list)
             or any(not isinstance(r, dict) for r in packet["rows"])
         ):
-            raise ValueError("remote protocol unavailable")
+            code, reason = _remote_read_failure(
+                returncode=0, stderr="", protocol=True
+            )
+            return _unavailable_read(args, code, reason)
         if (
             not scope_valid()
             or (not owner and before != grants(root, channel))
@@ -235,14 +249,13 @@ def read_remote(
             for r in packet["rows"]
         ]
         return packet
-    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
-        return {
-            "ok": False,
-            "source_id": args["source_id"],
-            "error": "remote_evidence_unavailable_or_upgrade_required",
-            "coverage": {"discovered": None, "complete": False},
-            "rows": [],
-        }
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        code, reason = _remote_read_failure(
+            returncode=0,
+            stderr=str(exc),
+            protocol=isinstance(exc, ValueError),
+        )
+        return _unavailable_read(args, code, reason)
 
 
 def _cache_dir(root) -> Path:
@@ -257,6 +270,112 @@ def _scope_identity(root, channel, owner) -> str:
     return "channel:" + hashlib.sha256(
         json.dumps(grants(root, channel), sort_keys=True).encode()
     ).hexdigest()
+
+
+REMOTE_READ_AUTH_REQUIRED = "ssh_auth_required"
+REMOTE_READ_HOST_UNREACHABLE = "ssh_host_unreachable"
+REMOTE_READ_CLI_MISSING = "remote_cli_missing"
+REMOTE_READ_PROTOCOL = "remote_protocol_unavailable"
+REMOTE_READ_UNKNOWN = "remote_evidence_unavailable"
+
+_REMOTE_READ_REASONS = {
+    REMOTE_READ_AUTH_REQUIRED: (
+        "the host refused this machine's SSH credential, and it accepts only a "
+        "login this machine did not present: renew this machine's Kerberos "
+        "ticket with kinit, or provision a key the host accepts"
+    ),
+    REMOTE_READ_HOST_UNREACHABLE: (
+        "the host could not be reached from this machine: check that it is up "
+        "and reachable from here before the next read"
+    ),
+    REMOTE_READ_CLI_MISSING: (
+        "the host has no LoopX CLI at ~/.local/bin/loopx, so it cannot answer "
+        "an evidence read: install or expose the CLI on that host"
+    ),
+    REMOTE_READ_PROTOCOL: (
+        "the remote answer was not a LoopX evidence packet, so the CLI there is "
+        "older than this read: upgrade the remote LoopX CLI"
+    ),
+    REMOTE_READ_UNKNOWN: (
+        "the bounded remote read did not complete and the cause is not in the "
+        "answer: retry the read, then inspect this host's SSH setup"
+    ),
+}
+
+# The compact packet carries one typed limitation per failed source beside the
+# per-row reason, so a reader that only sees the summary still learns that the
+# source needs a repair rather than that the remote Goal made no progress.
+_REMOTE_READ_LIMITATIONS = {
+    REMOTE_READ_AUTH_REQUIRED: "remote_source_ssh_auth_required",
+    REMOTE_READ_HOST_UNREACHABLE: "remote_source_ssh_host_unreachable",
+    REMOTE_READ_CLI_MISSING: "remote_source_cli_missing",
+    REMOTE_READ_PROTOCOL: "remote_source_protocol_unavailable",
+    REMOTE_READ_UNKNOWN: "remote_source_unavailable",
+}
+
+
+def _remote_read_failure(
+    *, returncode: int, stderr: str, protocol: bool = False
+) -> tuple[str, str]:
+    """Classify one failed bounded read into a typed code and public-safe text.
+
+    A declared source that fails must say which side has to change. Reported as
+    an undifferentiated "unavailable", an authentication gap and a dead host
+    look identical to the owner, so the one action that would unblock the read
+    cannot be named.
+    """
+
+    if protocol:
+        return REMOTE_READ_PROTOCOL, _REMOTE_READ_REASONS[REMOTE_READ_PROTOCOL]
+    text = " ".join(str(stderr or "").split())[:400]
+    lowered = text.lower()
+    if returncode == 127 or "command not found" in lowered:
+        return REMOTE_READ_CLI_MISSING, _REMOTE_READ_REASONS[REMOTE_READ_CLI_MISSING]
+    # Bounded substring classification, kept deliberately narrow: ssh prints
+    # `Permission denied (<method list>)` for its own rejected credential, while
+    # a remote command can print a bare `Permission denied` about a file. Only
+    # the ssh forms may claim the owner's credential is the cause, or the read
+    # would tell the owner to renew a ticket when the remote CLI failed instead.
+    if (
+        "permission denied (" in lowered
+        or "gssapi" in lowered
+        or "authentication failed" in lowered
+        or "no supported authentication" in lowered
+    ):
+        return (
+            REMOTE_READ_AUTH_REQUIRED,
+            _REMOTE_READ_REASONS[REMOTE_READ_AUTH_REQUIRED],
+        )
+    if any(
+        token in lowered
+        for token in (
+            "timed out",
+            "connection refused",
+            "no route to host",
+            "could not resolve hostname",
+            "unreachable",
+            "connection reset",
+        )
+    ):
+        return (
+            REMOTE_READ_HOST_UNREACHABLE,
+            _REMOTE_READ_REASONS[REMOTE_READ_HOST_UNREACHABLE],
+        )
+    return REMOTE_READ_UNKNOWN, _REMOTE_READ_REASONS[REMOTE_READ_UNKNOWN]
+
+
+def _unavailable_read(args: Mapping[str, Any], code: str, reason: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "source_id": args["source_id"],
+        # Kept for compatibility: readers that only know the old code still see
+        # an unavailable source rather than a silent success.
+        "error": "remote_evidence_unavailable_or_upgrade_required",
+        "reason_code": code,
+        "reason": reason,
+        "coverage": {"discovered": None, "complete": False},
+        "rows": [],
+    }
 
 
 def _cached_entry(
@@ -288,6 +407,27 @@ def _entry_age_seconds(entry: dict[str, Any], now: datetime) -> float | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return max(0.0, (now - parsed).total_seconds())
+
+
+def _dial_rank(
+    source: dict[str, Any], entry: dict[str, Any] | None
+) -> tuple[int, int, str, str]:
+    """Order one declared source for the single dial a Turn is allowed to make.
+
+    A source that cannot be dialled is ranked last, then a source that has never
+    been read, then the oldest successful read. The timestamp is compared as
+    text so the ranking stays a pure function of the stored value, and the
+    source id breaks ties so the rotation is deterministic rather than a
+    function of the order the SSH config happened to declare.
+    """
+
+    source_id = str(source["source_id"])
+    if source.get("status") == "not_configured":
+        return (2, 0, "", source_id)
+    read_at = (entry or {}).get("read_at")
+    if not isinstance(read_at, str) or not read_at:
+        return (0, 0, "", source_id)
+    return (1, 0, read_at, source_id)
 
 
 def _compact_remote_row(row: dict[str, Any], *, source_id: str, host: str, fresh: bool):
@@ -337,52 +477,69 @@ def remote_evidence(
         for source in sources(root, channel, owner, config_path)
         if source.get("source_id") != "local"
     ]
+    # One Turn dials one host, so *which* source it dials is a rotation decision
+    # rather than a declaration order: the source read longest ago -- or never --
+    # goes first. Without this, a source listed later would be deferred on every
+    # Turn that arrives after the cache TTL and could never be read at all, while
+    # the source listed first kept taking the single dial.
+    cached: dict[str, dict[str, Any] | None] = {
+        str(source["source_id"]): _cached_entry(
+            root,
+            str(source["source_host"]),
+            identity=identity,
+            window_days=window_days,
+        )
+        for source in declared
+        if source.get("status") != "not_configured"
+    }
+    rotation = sorted(
+        declared,
+        key=lambda source: _dial_rank(
+            source, cached.get(str(source["source_id"]))
+        ),
+    )
     deadline = now.timestamp() + max(0.0, float(budget_seconds))
-    host_rows: list[dict[str, Any]] = []
-    rows: list[dict[str, Any]] = []
+    host_rows_by_source: dict[str, dict[str, Any]] = {}
+    rows_by_source: dict[str, list[dict[str, Any]]] = {}
     limitations: list[str] = []
     stale_rows_included = False
     attempted = 0
-    for index, source in enumerate(declared):
+    for index, source in enumerate(rotation):
         source_id = str(source["source_id"])
         host = str(source["source_host"])
         if source.get("status") == "not_configured":
-            host_rows.append(
-                {
-                    "source_id": source_id,
-                    "source_host": host,
-                    "status": "not_configured",
-                    "reason": "ssh_alias_not_configured",
-                    "fresh": False,
-                    "next_action": "Register an existing SSH alias for this host and retry.",
-                }
-            )
+            host_rows_by_source[source_id] = {
+                "source_id": source_id,
+                "source_host": host,
+                "status": "not_configured",
+                "reason": "ssh_alias_not_configured",
+                "fresh": False,
+                "next_action": "Register an existing SSH alias for this host and retry.",
+            }
             if "declared_source_alias_missing" not in limitations:
                 limitations.append("declared_source_alias_missing")
             continue
-        entry = _cached_entry(root, host, identity=identity, window_days=window_days)
+        entry = cached.get(source_id)
         age = _entry_age_seconds(entry, now) if entry else None
         if entry is not None and age is not None:
             if age <= MANAGER_REMOTE_EVIDENCE_TTL_SECONDS:
                 packet = entry.get("packet") or {}
-                rows.extend(
+                rows_by_source.setdefault(source_id, []).extend(
                     _compact_remote_row(row, source_id=source_id, host=host, fresh=True)
                     for row in (packet.get("rows") or [])
                     if isinstance(row, dict)
                 )
-                host_rows.append(
-                    {
-                        "source_id": source_id,
-                        "source_host": host,
-                        "status": "cached",
-                        "fresh": True,
-                        "read_at": entry.get("read_at"),
-                        "age_seconds": int(age),
-                        "rows_included": len(packet.get("rows") or []),
-                        "coverage": packet.get("coverage"),
-                        "next_action": None,
-                    }
-                )
+                host_rows_by_source[source_id] = {
+                    "source_id": source_id,
+                    "source_host": host,
+                    "status": "cached",
+                    "fresh": True,
+                    "read_at": entry.get("read_at"),
+                    "age_seconds": int(age),
+                    "rows_included": len(packet.get("rows") or []),
+                    "coverage": packet.get("coverage"),
+                    "next_action": None,
+                }
                 continue
         remaining = deadline - datetime.now(timezone.utc).timestamp()
         # One dial per Turn keeps the channel responsive: every other declared
@@ -390,17 +547,15 @@ def remote_evidence(
         if index >= MANAGER_REMOTE_EVIDENCE_MAX_HOSTS or remaining <= 1 or attempted:
             if "remote_source_deferred_to_next_turn" not in limitations:
                 limitations.append("remote_source_deferred_to_next_turn")
-            host_rows.append(
-                {
-                    "source_id": source_id,
-                    "source_host": host,
-                    "status": "deferred_budget",
-                    "fresh": False,
-                    "reason": "turn_budget",
-                    "last_success_at": (entry or {}).get("read_at"),
-                    "next_action": "Ask again in the next Turn or read this source on demand.",
-                }
-            )
+            host_rows_by_source[source_id] = {
+                "source_id": source_id,
+                "source_host": host,
+                "status": "deferred_budget",
+                "fresh": False,
+                "reason": "turn_budget",
+                "last_success_at": (entry or {}).get("read_at"),
+                "next_action": "Ask again in the next Turn or read this source on demand.",
+            }
             continue
         attempted += 1
         packet = read_remote(
@@ -437,24 +592,22 @@ def remote_evidence(
                     "packet": {**packet, "rows": fresh_rows},
                 },
             )
-            rows.extend(
+            rows_by_source.setdefault(source_id, []).extend(
                 _compact_remote_row(row, source_id=source_id, host=host, fresh=True)
                 for row in fresh_rows
             )
-            host_rows.append(
-                {
-                    "source_id": source_id,
-                    "source_host": host,
-                    "status": "read",
-                    "fresh": True,
-                    "read_at": read_at,
-                    "age_seconds": 0,
-                    "rows_included": len(fresh_rows),
-                    "coverage": packet.get("coverage")
-                    or (packet.get("source") or {}).get("coverage"),
-                    "next_action": None,
-                }
-            )
+            host_rows_by_source[source_id] = {
+                "source_id": source_id,
+                "source_host": host,
+                "status": "read",
+                "fresh": True,
+                "read_at": read_at,
+                "age_seconds": 0,
+                "rows_included": len(fresh_rows),
+                "coverage": packet.get("coverage")
+                or (packet.get("source") or {}).get("coverage"),
+                "next_action": None,
+            }
             continue
         last_success_at = (entry or {}).get("read_at")
         stale_packet = (entry or {}).get("packet") or {}
@@ -463,30 +616,51 @@ def remote_evidence(
         ]
         if stale_rows:
             stale_rows_included = True
-            rows.extend(
+            rows_by_source.setdefault(source_id, []).extend(
                 _compact_remote_row(row, source_id=source_id, host=host, fresh=False)
                 for row in stale_rows
             )
             if "remote_source_rows_are_stale" not in limitations:
                 limitations.append("remote_source_rows_are_stale")
-        host_rows.append(
-            {
-                "source_id": source_id,
-                "source_host": host,
-                "status": "unavailable",
-                "fresh": False,
-                "reason": str(
-                    packet.get("error") or "remote_evidence_unavailable_or_upgrade_required"
-                ),
-                "last_success_at": last_success_at,
-                "stale_rows_included": bool(stale_rows),
-                "coverage_effect": "remote_goals_may_be_outdated_not_absent",
-                "next_action": (
-                    "Report this source as unread with its reason and last successful "
-                    "read; do not present it as no progress."
-                ),
-            }
+        host_rows_by_source[source_id] = {
+            "source_id": source_id,
+            "source_host": host,
+            "status": "unavailable",
+            "fresh": False,
+            # Name why the read failed and which side has to change, so an
+            # authentication gap is not reported as a dead host or the reverse.
+            "reason": str(
+                packet.get("reason")
+                or packet.get("error")
+                or "remote_evidence_unavailable_or_upgrade_required"
+            ),
+            "reason_code": str(packet.get("reason_code") or "") or None,
+            "last_success_at": last_success_at,
+            "stale_rows_included": bool(stale_rows),
+            "coverage_effect": "remote_goals_may_be_outdated_not_absent",
+            "next_action": (
+                "Tell the owner this source is unread, what the reason names as "
+                "the repair, and the last successful read, then continue with "
+                "the evidence you did read; do not present it as no progress."
+            ),
+        }
+        limitation = _REMOTE_READ_LIMITATIONS.get(
+            str(packet.get("reason_code") or ""), "remote_source_unavailable"
         )
+        if limitation not in limitations:
+            limitations.append(limitation)
+    # Report in declaration order: the rotation chooses which source is dialled,
+    # not how the packet reads.
+    host_rows = [
+        host_rows_by_source[str(source["source_id"])]
+        for source in declared
+        if str(source["source_id"]) in host_rows_by_source
+    ]
+    rows = [
+        row
+        for source in declared
+        for row in rows_by_source.get(str(source["source_id"]), [])
+    ]
     statuses = {str(row.get("status")) for row in host_rows}
     if not declared:
         read_status = "not_read"

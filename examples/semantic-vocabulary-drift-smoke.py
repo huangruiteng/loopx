@@ -3,11 +3,11 @@
 
 ``loopx/semantics/vocabulary_v0.json`` names each kernel and cross-runtime
 vocabulary, the exact ``module::Symbol`` allowed to define it, how vocabularies
-relate, and the budgets the repository ratchets down. ``inventory_v0.json`` is
-the generated map of every closed-set carrier under ``loopx/``. This smoke
-checks code against both so a PR that widens a vocabulary, forks a constant,
-adds an unmapped carrier, or weakens the registry itself must show that change
-in the same diff. It reads tracked sources only and prints no private data.
+relate, and the budgets the repository ratchets down. The inventory is computed
+from the complete tracked tree on each run, never loaded from a report file.
+Vocabulary changes, forks and registry weakening remain checked; ordinary
+carrier edits require no generated snapshot commit. Only tracked sources are
+read, and no private data is printed.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from loopx.semantics.inventory import (  # noqa: E402
     INVENTORY_SCHEMA_VERSION,
     SourceFile,
     build_inventory,
+    render_inventory,
     collect_string_constants,
     load_sources,
     python_facts,
-    render_inventory,
     string_constant_definitions,
     typescript_facts,
 )
@@ -48,7 +48,7 @@ SYMBOL_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 OWNER_SHAPE = re.compile(r"^[A-Za-z0-9_./-]+\.(py|ts)::[A-Za-z_][A-Za-z0-9_]*$")
 
 REGISTRY_KEYS = {
-    "schema_version", "rfc", "inventory", "policy", "coverage_floor", "vocabularies", "relations",
+    "schema_version", "rfc", "policy", "coverage_floor", "vocabularies", "relations",
     "projections", "schema_versions", "retirement_ledger", "dual_runtime_twins", "inventory_ratchets",
     "formal_model", "scope_declarations",
 }
@@ -200,7 +200,6 @@ def load_registry() -> dict[str, Any]:
     require(registry["schema_version"] == REGISTRY_SCHEMA_VERSION, f"registry schema_version must be {REGISTRY_SCHEMA_VERSION}")
     check_formal_model(registry["formal_model"])
     require((REPO_ROOT / registry["rfc"]).is_file(), f"registry must point at an existing RFC: {registry['rfc']}")
-    require((REPO_ROOT / registry["inventory"]).is_file(), f"registry must point at an existing inventory: {registry['inventory']}")
     for name, vocabulary in registry["vocabularies"].items():
         require(VALUE_SHAPE.match(name) is not None, f"vocabulary name must be lower snake_case: {name}")
         keys = set(vocabulary)
@@ -664,11 +663,8 @@ def evaluate_inventory_budget_findings(
 
 
 def check_inventory(registry: dict[str, Any], sources: list[SourceFile]) -> tuple[dict[str, Any], str]:
-    inventory_path = REPO_ROOT / registry["inventory"]
-    committed = inventory_path.read_text(encoding="utf-8")
     inventory = build_inventory(REPO_ROOT, sources=sources)
     require(inventory["schema_version"] == INVENTORY_SCHEMA_VERSION, "inventory schema drift")
-    require(render_inventory(inventory) == committed, f"{registry['inventory']} is stale; from the repository root run uv run python scripts/generate_semantic_inventory.py and commit the result")
     semantic_multi_value_forks = check_scope_declarations(registry, inventory)
     ratchets = registry["inventory_ratchets"]
     summary = inventory["summary"]

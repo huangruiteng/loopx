@@ -65,7 +65,7 @@ dated 2026-09-15 and is written to land with the managed stack:
 | Role | Source | Selection today | Promotion gate |
 | --- | --- | --- | --- |
 | Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped product default, credential-resolved: the managed `dsh` host when the operator credential is configured, the individual `codex-cli` host when it is not; `LOOPX_TURN_HOST` re-points whichever resolved and an explicit `--host` wins (PR #4443, default resolution with this change) | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
-| Steward channel executor | the interactive Chat transport the steward answers on | shipped product default: `codex`, the same endpoint on every machine; `LOOPX_MANAGER_ENDPOINT` re-points it, and an explicit selection of the managed host (`dsh`) moves the endpoint, model and reasoning effort together; selection landed in PR #4446, the unconditional default and the segment transport land with this change | the segment transport's typed limits (no streaming, no cross-turn host session, read-only sandbox) stay disclosed and read back, and no managed lane may depend on an individual subscription |
+| Steward channel executor | the interactive Chat transport the steward answers on | one machine setting, then one service-environment value, then the shipped product default: this machine's `steward_executor` machine configuration (edited from the Dashboard, read back by `loopx machine-config describe`/`inspect`, landed 2026-09-16) selects the executor for that machine, `LOOPX_MANAGER_ENDPOINT` bootstraps or names an unlisted adapter, and the shipped default stays `codex` on every machine; a selection of the managed host (`dsh`) moves the model and the reasoning effort with it | the segment transport's typed limits (no streaming, no cross-turn host session, read-only sandbox) stay disclosed and read back, no managed lane may depend on an individual subscription, and the namespace stores no credential and grants no authority |
 | Supported alternative Turn host | LoopX Turn plus the `codex-cli` adapter | explicitly selectable, and the credential-resolved default of the managed row above on a machine with no operator credential; it is the `individual` executor kind, so it is billed to one person's CLI login | no managed lane may *silently* depend on an individual's personal CLI subscription: the individual host is reached only as that credential-resolved default and is read back as `no_operator_credential`, never substituted for a host the operator selected |
 | L1 event source and session-owning runtime candidate | DSH | opt-in, not promoted; the bounded Turn host role is the default row above | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
 | Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
@@ -101,17 +101,32 @@ the dependency visible instead of forbidding the disclosed default.
 
 The steward channel is a **different** surface, and after the revisions recorded
 above its default is one endpoint rather than one rule: `codex`, the interactive
-CLI endpoint, on every machine. `LOOPX_MANAGER_ENDPOINT` re-points it, and
-selecting the managed host (`dsh`) moves the endpoint, the model and the
-reasoning effort together, so the channel can never end up with an operator
-model driven through an individual CLI login. The rule that decides a credential
-here is the opposite of the Turn row's: a credential authenticates the endpoint
-that was selected and never re-points the surface a person talks to, because a
-conversation must not change hands mid-thread when a key appears in the
-environment. The readback still names where the endpoint came from
-(`executor_endpoint_source`) and, for a shipped default, which decision it was
+CLI endpoint, on every machine. Three layers select it, in one order: the
+machine's `steward_executor` machine configuration, then
+`LOOPX_MANAGER_ENDPOINT`, then the shipped default. Selecting the managed host
+(`dsh`) moves the endpoint, the model and the reasoning effort together, so the
+channel can never end up with an operator model driven through an individual
+CLI login. The rule that decides a credential here is the opposite of the Turn
+row's: a credential authenticates the endpoint that was selected and never
+re-points the surface a person talks to, because a conversation must not change
+hands mid-thread when a key appears in the environment. The readback still names
+where the endpoint came from (`executor_endpoint_source`, now including
+`machine_configuration`) and, for a shipped default, which decision it was
 (`executor_endpoint_default_reason`), so an operator reads a decided default
 instead of inferring it from the resolved host name.
+
+A manager connection does not keep a second copy of that decision. The
+connection record stores the resolved endpoint as an **observation** with its
+source, and every read path -- the Lark route, the authorized-connection
+resolution, and the Turn that answers on the channel -- re-resolves from the
+machine. A record written while a different default was in force therefore
+cannot keep answering on an endpoint the operator has since replaced, which is
+what previously let a machine whose readback said `dsh` keep running its
+steward on `codex`. When the machine does change the selection, the Session
+bound to the channel still runs on the earlier endpoint; that Turn is refused
+with the typed `manager_channel_executor_rebind_required` receipt, and the reply
+names the one action that repairs it -- re-applying the connection, which opens
+the channel Session on the endpoint the machine now selects.
 
 Both managed surfaces resolve their **execution profile** from one owner
 (`loopx/control_plane/turn_driver/execution_profile.py`): provider
@@ -404,6 +419,160 @@ runs the real bundled dsh segment against a local mock model endpoint and assert
 the resolved binding, the model and effort that reach the wire, the persisted
 answer, and that the read-only sandbox refuses a write. The persona and audience
 of a real steward conversation stay out of this document.
+
+## Steward Executor Machine Configuration (2026-09-16)
+
+The steward executor used to be selectable only through the Chat service
+environment, which made a machine-local decision live in a launch file rather
+than in a product setting: no surface could show it, no surface could change it,
+and a reader had to know which process variables were in effect. The executor,
+the model, and the reasoning effort are now a typed machine-configuration
+namespace, `steward_executor`
+(`loopx/capabilities/steward_executor/machine_defaults.py`), so a machine's
+steward choice is a first-class operator setting.
+
+The namespace holds exactly three fields and no credential:
+
+```json
+{
+  "schema_version": "steward_executor_machine_defaults_v0",
+  "executor_endpoint": "codex",
+  "executor_model": null,
+  "executor_reasoning_effort": null
+}
+```
+
+`executor_endpoint` is required and restricted to the endpoints LoopX ships as
+channel executors; a blank model or reasoning effort means this machine decides
+nothing about that field, so the channel keeps resolving it from the lower
+layers. Unknown fields, an unknown schema version, an unlisted endpoint, and an
+unsupported reasoning effort all fail closed before any effect. An operator who
+needs an adapter the namespace does not list still has
+`LOOPX_MANAGER_ENDPOINT`.
+
+Precedence is stated once, in the channel owner
+(`loopx/chat_manager.py`): machine configuration, then the service environment,
+then the shipped default. The machine layer is the one a product surface owns,
+so `loopx machine-config describe` publishes the template and the Dashboard
+edits the same document through the existing revision-locked transaction; the
+channel readback adds `executor_endpoint_source: machine_configuration` plus the
+document's `status` and `configuration_revision`, so a machine decision can be
+told from a service-environment value without reading the store.
+
+What this increment does *not* change: the shipped default stays `codex` on
+every machine, a credential still never selects an endpoint, the managed host
+still requires its own credential and runtime, and the selection grants no
+authority -- it names a provider-billed runtime, and `manager_runtime` remains a
+separate machine decision. A malformed steward value or an unreadable store
+falls back to the lower layers with a typed reason
+(`configuration_invalid`, `unavailable`) instead of failing the surface a person
+talks to, and a malformed *sibling* namespace cannot rewrite a valid steward
+selection.
+
+Validation: `tests/capabilities/test_steward_executor_machine_defaults.py`,
+`tests/test_manager_channel_binding.py`, `tests/test_chat_machine_configuration_api.py`,
+`tests/capabilities/test_capability_configuration_ui.py`, and
+`examples/loopx-steward-channel-binding-smoke.py`.
+
+## Steward Team Intake (2026-09-16)
+
+The steward answers questions. Since `2026-09-16` its shipped guidance also
+carries one bounded procedure for a different request: one owner sentence that
+asks for a *team* rather than a task. This section records the enforced contract
+for that intake, which part of it is already shipped, and which part is still
+missing.
+
+The intake boundary is the canonical governed-proposal owner
+(`loopx/control_plane/work_items/governed_transition_proposal.py`), not a new
+CLI command and not a new capability. That owner already dispatches proposals
+by kind, publishes a typed receipt with a proposal digest, and the Chat Turn
+already projects `response.proposals` into `proposal.ready` events. A team
+request is therefore one proposal of a new kind, not a parallel intake path
+beside the existing one. A command with no second caller, and a builder module
+with no caller at all, both stay out: this repository keeps an uncalled
+abstraction in design state until its call site exists.
+
+A proposal of kind `steward_team_plan_preview` (`steward_team_plan_preview_v0`)
+is validated before anything may be applied, and a validated preview names, and
+may not invent:
+
+- each lane and the Agent that runs it, resolved from the Agents Core already
+  registers for the Goal, at most 8 lanes;
+- that lane's first bounded Todo, with its declared priority (P0..P3), task
+  class and action kind;
+- the quota envelope that bounds the lanes;
+- the acceptance signal that ends each lane;
+- the stop condition that ends the team.
+
+A requested lane that cannot be staffed is a typed gap -- `agent_not_registered`,
+`capability_not_granted` or `audience_not_authorized` -- and the gap keeps the
+work it did not staff under `declined_first_todo`, so the owner sees what was
+asked for and what is missing instead of a lane that was quietly filled in or
+dropped. A lane that declares a gap may not declare work. The plan is a preview:
+the validated payload carries `applies: false`, and an owner's confirmation of
+that exact preview is the only thing that admits an apply. Apply routes to the
+canonical owners each effect already has -- Agent registration, Todo creation,
+quota or goal policy -- reuses the identities the preview named, may not widen
+the confirmed scope, and a team plan is never settled as if the work were done.
+
+Shipped enforcement, in delivery order:
+
+1. **Contract and validator** (`#4519`, `3acd07697`). The kind, its schema, the
+   lane limit, the priority and gap vocabularies, public-safe text, and the
+   refusal to invent staffing.
+2. **Chat admission** (`#4522`, `3c8c832cb`). `normalize_agent_response` admits a
+   preview only when the host supplies `team_plan_context` -- this Goal's
+   registered Agents and this host's supported advancement action kinds -- and
+   drops it otherwise, exactly like any other proposal it cannot accept, while
+   the answer text still reaches the owner.
+3. **Apply** (`#4524`, `c159a15b3`). The governed transition owner dispatches the
+   kind at `PRE_SETTLEMENT`. The apply re-validates the proposal against the
+   Goal's registered Agents and the shipped advancement action kinds, creates
+   the first bounded Todo of each *ready* lane through the canonical Todo owner,
+   creates nothing for a gap lane, and refuses an unknown Goal before any write.
+   The receipt records the proposal digest, so a replayed settlement reuses the
+   same lane Todo instead of adding a second row.
+
+The intake is still inert in production, and this section does not claim
+otherwise. Nothing yet supplies `team_plan_context`, so a model-authored preview
+is dropped at admission instead of being surfaced for confirmation; the adapter
+that supplies the admission facts and the settlement that re-derives them must
+stay one contract rather than two; and the apply entry point today is a governed
+capability execution journal, so a confirmed Chat preview needs that bridge
+before an owner confirmation can materialize lanes. Two further gaps belong with
+this work: the published receipt carries the first lane Todo's identity rather
+than the identity of every lane it created (the apply result computes the full
+`lane_todo_ids` set, and the receipt field set is closed and persisted, so
+publishing it is a bounded compatibility change), and a multi-lane preview has
+no frontend confirmation surface yet.
+
+### Relationship to the multi-agent contracts
+
+The intake is a user-layer affordance over the kernel the multi-agent contracts
+already define; it adds no second team runtime.
+
+- Against `multi_agent_three_layer_minimality_contract_v0`
+  (`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`), the
+  owner's one sentence is the user layer, the steward's bounded procedure is the
+  preset layer, and lanes, first bounded Todos, quota envelope, acceptance and
+  stop condition are declared data the kernel mechanics consume. The intake must
+  not own a runner, panes, per-agent vision budgets or evidence loops; it
+  materializes goal work lanes through the canonical Todo owner, which is what
+  keeps a team request from becoming a product-specific runner.
+- Against `multi_agent_visible_launcher_v0`
+  (`docs/reference/protocols/multi-agent-visible-launcher-v0.md`), the launcher
+  starts visible local panes from a `generic_multi_agent_launch_spec_v0`, and
+  the intake is the same intent entered from Chat. They join by identity
+  (`goal_id`, `agent_id`, and the lane's first Todo), not by one calling the
+  other, and the launcher's own rule applies unchanged to the intake: no leader
+  agent, hidden scheduler, promotion authority or second source of truth. A plan
+  that needs visible panes, pane-local A2A ticks or promotion evidence has to
+  name that as a supported action kind instead of embedding it in the preview.
+
+What this contract does not authorize: the steward still only proposes and
+delegates; selecting a steward executor or storing a credential grants none of
+these effects; and nothing here widens OS, provider, audience or work-state
+authority.
 
 ## Steward Channel Readiness by Milestone (2026-09-15)
 

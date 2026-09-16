@@ -9,6 +9,12 @@ from .control_plane.status.collection import (
     StatusCollectionContext,
     collect_status as _collect_status_read_model,
 )
+# Refs #4447: one definition for this vocabulary. The control_plane projection
+# owns it because it feeds the attention-queue read model; this module keeps
+# re-exporting the name for existing callers.
+from .control_plane.status.registry_health_projection import (
+    SOURCE_REGISTRY_SHADOW_FINDINGS,
+)
 from .control_plane.status.runtime_summaries import (
     StatusRuntimeSummaryContext,
     build_status_runtime_summaries as _build_status_runtime_summaries_read_model,
@@ -285,10 +291,6 @@ CONNECTED_ADAPTER_STATUSES = {
 }
 CONNECTED_DELIVERY_ADAPTER_STATUSES = {
     "connected-delivery",
-}
-SOURCE_REGISTRY_SHADOW_FINDINGS = {
-    "source_registry_missing",
-    "stale_source_registry",
 }
 PLANNED_CONTROLLER_OPT_IN_RECOMMENDED_ACTION = (
     "先在 LoopX 完成 operator 判断；同意后项目 Agent 只执行 read-only map dry-run"

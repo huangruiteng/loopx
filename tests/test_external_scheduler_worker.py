@@ -26,25 +26,38 @@ def _write_executable(path: Path, source: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
-def _hint_payload(*, should_run: bool) -> dict[str, object]:
+def _hint_payload(
+    *,
+    should_run: bool,
+    action: str | None = None,
+    local_scheduler_directive: str | None = None,
+) -> dict[str, object]:
+    resolved_action = action or (
+        "run_now" if should_run else "stop_until_explicit_resume"
+    )
+    scheduler_hint: dict[str, object] = {
+        "action": resolved_action,
+        "cadence_class": "active_work" if should_run else "terminal_no_followup",
+        "reason": "fixture",
+        "reset_policy": {"reset_token": "fixture-token"},
+        "cold_path_detail": {
+            "local_scheduler": {
+                "recommended_interval_minutes": 1,
+                "example_progression_minutes": [1],
+                "unchanged_poll_limit": None,
+                "after_limit": "continue",
+                "final_quota_replan_check": {"enabled": False},
+            }
+        },
+    }
+    if local_scheduler_directive is not None:
+        scheduler_hint["unchanged_poll"] = {
+            "local_scheduler": local_scheduler_directive
+        }
     return {
         "should_run": should_run,
-        "effective_action": "run_now" if should_run else "stop_until_explicit_resume",
-        "scheduler_hint": {
-            "action": "run_now" if should_run else "stop_until_explicit_resume",
-            "cadence_class": "active_work" if should_run else "terminal_no_followup",
-            "reason": "fixture",
-            "reset_policy": {"reset_token": "fixture-token"},
-            "cold_path_detail": {
-                "local_scheduler": {
-                    "recommended_interval_minutes": 1,
-                    "example_progression_minutes": [1],
-                    "unchanged_poll_limit": None,
-                    "after_limit": "continue",
-                    "final_quota_replan_check": {"enabled": False},
-                }
-            },
-        },
+        "effective_action": resolved_action,
+        "scheduler_hint": scheduler_hint,
     }
 
 
@@ -192,6 +205,47 @@ def test_quota_probe_timeout_enters_tick_error(tmp_path: Path) -> None:
 
     assert result == 2
     assert time.monotonic() - started < 2.0
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["stop_until_explicit_resume", "return_to_owner_until_material_change"],
+)
+def test_stop_directive_does_not_require_cold_path_scheduler_detail(
+    tmp_path: Path,
+    action: str,
+) -> None:
+    root = tmp_path / action
+    fake_cli = root / "fake-loopx"
+    payload = _hint_payload(
+        should_run=False,
+        action=action,
+        local_scheduler_directive="stop",
+    )
+    del payload["scheduler_hint"]["cold_path_detail"]  # type: ignore[index]
+    decision = worker.parse_tick(payload)
+    assert decision.terminal is True
+    assert decision.action == action
+    assert decision.after_limit == "stop_tick_loop"
+    assert decision.unchanged_limit is None
+
+    _write_executable(
+        fake_cli,
+        "#!/usr/bin/env python3\n"
+        f"print({json.dumps(payload)!r})\n",
+    )
+
+    result = worker.run_worker(
+        _args(
+            fake_cli=fake_cli,
+            state_file=root / "state.json",
+            quota_timeout_seconds=1.0,
+        )
+    )
+
+    assert result == 0
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    assert state == {"reset_token": "fixture-token", "unchanged_count": 0}
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX process-group regression")

@@ -20,7 +20,10 @@ def test_same_version_different_commit_is_not_a_desktop_upgrade(tmp_path):
     )
     mismatch = desktop_installation_status("b" * 40, applications=(app,))
     assert mismatch["status"] == "mismatch"
-    assert "replace the CLI" in mismatch["recommended_action"]
+    # The report names the operator decision instead of promising a silent
+    # replacement of whatever CLI runtime the host already selected.
+    assert "ask before replacing a different CLI runtime" in mismatch["recommended_action"]
+    assert "align the CLI to the App's bundled runtime" in mismatch["recommended_action"]
     assert str(tmp_path) not in json.dumps(mismatch)
     paired = desktop_installation_status("a" * 40, applications=(app,))
     assert paired["status"] == "paired"

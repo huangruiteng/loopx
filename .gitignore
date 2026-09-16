@@ -37,3 +37,6 @@ goals/**/ACTIVE_GOAL_STATE.md
 goals/**/ACTIVE_GOAL_STATE.md.lock
 /runtime/
 logs/
+
+# Legacy semantic census reports are derived locally, never repository authority.
+/loopx/semantics/inventory_v0.json

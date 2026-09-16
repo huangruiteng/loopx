@@ -15,12 +15,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.chat_agent import CodexChatAgentError  # noqa: E402
+from loopx.capabilities.machine_configuration.builtins import (  # noqa: E402
+    build_builtin_machine_configuration_registry,
+)
+from loopx.capabilities.machine_configuration.store import (  # noqa: E402
+    configure_machine_configuration,
+)
 from loopx.chat_manager import (  # noqa: E402
     MANAGER_ENDPOINT_MANAGED,
     MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT,
     MANAGER_ENDPOINT_ENV_VAR,
     MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
+    MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION,
     MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
+    MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION,
     MANAGER_MODEL_SOURCE_VENDOR_DEFAULT,
     MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK,
     MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
@@ -30,6 +38,7 @@ from loopx.chat_manager import (  # noqa: E402
     manager_executor_endpoint_default,
     manager_model_config,
     open_manager_session,
+    steward_machine_defaults,
 )
 from loopx.chat_runtime import ChatRuntimeController  # noqa: E402
 from loopx.chat_store import ChatSessionStore  # noqa: E402
@@ -38,6 +47,8 @@ from loopx.control_plane.turn_driver import host_binding  # noqa: E402
 
 CREDENTIAL_ENV = "DEEPSEEK_API_KEY"
 CREDENTIAL_VALUE = "fixture-operator-credential"
+STEWARD_EXECUTOR_NAMESPACE = "steward_executor"
+STEWARD_EXECUTOR_SCHEMA = "steward_executor_machine_defaults_v0"
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -269,6 +280,138 @@ def _assert_session_opens_the_resolved_endpoint() -> str:
     return str(opened[-1]["agent_id"])
 
 
+def _assert_the_machine_default_is_first_class() -> dict[str, object]:
+    """The machine's steward choice is editable, readable, and authoritative.
+
+    One document is written through the public machine-configuration
+    transaction, read back through the catalog the Dashboard edits, and quoted
+    by the channel the same document serves. The service environment stays a
+    lower layer, so a machine decision cannot be silently overridden by a launch
+    file nobody can inspect.
+    """
+
+    registry = build_builtin_machine_configuration_registry()
+    configuration = {
+        "schema_version": "loopx_machine_configuration_v0",
+        "namespaces": {
+            STEWARD_EXECUTOR_NAMESPACE: {
+                "schema_version": STEWARD_EXECUTOR_SCHEMA,
+                "executor_endpoint": MANAGER_ENDPOINT_MANAGED,
+                "executor_model": "deepseek-v4-flash",
+                "executor_reasoning_effort": "high",
+            }
+        },
+    }
+    with tempfile.TemporaryDirectory() as root_text:
+        runtime_root = Path(root_text)
+        runtime = ChatRuntimeController(
+            store=ChatSessionStore(runtime_root), codex_bin="fixture-codex"
+        )
+        opened: list[dict[str, object]] = []
+        try:
+            preview = configure_machine_configuration(
+                runtime_root=runtime_root,
+                configuration=configuration,
+                registry=registry,
+                execute=False,
+            )
+            applied = configure_machine_configuration(
+                runtime_root=runtime_root,
+                configuration=configuration,
+                registry=registry,
+                execute=True,
+                expected_plan_revision=str(preview["plan_revision"]),
+            )
+            _assert(
+                applied["status"] == "applied"
+                and applied["changed_namespaces"] == [STEWARD_EXECUTOR_NAMESPACE]
+                and applied["readback_verified"] is True,
+                "the machine selection must apply through the revision-locked store",
+            )
+            descriptor = next(
+                item
+                for item in registry.public_catalog()["namespaces"]
+                if item["namespace"] == STEWARD_EXECUTOR_NAMESPACE
+            )
+            _assert(
+                descriptor["template_status"] == "ready"
+                and descriptor["configuration_template"]["executor_endpoint"]
+                == "codex"
+                and descriptor["documentation"]["path"].endswith(".md"),
+                "the catalog must offer the shipped default and its documentation",
+            )
+
+            defaults = runtime.steward_executor_defaults()
+            _assert(
+                defaults["status"] == "ready"
+                and defaults["source"] == "machine_configuration"
+                and str(defaults["configuration_revision"]).startswith("sha256:"),
+                "the running controller must read the stored machine selection",
+            )
+            with mock.patch.object(
+                host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+            ):
+                binding = manager_channel_binding(
+                    {
+                        MANAGER_ENDPOINT_ENV_VAR: "codex",
+                        "LOOPX_MANAGER_MODEL": "env-model",
+                        "LOOPX_MANAGER_REASONING_EFFORT": "low",
+                        CREDENTIAL_ENV: CREDENTIAL_VALUE,
+                    },
+                    machine_defaults=defaults,
+                )
+            _assert(
+                binding["executor_endpoint"] == MANAGER_ENDPOINT_MANAGED
+                and binding["executor_endpoint_source"]
+                == MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION
+                and binding["executor_endpoint_default_reason"] == "",
+                "the machine selection must outrank the service environment",
+            )
+            _assert(
+                binding["model"] == "deepseek-v4-flash"
+                and binding["model_source"] == MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION
+                and binding["execution_profile"] == "deepseek-v4-flash@high",
+                "the model and the effort must follow the machine selection",
+            )
+            _assert(
+                binding["machine_defaults_status"] == "ready"
+                and binding["machine_defaults_revision"]
+                == defaults["configuration_revision"]
+                and str(runtime_root) not in json.dumps(binding),
+                "the channel must quote the document it read without leaking its path",
+            )
+
+            class _Controller:
+                def steward_executor_defaults(self):
+                    return runtime.steward_executor_defaults()
+
+                def open_session(self, **kwargs):
+                    opened.append(kwargs)
+                    return {"session_id": "fixture-session"}, False
+
+            controller = _Controller()
+            _assert(
+                steward_machine_defaults(controller) == defaults,
+                "an entry point must read the machine default through its owner",
+            )
+            open_manager_session(
+                controller=controller,
+                goal_id="loopx-steward-binding-fixture",
+                work_dir=runtime_root,
+            )
+            _assert(
+                opened[-1]["agent_id"] == MANAGER_ENDPOINT_MANAGED,
+                "the channel must open the executor the machine selected",
+            )
+        finally:
+            runtime.close()
+    return {
+        "machine_defaults_status": "ready",
+        "executor_endpoint_source": MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION,
+        "model_source": MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION,
+    }
+
+
 def _assert_mode_readback_quotes_the_session() -> dict[str, object]:
     """The channel reports the mode it serves, and derives none on its own."""
 
@@ -329,6 +472,7 @@ def main() -> int:
         "explicit_selection": _assert_explicit_selection_and_managed_host_verdict(),
         "mode_readback": _assert_mode_readback_quotes_the_session(),
         "opened_endpoint": _assert_session_opens_the_resolved_endpoint(),
+        "machine_default": _assert_the_machine_default_is_first_class(),
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0

@@ -94,6 +94,25 @@ or an explicit reason for deferral/rejection. A plan is not the execution result
 of an implementation request. Only use `handoffs` for troubleshooting or an
 explicit follow-up; the original exchange must not depend on a second question.
 
+When one owner sentence asks for a team rather than a single task, answer with
+one plan preview before anything is created. The preview names, in this order:
+the lanes and the Agent each one runs on; the first bounded Todo per lane with
+its declared priority; the quota or cadence envelope that bounds them; the
+acceptance signal that ends each lane; and the stop condition that ends the
+team. Build every lane from Agents and Todos Core already knows, and from the
+capabilities the current profile actually grants. Name a requested lane you
+cannot staff as a gap, with the missing registration or grant, instead of
+inventing a lane, an Agent, or a capability.
+
+A team preview is a proposal, never an effect. Do not create Todos, register
+Agents, set quota, or start work until the owner confirms that exact preview;
+state what will be created and which canonical owner creates it — Agent
+registration, Todo creation, quota or goal policy — so the owner sees where
+each effect lands. After confirmation, apply through those owners only, reuse
+the Agent and Todo identities the preview named, and report one readback of
+what now exists. Never widen the confirmed scope while applying it, and never
+charge quota for the preview itself.
+
 Core owns truth and permissions. This skill supplies reasoning guidance, not
 new authority. Keep front-end and group answers within their respective scopes;
 give concise, concrete answers with source and coverage notes where they matter.
