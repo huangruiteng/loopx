@@ -496,6 +496,8 @@ A proposal of kind `steward_team_plan_preview` (`steward_team_plan_preview_v0`)
 is validated before anything may be applied, and a validated preview names, and
 may not invent:
 
+- the exact Goal the plan staffs, so the admission that validates its lanes and
+  the settlement that materializes them describe one Goal rather than two;
 - each lane and the Agent that runs it, resolved from the Agents Core already
   registers for the Goal, at most 8 lanes;
 - that lane's first bounded Todo, with its declared priority (P0..P3), task
@@ -529,7 +531,9 @@ Shipped enforcement, in delivery order:
    kind at `PRE_SETTLEMENT`. The apply re-validates the proposal against the
    Goal's registered Agents and the shipped advancement action kinds, creates
    the first bounded Todo of each *ready* lane through the canonical Todo owner,
-   creates nothing for a gap lane, and refuses an unknown Goal before any write.
+   creates nothing for a gap lane, refuses an unknown Goal before any write, and
+   refuses a plan whose named Goal differs from its settlement, so a plan
+   admitted against one Goal's Agents cannot be retargeted into another's.
    The receipt records the proposal digest, so a replayed settlement reuses the
    same lane Todo instead of adding a second row, and the receipt names every
    lane Todo the settlement ensured.

@@ -389,6 +389,8 @@ Chat Turn 也早已把 `response.proposals` 投影成 `proposal.ready` 事件。
 kind 为 `steward_team_plan_preview`（`steward_team_plan_preview_v0`）的提案，在任何落地
 之前先被校验；校验通过的预览必须点名、且不得编造：
 
+- 这次配人的**确切 Goal**，使"验证 lanes 的准入"与"建成 lanes 的结算"描述的是同一个 Goal
+  而不是两个；
 - 每条 lane 及其运行的 Agent，且只能来自 Core 已为该 Goal 注册的 Agent，最多 8 条 lane；
 - 该 lane 的首个有界 Todo，含其声明优先级（P0..P3）、task class 与 action kind；
 - 约束这些 lane 的 quota 包络；
@@ -413,8 +415,10 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
 3. **落地**（`#4524`，`c159a15b3`）：受治理提案所有者在 `PRE_SETTLEMENT` 相位分派该 kind，
    落地时重新按本 Goal 已注册 Agent 与本机 shipment 的 advancement action kind 校验，经
    canonical Todo owner 为每条 **ready** lane 创建首个有界 Todo，gap lane 不创建任何东西，
-   未知 Goal 在任何写入前就被拒绝，回执记录 proposal digest，因此重放结算复用同一条 lane
-   Todo 而不会新增第二行，并且回执点名这次确保的每一条 lane Todo。
+   未知 Goal 在任何写入前就被拒绝，且**点名 Goal 与结算 Goal 不一致的计划会被拒绝**，因此
+   按某个 Goal 的 Agent 通过准入的计划无法被改投到另一个 Goal；回执记录 proposal digest，
+   因此重放结算复用同一条 lane Todo 而不会新增第二行，并且回执点名这次确保的每一条 lane
+   Todo。
 
 这条入端口径目前在线上仍是**惰性**的，本节不作相反声明：还没有任何生产调用方传入
 `team_plan_context`，因此模型产出的预览会在准入处被丢弃，而不会浮现给业主确认；提供准入事实

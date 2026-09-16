@@ -17,6 +17,7 @@ def _plan(**overrides: object) -> dict[str, object]:
     plan: dict[str, object] = {
         "schema_version": STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION,
         "kind": STEWARD_TEAM_PLAN_PREVIEW_KIND,
+        "goal_id": "team-plan-fixture",
         "objective": "Ship the intake lane",
         "quota_envelope": {"slots_per_day": 4},
         "stop_condition": "Stop when the owner withdraws the request",
@@ -50,10 +51,28 @@ def test_a_staffed_lane_becomes_a_preview_that_cannot_apply() -> None:
     preview = _validate(_plan())
 
     assert preview["applies"] is False
+    assert preview["goal_id"] == "team-plan-fixture"
     assert preview["gaps"] == []
     assert preview["lanes"][0]["staffing"] == "ready"
     assert preview["lanes"][0]["first_todo"]["priority"] == "P1"
     assert preview["quota_envelope"] == {"slots_per_day": 4}
+
+
+def test_the_preview_must_name_the_goal_it_staffs() -> None:
+    """Admission and settlement both need one named Goal's facts."""
+
+    without_goal = _plan()
+    del without_goal["goal_id"]
+    with pytest.raises(ValueError, match="goal_id must be a non-empty string"):
+        _validate(without_goal)
+
+    # A Goal id is an exact registry id, not free text: a path, a sentence or an
+    # unbounded string cannot become the Goal a settlement materializes into.
+    for invalid in ("", "   ", "../escape", "goal with spaces", "x" * 161):
+        with pytest.raises(ValueError):
+            _validate(_plan(goal_id=invalid))
+    with pytest.raises(ValueError, match="requires an exact Goal id"):
+        _validate(_plan(goal_id="../escape"))
 
 
 def test_an_unregistered_agent_becomes_a_gap_instead_of_being_invented() -> None:

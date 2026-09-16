@@ -263,19 +263,26 @@ def _apply_team_plan(
 ) -> dict[str, Any]:
     """Create the confirmed lanes' first bounded Todos through the Todo owner.
 
-    The plan is re-validated here against this Goal's registered Agents and the
-    shipped advancement action kinds, so a proposal cannot become work by
-    bypassing admission. Only lanes the preview already marked ready are
-    materialized; a lane the preview reported as a gap stays a gap and creates
-    nothing, and the canonical Todo owner decides whether a row is added or
-    reused, which makes a replayed settlement idempotent.
-    """
+   The plan is re-validated here against this Goal's registered Agents and the
+   shipped advancement action kinds, so a proposal cannot become work by
+   bypassing admission. Only lanes the preview already marked ready are
+   materialized; a lane the preview reported as a gap stays a gap and creates
+   nothing, and the canonical Todo owner decides whether a row is added or
+   reused, which makes a replayed settlement idempotent.
+   """
 
     from ...agent_registry import registered_agent_ids_for_goal
     from ...history import load_registry
     from ...registry import registry_goals
     from ..todos.contract import TODO_ACTION_KIND_ADVANCEMENT_VALUES
 
+    # The plan names the Goal it staffs, and it may not be retargeted by the
+    # settlement it arrives in: admitting a plan against one Goal's agents and
+    # then creating its lanes under another would be a silent widening.
+    if str(proposal.get("goal_id") or "") != goal_id:
+        raise ValueError(
+            "steward team plan proposal names a different Goal than its settlement"
+        )
     registry = load_registry(registry_path)
     goal = next(
         (
@@ -461,6 +468,7 @@ def settle_governed_transition_proposals(
 STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION = "steward_team_plan_preview_v0"
 STEWARD_TEAM_PLAN_LANE_LIMIT = 8
 STEWARD_TEAM_PLAN_PRIORITIES = ("P0", "P1", "P2", "P3")
+_GOAL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 STEWARD_TEAM_PLAN_GAP_REASONS = (
     "agent_not_registered",
     "capability_not_granted",
@@ -501,6 +509,13 @@ def validate_steward_team_plan_preview(
         raise ValueError("steward team plan preview schema_version is invalid")
     if plan.get("kind") != STEWARD_TEAM_PLAN_PREVIEW_KIND:
         raise ValueError("steward team plan preview kind is invalid")
+    # The plan names the Goal it staffs. Without that, the admission that
+    # validates its lanes and the settlement that materializes them would each
+    # have to guess which Goal's agents the host should describe, and a plan
+    # could be admitted against one Goal's facts and applied under another's.
+    goal_id = _plan_text(plan.get("goal_id"), "goal_id")
+    if not _GOAL_ID.fullmatch(goal_id):
+        raise ValueError("steward team plan preview requires an exact Goal id")
     registered = {str(value) for value in registered_agent_ids}
     action_kinds = {str(value) for value in supported_action_kinds}
     lanes_value = plan.get("lanes")
@@ -585,6 +600,7 @@ def validate_steward_team_plan_preview(
     preview = {
         "schema_version": STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION,
         "kind": STEWARD_TEAM_PLAN_PREVIEW_KIND,
+        "goal_id": goal_id,
         "objective": _plan_text(plan.get("objective"), "objective"),
         "lanes": lanes,
         "gaps": gaps,

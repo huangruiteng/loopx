@@ -89,6 +89,7 @@ def _proposal(*, agent_id: str = AGENT_ID, extra_lane: dict | None = None) -> di
     return {
         "schema_version": "steward_team_plan_preview_v0",
         "kind": "steward_team_plan_preview",
+        "goal_id": GOAL_ID,
         "proposal_id": "proposal-team-plan",
         "objective": "Stand up the intake lane",
         "quota_envelope": {"slots_per_day": 4},
@@ -169,6 +170,8 @@ def test_a_gap_lane_creates_nothing_and_a_replay_adds_no_second_row(
 
 def test_an_unknown_goal_is_refused_before_any_todo(tmp_path: Path) -> None:
     project, registry_path = _fixture(tmp_path)
+    unknown = _proposal()
+    unknown["goal_id"] = "goal-that-does-not-exist"
 
     with pytest.raises(ValueError, match="unknown Goal"):
         settle_governed_transition_proposals(
@@ -176,13 +179,28 @@ def test_an_unknown_goal_is_refused_before_any_todo(tmp_path: Path) -> None:
             goal_id="goal-that-does-not-exist",
             agent_id=AGENT_ID,
             effect_id="effect-team-plan",
-            proposals=[_proposal()],
+            proposals=[unknown],
             existing_receipts=[],
             checkpoint=lambda _receipts: None,
             phase=GovernedTransitionSettlementPhase.PRE_SETTLEMENT,
         )
 
     assert "loopx:todo " not in _todos(project)
+
+
+def test_a_plan_cannot_be_retargeted_to_another_goal(tmp_path: Path) -> None:
+    """Admission facts and the applied Goal have to be the same Goal."""
+
+    project, registry_path = _fixture(tmp_path)
+    retargeted = _proposal()
+    retargeted["goal_id"] = "some-other-goal"
+
+    with pytest.raises(ValueError, match="different Goal than its settlement"):
+        _settle(registry_path, retargeted)
+
+    # Nothing was created, and the named Goal's own plan still applies.
+    assert "loopx:todo " not in _todos(project)
+    assert _settle(registry_path, _proposal())[0]["action"] == "created"
 
 
 def _second_lane() -> dict:
