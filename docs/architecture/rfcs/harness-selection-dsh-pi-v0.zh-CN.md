@@ -425,23 +425,45 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
 发布出去；该字段是那个封闭且持久化的回执字段集的**唯一**加性例外，因此早前写下的回执仍然
 通过校验，而团队计划回执不带 monitor key——计划不是 monitor。
 
-### 与 multi-agent 契约的关系
+### 与 multi-agent / shared authority 契约的关系
 
-这条入端口径是既有 multi-agent 契约所定义内核之上的**用户层**便利：它不新增第二套团队
-runtime。
+团队请求配的是**多个 Agent 共享的工作**，不是第二套规划或权威模型。它受
+[共享目标对齐与受治理修订](./shared-goal-alignment-and-governed-amendment-v0.zh-CN.md)
+约束，其权威与存储边界由
+[共享控制面权威与可插拔状态提供方](./shared-goal-authority-state-provider-v0.zh-CN.md)
+拥有。
 
-- 对应 `multi_agent_three_layer_minimality_contract_v0`
-  （`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`）：业主那一句话是用户
-  层，管家那段有界流程是 preset 层，而 lanes、首个有界 Todo、quota 包络、验收与终止条件是
-  内核机制消费的声明数据。入端口径不得拥有 runner、pane、per-agent vision 预算或证据回路；
-  它只经 canonical Todo owner 建出 Goal 工作 lane，这正是它不会变成产品专用 runner 的原因。
-- 对应 `multi_agent_visible_launcher_v0`
-  （`docs/reference/protocols/multi-agent-visible-launcher-v0.md`）：launcher 从
-  `generic_multi_agent_launch_spec_v0` 启动可见本地 pane，而这条入端口径是同一意图从 Chat
-  进入。两者按身份相连（`goal_id`、`agent_id` 与该 lane 的首个 Todo），而不是互相调用；
-  launcher 自身那条规则对入端口径同样成立：不得成为 leader agent、隐藏调度器、晋升权威或
-  第二真源。需要可见 pane、pane 内 A2A tick 或晋升证据的计划，必须把它声明为受支持的
-  action kind，而不是塞进预览里。
+- **计划是共享工作图上的"配人"动作。** 每条 lane 的首个有界 Todo 属于共享工作图里保持
+  规范意图不变的工作，这正是落地走 canonical Todo owner、而不是自己写一份计划的原因。
+  lane 就是同一张图上的 per-Agent frontier，因此入端口径不得引入第二张图、第二个 frontier，
+  也不得引入 leader Agent。
+- **改意图与配人是两件事。** 计划里的 objective、acceptance、stop condition 声明的是各 lane
+  在 Goal **规范意图包络**（`shared_goal_intent_v0`）之内要做什么；它们不得改动 Goal 的
+  objective、non-goals、acceptance、权限或终止条件。需要细化验收条件的请求是一次
+  `shared_acceptance` 修订，需要新权限的请求是 `protected_authority` 修订，两者都属于
+  `GoalAmendmentAuthority`（含策略校验、独立验证与 CAS 回执），而不是属于团队预览。这与
+  lane 层已有的 fail-closed 规则（`capability_not_granted`、`audience_not_authorized`）是同
+  一条规则，只是作用在意图层。
+- **`peer_v1` 是平等执行位阶，不是提交权威。** 管家只提议与委托；确认预览不会让它成为各
+  lane 之上的 leader、不会给它共享资源上的优先权，也不会给它单方提交权威。对齐契约对每个
+  已注册 Agent 都这样规定，这条入端口径只是又一个必须遵守它的调用方。
+- **每条 lane 的权威回读是对齐投影。** 计划落地后，一条 lane 的状态就是该 Agent 的
+  `shared_goal_alignment_v0` 投影（`loopx shared-goal-alignment --goal-id <goal> --agent-id
+  <agent>`）：规范修订、frontier basis、claim 与租约事实、可领取的未认领工作。apply 的回执
+  点名 lane Todo，但还没有投影这份 per-Agent 对齐状态。
+
+有两处缺口属于这条工作线，这里如实点名而不当作已完成：已建出的 lane Todo 还没有携带它本应
+推进的规范意图修订，因此这次工作图编辑尚未像对齐契约要求的那样可追溯到某个意图修订；
+入端口径也不预留工作、不取租约或 fence，因此 lane 的首个 turn 仍走普通配额路径竞争。
+
+分层规则仍然并行成立。对应 `multi_agent_three_layer_minimality_contract_v0`
+（`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`）：业主那一句话是用户层，
+管家那段有界流程是 preset 层，lanes、首个有界 Todo、quota 包络、验收与终止条件是内核机制
+消费的声明数据；入端口径不拥有 runner、pane、per-agent vision 预算或证据回路。对应
+`multi_agent_visible_launcher_v0`
+（`docs/reference/protocols/multi-agent-visible-launcher-v0.md`）：launcher 从
+`generic_multi_agent_launch_spec_v0` 启动可见本地 pane，而这条入端口径是同一意图从 Chat 进入；
+两者按身份相连（`goal_id`、`agent_id` 与该 lane 的首个 Todo），而不是互相调用。
 
 这条契约不授权什么：管家仍然只提议与委托；选择管家执行器或存凭据都不带来这些 effect；
 这里也不会扩大 OS、provider、受众或工作状态权限。

@@ -548,28 +548,62 @@ those gaps: the apply publishes every lane Todo it ensured under a bounded
 persisted receipt field set so a receipt written before it still validates, and
 a team-plan receipt carries no monitor key because a plan is not a monitor.
 
-### Relationship to the multi-agent contracts
+### Relationship to the multi-agent and shared-authority contracts
 
-The intake is a user-layer affordance over the kernel the multi-agent contracts
-already define; it adds no second team runtime.
+A team request staffs work that several Agents share; it does not create a
+second planning or authority model. The governing contract is
+[Shared Goal Alignment and Governed
+Amendment](./shared-goal-alignment-and-governed-amendment-v0.md), whose authority
+and storage boundary is owned by [Shared Control-Plane Authority and Pluggable
+State Providers](./shared-goal-authority-state-provider-v0.md).
 
-- Against `multi_agent_three_layer_minimality_contract_v0`
-  (`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`), the
-  owner's one sentence is the user layer, the steward's bounded procedure is the
-  preset layer, and lanes, first bounded Todos, quota envelope, acceptance and
-  stop condition are declared data the kernel mechanics consume. The intake must
-  not own a runner, panes, per-agent vision budgets or evidence loops; it
-  materializes goal work lanes through the canonical Todo owner, which is what
-  keeps a team request from becoming a product-specific runner.
-- Against `multi_agent_visible_launcher_v0`
-  (`docs/reference/protocols/multi-agent-visible-launcher-v0.md`), the launcher
-  starts visible local panes from a `generic_multi_agent_launch_spec_v0`, and
-  the intake is the same intent entered from Chat. They join by identity
-  (`goal_id`, `agent_id`, and the lane's first Todo), not by one calling the
-  other, and the launcher's own rule applies unchanged to the intake: no leader
-  agent, hidden scheduler, promotion authority or second source of truth. A plan
-  that needs visible panes, pane-local A2A ticks or promotion evidence has to
-  name that as a supported action kind instead of embedding it in the preview.
+- **A plan is a staffing act on the shared work graph.** Each lane's first
+  bounded Todo is work-graph work that preserves canonical intent, which is why
+  the apply routes through the canonical Todo owner instead of writing a plan of
+  its own. The lanes are per-Agent frontiers over that one graph, so the intake
+  must not introduce a second graph, a second frontier, or a leader Agent.
+- **Intent and staffing are different acts.** The plan's objective, acceptance
+  and stop condition state what its lanes will do *inside* the Goal's canonical
+  intent envelope (`shared_goal_intent_v0`); they may not change the Goal's
+  objective, non-goals, acceptance, permissions or stop conditions. A request
+  that needs the acceptance refined is a `shared_acceptance` amendment, and one
+  that needs a new permission is `protected_authority`; both belong to
+  `GoalAmendmentAuthority` with its policy check, independent verification and
+  compare-and-set receipt, not to a team preview. This is the same fail-closed
+  rule the typed gaps already express at the lane layer
+  (`capability_not_granted`, `audience_not_authorized`), stated for the intent
+  layer.
+- **`peer_v1` is equal execution rank, not commit authority.** The steward
+  proposes and delegates. Confirming a preview does not make it a leader over
+  the lanes, give it priority on shared resources, or grant unilateral commit
+  authority; the alignment contract states that rule for every registered Agent,
+  and this intake is one more caller that has to respect it.
+- **The authoritative per-lane readback is the alignment projection.** Once a
+  plan lands, a lane's state is what `shared_goal_alignment_v0` reports for that
+  Agent (`loopx shared-goal-alignment --goal-id <goal> --agent-id <agent>`):
+  canonical revision, frontier basis, claims and lease facts, and eligible
+  unclaimed work. The apply's receipt names the lane Todos; it does not yet
+  project that per-Agent alignment state.
+
+Two gaps belong to this work and are named here rather than claimed as done: a
+materialized lane Todo does not yet carry the canonical intent revision it was
+intended to advance, so the edit is not traceable to an intent revision the way
+the alignment contract requires; and the intake reserves no work and takes no
+lease or fence, so a lane's first turn competes for quota through the ordinary
+path.
+
+The layering rules still hold beside that. Against
+`multi_agent_three_layer_minimality_contract_v0`
+(`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`), the
+owner's one sentence is the user layer, the steward's bounded procedure is the
+preset layer, and lanes, first bounded Todos, quota envelope, acceptance and
+stop condition are declared data the kernel mechanics consume; the intake owns
+no runner, panes, per-agent vision budgets or evidence loops. Against
+`multi_agent_visible_launcher_v0`
+(`docs/reference/protocols/multi-agent-visible-launcher-v0.md`), the launcher
+starts visible local panes from a `generic_multi_agent_launch_spec_v0` and the
+intake is the same intent entered from Chat; they join by identity (`goal_id`,
+`agent_id`, and the lane's first Todo), not by one calling the other.
 
 What this contract does not authorize: the steward still only proposes and
 delegates; selecting a steward executor or storing a credential grants none of
