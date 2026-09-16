@@ -909,12 +909,15 @@ declarative and does not import the module.
 
 Because discovery is declarative, a declared launch target is only shape-checked
 until activation. The public smoke
-`examples/extension-entrypoint-surface-smoke.py` closes that gap without
-importing provider code: for every bundled and co-located manifest it resolves
-the declared `python_module`, the `entrypoint` console script, each hook
-adapter `factory`, and each presentation `view_validator` against the
-repository source tree. A renamed or removed entrypoint therefore fails in the
-same change that removes it instead of at the user's first activation.
+`examples/extension-entrypoint-surface-smoke.py` is a repository-scoped coverage
+guard for that gap rather than an activation check: without importing provider
+code it resolves the declared `python_module`, the `entrypoint` console script,
+each hook adapter `factory`, and each presentation `view_validator` for every
+bundled and co-located manifest in this repository against the source tree, so a
+renamed or removed entrypoint fails in the same change that removes it instead
+of at the user's first activation. It does not cover an edited or third-party
+manifest, and detection is structural: an attribute the scanner cannot see, for
+example one installed through `getattr`, is reported as unresolved.
 
 ### Local executable locations
 
