@@ -14,7 +14,7 @@ from loopx.capabilities.machine_configuration.store import (
     read_machine_configuration,
 )
 from loopx.control_plane.operator_provider import (
-    API_KEY_FIELD,
+    PROVIDER_KEY_FIELD,
     BASE_URL_FIELD,
     OPERATOR_PROVIDER_STORE_REF,
     SOURCE_MACHINE_STORE,
@@ -62,8 +62,8 @@ def test_a_partly_stored_credential_keeps_the_environment_for_the_other_field(
 
     assert resolved["DEEPSEEK_API_KEY"] == "sk-service-environment-key"
     assert resolved["DEEPSEEK_BASE_URL"] == BASE_URL
-    assert projection[API_KEY_FIELD]["source"] == SOURCE_SERVICE_ENVIRONMENT
-    assert projection[API_KEY_FIELD]["env_var"] == "DEEPSEEK_API_KEY"
+    assert projection[PROVIDER_KEY_FIELD]["source"] == SOURCE_SERVICE_ENVIRONMENT
+    assert projection[PROVIDER_KEY_FIELD]["env_var"] == "DEEPSEEK_API_KEY"
     assert projection[BASE_URL_FIELD]["source"] == SOURCE_MACHINE_STORE
 
 
@@ -74,7 +74,7 @@ def test_an_unconfigured_machine_reports_absent_without_inventing_a_source(
 
     assert projection["status"] == STATUS_ABSENT
     assert projection["record_present"] is False
-    assert projection[API_KEY_FIELD]["source"] == SOURCE_UNSET
+    assert projection[PROVIDER_KEY_FIELD]["source"] == SOURCE_UNSET
     assert projection[BASE_URL_FIELD]["source"] == SOURCE_UNSET
 
 
@@ -99,8 +99,8 @@ def test_no_readback_returns_the_stored_key(tmp_path):
     serialized = json.dumps(projection)
 
     assert KEY not in serialized
-    assert projection[API_KEY_FIELD]["configured"] is True
-    assert projection[API_KEY_FIELD]["fingerprint"]
+    assert projection[PROVIDER_KEY_FIELD]["configured"] is True
+    assert projection[PROVIDER_KEY_FIELD]["fingerprint"]
     assert projection[BASE_URL_FIELD]["value"] is None
 
 
@@ -109,8 +109,8 @@ def test_two_keys_are_distinguishable_without_either_being_readable(tmp_path):
     second = write_operator_provider(runtime_root=tmp_path, api_key=OTHER_KEY)
 
     assert (
-        first[API_KEY_FIELD]["fingerprint"]
-        != second[API_KEY_FIELD]["fingerprint"]
+        first[PROVIDER_KEY_FIELD]["fingerprint"]
+        != second[PROVIDER_KEY_FIELD]["fingerprint"]
     )
     assert first["store_revision"] != second["store_revision"]
     assert KEY not in json.dumps(second)
@@ -124,13 +124,13 @@ def test_an_update_merges_one_field_without_clearing_the_other(tmp_path):
 
     assert updated["status"] == STATUS_CONFIGURED
     assert updated[BASE_URL_FIELD]["value"] == BASE_URL
-    assert updated[API_KEY_FIELD]["configured"] is True
+    assert updated[PROVIDER_KEY_FIELD]["configured"] is True
 
     cleared = write_operator_provider(
         runtime_root=tmp_path, clear_api_key=True, environ={}
     )
 
-    assert cleared[API_KEY_FIELD]["configured"] is False
+    assert cleared[PROVIDER_KEY_FIELD]["configured"] is False
     assert cleared[BASE_URL_FIELD]["value"] == BASE_URL
 
 
@@ -166,8 +166,8 @@ def test_an_invalid_record_refuses_instead_of_authenticating_from_the_environmen
     assert "DEEPSEEK_API_KEY" not in resolved
     assert "DEEPSEEK_BASE_URL" not in resolved
     assert projection["status"] == STATUS_INVALID
-    assert projection[API_KEY_FIELD]["configured"] is False
-    assert projection[API_KEY_FIELD]["blocked_by"] == STATUS_INVALID
+    assert projection[PROVIDER_KEY_FIELD]["configured"] is False
+    assert projection[PROVIDER_KEY_FIELD]["blocked_by"] == STATUS_INVALID
     assert projection["repair"]
 
 

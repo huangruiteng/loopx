@@ -55,7 +55,7 @@ OPERATOR_PROVIDER_STORE_SCHEMA = "operator_provider_credential_v0"
 OPERATOR_PROVIDER_PROJECTION_SCHEMA = "operator_provider_credential_projection_v0"
 OPERATOR_PROVIDER_STORE_REF = "machine/credentials/operator_provider.json"
 
-API_KEY_FIELD = "api_key"
+PROVIDER_KEY_FIELD = "provider_key"
 BASE_URL_FIELD = "base_url"
 
 SOURCE_MACHINE_STORE = "machine_store"
@@ -134,7 +134,7 @@ def normalize_operator_provider(raw: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize one stored credential record, fail closed."""
 
     unknown = sorted(
-        set(raw) - {"schema_version", API_KEY_FIELD, BASE_URL_FIELD}
+        set(raw) - {"schema_version", PROVIDER_KEY_FIELD, BASE_URL_FIELD}
     )
     if unknown:
         raise ValueError(
@@ -147,7 +147,7 @@ def normalize_operator_provider(raw: Mapping[str, Any]) -> dict[str, Any]:
         )
     return {
         "schema_version": OPERATOR_PROVIDER_STORE_SCHEMA,
-        API_KEY_FIELD: _optional_secret(raw.get(API_KEY_FIELD), field=API_KEY_FIELD),
+        PROVIDER_KEY_FIELD: _optional_secret(raw.get(PROVIDER_KEY_FIELD), field=PROVIDER_KEY_FIELD),
         BASE_URL_FIELD: _optional_base_url(raw.get(BASE_URL_FIELD)),
     }
 
@@ -193,7 +193,7 @@ def operator_provider_revision(record: Mapping[str, Any] | None) -> str:
     normalized = normalize_operator_provider(record)
     payload = {
         "schema_version": normalized["schema_version"],
-        API_KEY_FIELD: operator_provider_fingerprint(normalized[API_KEY_FIELD]),
+        PROVIDER_KEY_FIELD: operator_provider_fingerprint(normalized[PROVIDER_KEY_FIELD]),
         BASE_URL_FIELD: normalized[BASE_URL_FIELD],
     }
     digest = hashlib.sha256(
@@ -231,19 +231,19 @@ def write_operator_provider(
     stored = read_operator_provider(runtime_root)
     current: dict[str, Any] = dict(stored) if stored is not None else {
         "schema_version": OPERATOR_PROVIDER_STORE_SCHEMA,
-        API_KEY_FIELD: None,
+        PROVIDER_KEY_FIELD: None,
         BASE_URL_FIELD: None,
     }
     if clear_api_key:
-        current[API_KEY_FIELD] = None
+        current[PROVIDER_KEY_FIELD] = None
     elif api_key is not None:
-        current[API_KEY_FIELD] = api_key
+        current[PROVIDER_KEY_FIELD] = api_key
     if clear_base_url:
         current[BASE_URL_FIELD] = None
     elif base_url is not None:
         current[BASE_URL_FIELD] = base_url
     normalized = normalize_operator_provider(current)
-    if normalized[API_KEY_FIELD] is None and normalized[BASE_URL_FIELD] is None:
+    if normalized[PROVIDER_KEY_FIELD] is None and normalized[BASE_URL_FIELD] is None:
         # An empty record configures nothing, and leaving it behind would make
         # "this machine has a credential" true for a file that carries no
         # credential at all.
@@ -340,14 +340,14 @@ def operator_provider_projection(
     env_base_url, env_base_url_name = _environment_value(
         (OPERATOR_ENDPOINT_ENV_VAR,), environ
     )
-    stored_api_key = (record or {}).get(API_KEY_FIELD)
+    stored_api_key = (record or {}).get(PROVIDER_KEY_FIELD)
     stored_base_url = (record or {}).get(BASE_URL_FIELD)
     projection: dict[str, Any] = {
         "schema_version": OPERATOR_PROVIDER_PROJECTION_SCHEMA,
         "store_ref": OPERATOR_PROVIDER_STORE_REF,
         "store_revision": operator_provider_revision(record),
         "record_present": record is not None,
-        API_KEY_FIELD: _field_readback(
+        PROVIDER_KEY_FIELD: _field_readback(
             stored=str(stored_api_key) if stored_api_key else None,
             stored_present=bool(stored_api_key),
             env_value=env_api_key,
@@ -366,7 +366,7 @@ def operator_provider_projection(
     }
     if unreadable:
         status = STATUS_INVALID
-    elif projection[API_KEY_FIELD]["configured"] or projection[BASE_URL_FIELD][
+    elif projection[PROVIDER_KEY_FIELD]["configured"] or projection[BASE_URL_FIELD][
         "configured"
     ]:
         status = STATUS_CONFIGURED
@@ -387,7 +387,7 @@ def operator_credential_source(
     """Return where the effective credential came from, as a typed value."""
 
     projection = operator_provider_projection(runtime_root, environ=environ)
-    return str(projection[API_KEY_FIELD]["source"])
+    return str(projection[PROVIDER_KEY_FIELD]["source"])
 
 
 def operator_provider_environ(
@@ -417,7 +417,7 @@ def operator_provider_environ(
         return resolved
     if record is None:
         return resolved
-    api_key = record.get(API_KEY_FIELD)
+    api_key = record.get(PROVIDER_KEY_FIELD)
     if api_key:
         resolved[OPERATOR_CREDENTIAL_ENV_VARS[0]] = str(api_key)
     base_url = record.get(BASE_URL_FIELD)
@@ -449,7 +449,7 @@ def operator_provider_host_credential(
 
 
 __all__ = [
-    "API_KEY_FIELD",
+    "PROVIDER_KEY_FIELD",
     "BASE_URL_FIELD",
     "OPERATOR_PROVIDER_PROJECTION_SCHEMA",
     "OPERATOR_PROVIDER_STORE_REF",

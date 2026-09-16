@@ -76,7 +76,7 @@ export function OperatorCredentialSettings() {
   }
 
   const keyLabel = credential
-    ? `${localizeStatus(credential.api_key.configured ? "configured" : "absent", t)} · ${localizeSource(credential.api_key.source, t)}`
+    ? `${localizeStatus(credential.provider_key.configured ? "configured" : "absent", t)} · ${localizeSource(credential.provider_key.source, t)}`
     : "";
   const urlLabel = credential
     ? `${credential.base_url.value ?? t("machine.credentialAbsent")} · ${localizeSource(credential.base_url.source, t)}`
@@ -103,7 +103,7 @@ export function OperatorCredentialSettings() {
           </div>
           <div>
             <dt>{t("machine.credentialFingerprint")}</dt>
-            <dd><code>{credential.api_key.fingerprint ?? t("common.none")}</code></dd>
+            <dd><code>{credential.provider_key.fingerprint ?? t("common.none")}</code></dd>
           </div>
           <div>
             <dt>{t("machine.credentialBaseUrl")}</dt>
@@ -154,7 +154,7 @@ export function OperatorCredentialSettings() {
           disabled={Boolean(busy) || (!apiKey.trim() && !baseUrl.trim())}
           onClick={() => void submit(
             {
-              ...(apiKey.trim() ? { api_key: apiKey } : {}),
+              ...(apiKey.trim() ? { provider_key: apiKey } : {}),
               ...(baseUrl.trim() ? { base_url: baseUrl } : {}),
             },
             t("machine.credentialStored"),
@@ -164,8 +164,8 @@ export function OperatorCredentialSettings() {
           {busy === "store" ? t("common.loading") : t("machine.credentialStore")}
         </button>
         <button
-          disabled={Boolean(busy) || credential?.api_key.configured !== true}
-          onClick={() => void submit({ clear_api_key: true }, t("machine.credentialCleared"))}
+          disabled={Boolean(busy) || credential?.provider_key.configured !== true}
+          onClick={() => void submit({ clear_provider_key: true }, t("machine.credentialCleared"))}
           type="button"
         >
           <Trash2 aria-hidden size={15} />{t("machine.credentialClearKey")}

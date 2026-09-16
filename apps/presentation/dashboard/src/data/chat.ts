@@ -1394,7 +1394,7 @@ export const operatorCredentialSchema = z.object({
   record_present: z.boolean(),
   status: z.enum(["configured", "absent", "invalid"]),
   repair: z.string(),
-  api_key: operatorCredentialFieldSchema,
+  provider_key: operatorCredentialFieldSchema,
   base_url: operatorCredentialFieldSchema,
 });
 
@@ -1407,9 +1407,9 @@ export async function fetchOperatorCredential() {
 }
 
 export async function writeOperatorCredential(update: {
-  api_key?: string;
+  provider_key?: string;
   base_url?: string;
-  clear_api_key?: boolean;
+  clear_provider_key?: boolean;
   clear_base_url?: boolean;
 }) {
   return operatorCredentialSchema.parse(

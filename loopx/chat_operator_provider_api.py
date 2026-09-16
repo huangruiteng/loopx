@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .control_plane.operator_provider import (
-    API_KEY_FIELD,
+    PROVIDER_KEY_FIELD,
     BASE_URL_FIELD,
     operator_provider_projection,
     write_operator_provider,
@@ -61,23 +61,23 @@ class OperatorProviderRequestMixin:
         try:
             body = self._read_json()
             allowed = {
-                API_KEY_FIELD,
+                PROVIDER_KEY_FIELD,
                 BASE_URL_FIELD,
-                "clear_api_key",
+                "clear_provider_key",
                 "clear_base_url",
             }
             if set(body) - allowed:
                 raise ValueError(
                     "operator credential request contains unknown fields"
                 )
-            for flag in ("clear_api_key", "clear_base_url"):
+            for flag in ("clear_provider_key", "clear_base_url"):
                 if flag in body and not isinstance(body[flag], bool):
                     raise TypeError(f"{flag} must be a boolean")
             projection = write_operator_provider(
                 runtime_root=self.server.runtime_root,
-                api_key=body.get(API_KEY_FIELD),
+                api_key=body.get(PROVIDER_KEY_FIELD),
                 base_url=body.get(BASE_URL_FIELD),
-                clear_api_key=bool(body.get("clear_api_key")),
+                clear_api_key=bool(body.get("clear_provider_key")),
                 clear_base_url=bool(body.get("clear_base_url")),
             )
         except (TypeError, ValueError) as exc:

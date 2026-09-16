@@ -28,7 +28,7 @@ unrelated settings change.
 ```json
 {
   "schema_version": "operator_provider_credential_v0",
-  "api_key": "<provider key>",
+  "provider_key": "<provider key>",
   "base_url": "https://endpoint.example/v1"
 }
 ```
@@ -81,7 +81,7 @@ managed surfaces report `invalid` with the repair step instead, and the steward
 stays on the individual executor.
 
 An update is a **merge**: submitting only a key keeps the stored base URL.
-Clearing is explicit (`clear_api_key` / `clear_base_url`, or
+Clearing is explicit (`clear_provider_key` / `clear_base_url`, or
 `loopx machine-config credential clear`), so an empty form field can never
 delete a credential the operator did not mean to touch. Clearing the last field
 removes the file rather than leaving an empty record that would read as
@@ -91,7 +91,7 @@ removes the file rather than leaving an empty record that would read as
 
 ```bash
 # The value stays out of shell history and argv.
-printf '%s' '{"api_key":"...","base_url":"https://endpoint.example/v1"}' \
+printf '%s' '{"provider_key":"...","base_url":"https://endpoint.example/v1"}' \
   | loopx machine-config credential set --config-json -
 
 loopx machine-config credential status

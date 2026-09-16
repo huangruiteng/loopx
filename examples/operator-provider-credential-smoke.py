@@ -140,13 +140,13 @@ def main() -> None:
 
         # 2. The browser writes the pair through the real request mixin.
         writer = _Handler(
-            runtime_root, {"api_key": KEY, "base_url": BASE_URL}
+            runtime_root, {"provider_key": KEY, "base_url": BASE_URL}
         )
         writer._operator_provider_update()
         written = writer.responses[-1]
         if written["status_code"] != 200 or written["status"] != STATUS_CONFIGURED:
             fail(f"the write path must report the stored credential: {written}")
-        if written["api_key"]["source"] != SOURCE_MACHINE_STORE:
+        if written["provider_key"]["source"] != SOURCE_MACHINE_STORE:
             fail(f"the readback must name the machine store: {written}")
         if KEY in json.dumps(written):
             fail("the write readback must never echo the key")
@@ -181,7 +181,7 @@ def main() -> None:
         )
         if code != 0 or cli_written["base_url"]["configured"] is not False:
             fail(f"clearing one field must keep the other: {cli_written}")
-        if cli_written["api_key"]["configured"] is not True:
+        if cli_written["provider_key"]["configured"] is not True:
             fail("clearing the endpoint must not clear the key")
 
         code, cli_cleared = _run_cli(
@@ -196,7 +196,7 @@ def main() -> None:
 
         # 5. Nothing that is projected, inspected, or backed up carries it.
         _Handler(
-            runtime_root, {"api_key": KEY, "base_url": BASE_URL}
+            runtime_root, {"provider_key": KEY, "base_url": BASE_URL}
         )._operator_provider_update()
         document = machine_configuration_store_path(runtime_root)
         if document.exists() and KEY in document.read_text(encoding="utf-8"):

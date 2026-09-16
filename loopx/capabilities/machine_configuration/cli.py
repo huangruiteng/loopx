@@ -53,7 +53,7 @@ def _render(payload: dict[str, object]) -> str:
         lines.append(
             f"- changed_namespaces: `{', '.join(map(str, namespaces)) or 'none'}`"
         )
-    api_key = payload.get("api_key")
+    api_key = payload.get("provider_key")
     if isinstance(api_key, dict):
         # The key itself is never printed: the fingerprint is what an operator
         # compares, and the source is what tells them where to change it.
@@ -189,7 +189,7 @@ def register_machine_configuration_commands(
     credential_set.add_argument(
         "--config-json",
         help=(
-            "A JSON object with api_key and/or base_url; `-` reads stdin. "
+            "A JSON object with provider_key and/or base_url; `-` reads stdin. "
             "Omitted entirely clears nothing and changes nothing."
         ),
     )
@@ -257,7 +257,7 @@ def handle_machine_configuration_command(
                     "action": "stored",
                     **write_operator_provider(
                         runtime_root=runtime_root,
-                        api_key=configuration.get("api_key"),
+                        api_key=configuration.get("provider_key"),
                         base_url=configuration.get("base_url"),
                         clear_api_key=bool(args.clear_api_key),
                         clear_base_url=bool(args.clear_base_url),
