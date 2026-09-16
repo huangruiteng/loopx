@@ -5,7 +5,7 @@ import ast
 import json
 from pathlib import Path
 import subprocess
-from typing import Any
+from typing import Any, Callable
 
 from .inventory import SourceFile
 from .python_production import Production, enum_members, scan_python_production
@@ -68,12 +68,10 @@ def collect_production(root: Path, vocabulary: dict[str, Any], sources: list[Sou
             paths = {site.split('::')[1]: tuple(path) for site, path in return_paths.items()
                      if site.split('::')[0] == source.path}
             rows.extend(scan_python_production(source, field=field, enums=enums, return_functions=names,
-                                              return_paths=paths, call_arguments=calls))
+                                              return_paths=paths, call_arguments=calls, modules=by_path))
     rows.extend(_typescript_scan(root, [s for s in selected if s.suffix == '.ts'], field, returns))
-    if vocabulary.get('input_producer') == 'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition':
-        from .turn_contract_witness import probe_controller_production, probe_projection_production
-        rows.extend(probe_controller_production())
-        rows.extend(probe_projection_production())
+    if witness := INPUT_WITNESSES.get(vocabulary.get('input_producer') or ''):
+        rows.extend(witness(vocabulary))
     return rows
 
 
@@ -221,3 +219,16 @@ def probe_turn_result_input_domain(vocabulary: dict[str, Any]) -> list[Productio
         if actual is not None or not errors:
             raise ValueError('turn_result_kind: decoder accepted an invalid input probe')
     return rows
+
+
+def _probe_controller_domain(vocabulary: dict[str, Any]) -> list[Production]:
+    from .turn_contract_witness import probe_controller_production, probe_projection_production
+    return probe_controller_production() + probe_projection_production()
+
+
+# Executable input witnesses are fixed in code and selected only by the
+# registered ``input_producer`` site; registry data cannot import a callable.
+INPUT_WITNESSES: dict[str, Callable[[dict[str, Any]], list[Production]]] = {
+    'loopx/control_plane/turn_driver/transaction.py::_result_kind': probe_turn_result_input_domain,
+    'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition': _probe_controller_domain,
+}

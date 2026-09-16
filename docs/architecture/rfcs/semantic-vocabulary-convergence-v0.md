@@ -388,8 +388,10 @@ before writing any artifact, including when the second owner is invalid.
 
 Python field assignments (including subscript/attribute and annotated writes),
 dictionaries, call keywords, owner-member results and declared scalar returns
-are parsed with AST. Imported enum aliases resolve only to the registered owner;
-shadowed names, reassignments and unresolved calls remain unknown. Conditional
+are parsed with AST. Imported enum aliases resolve only to the registered
+owner, including one unrenamed re-export hop through a tracked module (a
+second hop, a renamed re-export or a rebinding stays unknown); shadowed
+names, reassignments and unresolved calls remain unknown. Conditional
 results exclude the condition's literals. TypeScript object writes, assignments
 and declared returns use the repository's TypeScript parser rather than regex.
 Neither parser executes inspected source. These are syntactic result witnesses,
@@ -998,6 +1000,26 @@ introduce a competing target state.
 
 ## Appendix A: Execution ledger (non-normative)
 
+### 2026-09-16 — B2 pilot: one re-export hop bound in the Python producer scanner
+
+- **Trigger:** after M2 moved the three Turn owners into
+  `turn_contract_generated.py`, every production site that still imported an
+  owner through the `transaction.py` / `driver.py` compatibility re-exports
+  became `unknown_producer` (43 → 52 unresolved sites) with no code change in
+  those modules and no failing check, because the scanner bound an owner only
+  when imported from the owner's own module.
+- **Delivered:** `python_production` binds one unrenamed re-export hop
+  through a tracked module; a second hop, a renamed re-export, a same-name
+  class or assignment, or a later `import` leaves the consumer unknown, with
+  positive and negative fixtures. Only names that are owner symbols are
+  followed, so the full smoke keeps its runtime. The two executable input
+  witnesses are selected from one code-owned table keyed by the registered
+  `input_producer` site, and the smoke keeps one anchor for both instead of
+  four literal copies. Unresolved sites: 52 → 41; no site becomes newly
+  visible or unregistered; registry values and budgets are unchanged.
+- **Effect on normative design:** the bounded producer model in Section 5
+  names the one-hop rule explicitly; no invariant or milestone changes.
+
 ### 2026-09-16 — Review consistency repair
 
 - Keep one candidate-decision section per language.
@@ -1158,6 +1180,7 @@ introduce a competing target state.
 | Date | Decision | Owner / approval | Alternatives | Normative sections changed |
 | --- | --- | --- | --- | --- |
 | 2026-09-16 | Q9: compute the full inventory on demand; retire the committed census | Implementation for [maintainer feedback](https://github.com/huangruiteng/loopx/pull/4360#issuecomment-5692062394); PR review pending | Committed snapshot with post-merge regeneration; diff-only scan rejected | 1, I6, 3, 5, 9, 10, 12 |
+| 2026-09-16 | B2: bind one unrenamed re-export hop in the Python producer scanner | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Require every consumer to import the owner module (fragile; failed silently in M2); unbounded multi-hop resolution rejected | 5, Appendix A |
 
 ## Appendix C: Evidence registry
 

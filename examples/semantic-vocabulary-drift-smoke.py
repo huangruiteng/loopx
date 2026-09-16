@@ -35,7 +35,7 @@ from loopx.semantics.inventory import (  # noqa: E402
 )
 
 from loopx.semantics.production import (  # noqa: E402
-    collect_production, validate_production, probe_turn_result_input_domain, quota_action_domain, collect_literal_uses,
+    collect_production, validate_production, INPUT_WITNESSES, quota_action_domain, collect_literal_uses,
 )
 from loopx.semantics.python_production import scan_python_production  # noqa: E402
 from scripts.generate_semantic_bindings import build_artifacts  # noqa: E402
@@ -113,6 +113,11 @@ COVERAGE_ANCHOR = {
 }
 COVERAGE_SUFFIX_ANCHOR = (".py", ".ts")
 LITERAL_SCAN_ROOTS = ["loopx"]
+# Input producers with an executable witness in loopx.semantics.production.
+INPUT_PRODUCER_ANCHOR = {
+    "turn_result_kind": "loopx/control_plane/turn_driver/transaction.py::_result_kind",
+    "loop_disposition": "loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition",
+}
 PRODUCER_VOCABULARY_ANCHOR = {
     "effective_action", "turn_route", "loop_disposition", "agent_scope_frontier_action", "turn_result_kind", "lease_action",
 }
@@ -230,9 +235,7 @@ def load_registry() -> dict[str, Any]:
             require(bool(producers) or set(vocabulary.get('compatibility_only', {})) == set(values), f"{name}: empty producers require every value to be compatibility-only")
             require(all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in producers), f"{name}: producers must be module::Symbol sites")
         if 'input_producer' in vocabulary:
-            input_owners = {'turn_result_kind': 'loopx/control_plane/turn_driver/transaction.py::_result_kind',
-                            'loop_disposition': 'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition'}
-            require(vocabulary['input_producer'] == input_owners.get(name), f"{name}: unrecognised input producer")
+            require(vocabulary['input_producer'] == INPUT_PRODUCER_ANCHOR.get(name), f"{name}: unrecognised input producer")
         returns = vocabulary.get("return_producers", [])
         require(isinstance(returns, list) and all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in returns), f"{name}: return_producers must be module::Symbol sites")
         require(set(returns) <= set(producers or []), f"{name}: return_producers must also be registered producers")
@@ -320,13 +323,10 @@ def check_coverage_floor(registry: dict[str, Any]) -> str:
         quota_action_domain(registry)
     except ValueError as error:
         raise Drift(str(error)) from error
-    require(
-        registry['vocabularies']['turn_result_kind'].get('input_producer') == 'loopx/control_plane/turn_driver/transaction.py::_result_kind',
-        'turn_result_kind: input producer coverage must retain the anchored decoder',
-    )
-    require(registry['vocabularies']['loop_disposition'].get('input_producer') ==
-            'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition',
-            'controller input production must retain the anchored decision function')
+    for name, site in INPUT_PRODUCER_ANCHOR.items():
+        require(registry['vocabularies'][name].get('input_producer') == site,
+                f"{name}: input producer coverage must retain the anchored site {site}")
+        require(site in INPUT_WITNESSES, f"{name}: anchored input producer has no executable witness")
     for name in PRODUCER_VOCABULARY_ANCHOR:
         require("producers" in registry["vocabularies"][name], f"{name}: producer coverage dropped below PRODUCER_VOCABULARY_ANCHOR")
     for name, required in RETURN_PRODUCER_ANCHOR.items():
@@ -470,8 +470,6 @@ def check_producers(registry: dict[str, Any], sources: list[SourceFile]) -> list
             continue  # Other kernel families retain an explicit M0.5 coverage gap.
         try:
             rows = collect_production(REPO_ROOT, vocabulary, sources)
-            if name == 'turn_result_kind':
-                rows.extend(probe_turn_result_input_domain(vocabulary))
             field_domain = quota_action_domain(registry) if name == 'effective_action' else None
             unknown.extend(validate_production(name, vocabulary, rows, field_domain=field_domain))
         except ValueError as error:

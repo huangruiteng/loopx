@@ -10,9 +10,17 @@ OWNER = 'loopx/quota/owner.py::Action'
 ENUMS = {OWNER: {'RUN': 'run', 'WAIT': 'wait'}}
 
 
-def scan(text, *, returns=(), path='loopx/quota/client.py', calls=None, paths=None):
+def scan(text, *, returns=(), path='loopx/quota/client.py', calls=None, paths=None, modules=None):
     return scan_python_production(SourceFile(path, '.py', text), field='action', enums=ENUMS,
-                                  return_functions=frozenset(returns), call_arguments=calls, return_paths=paths)
+                                  return_functions=frozenset(returns), call_arguments=calls, return_paths=paths,
+                                  modules=modules)
+
+
+COMPAT = 'loopx/quota/compat.py'
+
+
+def tracked(**texts):
+    return {f'loopx/quota/{name}.py': SourceFile(f'loopx/quota/{name}.py', '.py', text) for name, text in texts.items()}
 
 
 def known(rows):
@@ -276,3 +284,36 @@ def test_value_attribute_requires_an_enum_object_not_a_serialized_string(value):
     rows = scan(f'from .owner import Action\ndef emit():\n choice = {value}\n return {{"action": choice.value}}\n')
     assert known(rows) == set()
     assert rows[0].unresolved
+
+
+@pytest.mark.parametrize('reexport', ['from .owner import Action\n', 'from .owner import Action as Action\n'])
+def test_one_unrenamed_reexport_hop_binds_the_owner(reexport):
+    rows = scan('from .compat import Action\ndef emit():\n return Action.RUN.value\n', returns=['emit'],
+                modules=tracked(compat=reexport))
+    assert known(rows) == {'run'} and not any(r.unresolved for r in rows)
+
+
+def test_consumer_may_alias_a_reexported_owner():
+    rows = scan('from .compat import Action as A\ndef emit():\n return A.WAIT\n', returns=['emit'],
+                modules=tracked(compat='from .owner import Action\n'))
+    assert known(rows) == {'wait'}
+
+
+@pytest.mark.parametrize('compat, consumer', [
+    ('from .owner import Action as Act\n', 'from .compat import Act as Action\n'),   # renamed re-export
+    ('from .owner import Action\nclass Action:\n RUN = "other"\n', 'from .compat import Action\n'),  # local twin
+    ('from .owner import Action\nAction = None\n', 'from .compat import Action\n'),  # rebound after import
+    ('from .owner import Action\nimport Action\n', 'from .compat import Action\n'),  # later plain import
+    ('from .unrelated import Action\n', 'from .compat import Action\n'),  # wrong source
+])
+def test_renamed_shadowed_or_foreign_reexports_stay_unknown(compat, consumer):
+    rows = scan(consumer + 'def emit():\n return Action.RUN.value\n', returns=['emit'], modules=tracked(compat=compat))
+    assert known(rows) == set() and all(r.unresolved for r in rows)
+
+
+def test_second_reexport_hop_and_untracked_module_stay_unknown():
+    two_hops = tracked(compat='from .owner import Action\n', compat2='from .compat import Action\n')
+    rows = scan('from .compat2 import Action\ndef emit():\n return Action.RUN.value\n', returns=['emit'], modules=two_hops)
+    assert known(rows) == set() and all(r.unresolved for r in rows)
+    rows = scan('from .compat import Action\ndef emit():\n return Action.RUN.value\n', returns=['emit'], modules={})
+    assert known(rows) == set() and all(r.unresolved for r in rows)
