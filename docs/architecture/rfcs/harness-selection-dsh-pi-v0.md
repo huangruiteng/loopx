@@ -474,13 +474,13 @@ Validation: `tests/capabilities/test_steward_executor_machine_defaults.py`,
 `tests/capabilities/test_capability_configuration_ui.py`, and
 `examples/loopx-steward-channel-binding-smoke.py`.
 
-## Steward Team Intake (planned, 2026-09-16)
+## Steward Team Intake (2026-09-16)
 
-The steward answers questions today, and since `2026-09-16` its shipped
-guidance carries one bounded procedure for a different request: one owner
-sentence that asks for a *team* rather than a task. That procedure is guidance,
-not machine enforcement, so this section records where the enforced contract
-belongs and what it must validate before any implementation lands.
+The steward answers questions. Since `2026-09-16` its shipped guidance also
+carries one bounded procedure for a different request: one owner sentence that
+asks for a *team* rather than a task. This section records the enforced contract
+for that intake, which part of it is already shipped, and which part is still
+missing.
 
 The intake boundary is the canonical governed-proposal owner
 (`loopx/control_plane/work_items/governed_transition_proposal.py`), not a new
@@ -492,37 +492,86 @@ beside the existing one. A command with no second caller, and a builder module
 with no caller at all, both stay out: this repository keeps an uncalled
 abstraction in design state until its call site exists.
 
-The proposal payload is validated before anything may be applied, and it names:
+A proposal of kind `steward_team_plan_preview` (`steward_team_plan_preview_v0`)
+is validated before anything may be applied, and a validated preview names, and
+may not invent:
 
-- each lane and the Agent that runs it, resolved from Agents Core already
-  registers for the Goal;
-- that lane's first bounded Todo, with its declared priority, task class and
-  action kind;
-- the quota or cadence envelope that bounds the lanes;
+- each lane and the Agent that runs it, resolved from the Agents Core already
+  registers for the Goal, at most 8 lanes;
+- that lane's first bounded Todo, with its declared priority (P0..P3), task
+  class and action kind;
+- the quota envelope that bounds the lanes;
 - the acceptance signal that ends each lane;
 - the stop condition that ends the team.
 
-A requested lane that cannot be staffed is a typed gap naming the missing
-registration or grant; it is never filled in by inventing an Agent, a Todo
-capability, or a lane the machine cannot run. The plan is a preview: it creates
-no Todo, registers no Agent, sets no quota, and spends none, and an owner's
-confirmation of that exact preview is the only thing that admits an apply.
-Apply routes to the canonical owners each effect already has -- Agent
-registration, Todo creation, quota or goal policy -- reuses the identities the
-preview named, and returns one readback of what exists. It may not widen the
-confirmed scope, and a team plan is never settled as if the work were done.
+A requested lane that cannot be staffed is a typed gap -- `agent_not_registered`,
+`capability_not_granted` or `audience_not_authorized` -- and the gap keeps the
+work it did not staff under `declined_first_todo`, so the owner sees what was
+asked for and what is missing instead of a lane that was quietly filled in or
+dropped. A lane that declares a gap may not declare work. The plan is a preview:
+the validated payload carries `applies: false`, and an owner's confirmation of
+that exact preview is the only thing that admits an apply. Apply routes to the
+canonical owners each effect already has -- Agent registration, Todo creation,
+quota or goal policy -- reuses the identities the preview named, may not widen
+the confirmed scope, and a team plan is never settled as if the work were done.
 
-Delivery is two slices, in this order:
+Shipped enforcement, in delivery order:
 
-1. **Preview slice (next).** The typed payload contract and its validator, with
-   focused tests, and no materializer registered, so a preview cannot apply
-   even by mistake.
-2. **Apply slice.** A materializer for that kind, with its settlement phase and
-   readback, routed through the owners above.
+1. **Contract and validator** (`#4519`, `3acd07697`). The kind, its schema, the
+   lane limit, the priority and gap vocabularies, public-safe text, and the
+   refusal to invent staffing.
+2. **Chat admission** (`#4522`, `3c8c832cb`). `normalize_agent_response` admits a
+   preview only when the host supplies `team_plan_context` -- this Goal's
+   registered Agents and this host's supported advancement action kinds -- and
+   drops it otherwise, exactly like any other proposal it cannot accept, while
+   the answer text still reaches the owner.
+3. **Apply** (`#4524`, `c159a15b3`). The governed transition owner dispatches the
+   kind at `PRE_SETTLEMENT`. The apply re-validates the proposal against the
+   Goal's registered Agents and the shipped advancement action kinds, creates
+   the first bounded Todo of each *ready* lane through the canonical Todo owner,
+   creates nothing for a gap lane, and refuses an unknown Goal before any write.
+   The receipt records the proposal digest, so a replayed settlement reuses the
+   same lane Todo instead of adding a second row.
 
-What this planned contract does not authorize: the steward still only proposes
-and delegates; selecting a steward executor or storing a credential grants none
-of these effects; and nothing here widens OS, provider, audience or work-state
+The intake is still inert in production, and this section does not claim
+otherwise. Nothing yet supplies `team_plan_context`, so a model-authored preview
+is dropped at admission instead of being surfaced for confirmation; the adapter
+that supplies the admission facts and the settlement that re-derives them must
+stay one contract rather than two; and the apply entry point today is a governed
+capability execution journal, so a confirmed Chat preview needs that bridge
+before an owner confirmation can materialize lanes. Two further gaps belong with
+this work: the published receipt carries the first lane Todo's identity rather
+than the identity of every lane it created (the apply result computes the full
+`lane_todo_ids` set, and the receipt field set is closed and persisted, so
+publishing it is a bounded compatibility change), and a multi-lane preview has
+no frontend confirmation surface yet.
+
+### Relationship to the multi-agent contracts
+
+The intake is a user-layer affordance over the kernel the multi-agent contracts
+already define; it adds no second team runtime.
+
+- Against `multi_agent_three_layer_minimality_contract_v0`
+  (`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`), the
+  owner's one sentence is the user layer, the steward's bounded procedure is the
+  preset layer, and lanes, first bounded Todos, quota envelope, acceptance and
+  stop condition are declared data the kernel mechanics consume. The intake must
+  not own a runner, panes, per-agent vision budgets or evidence loops; it
+  materializes goal work lanes through the canonical Todo owner, which is what
+  keeps a team request from becoming a product-specific runner.
+- Against `multi_agent_visible_launcher_v0`
+  (`docs/reference/protocols/multi-agent-visible-launcher-v0.md`), the launcher
+  starts visible local panes from a `generic_multi_agent_launch_spec_v0`, and
+  the intake is the same intent entered from Chat. They join by identity
+  (`goal_id`, `agent_id`, and the lane's first Todo), not by one calling the
+  other, and the launcher's own rule applies unchanged to the intake: no leader
+  agent, hidden scheduler, promotion authority or second source of truth. A plan
+  that needs visible panes, pane-local A2A ticks or promotion evidence has to
+  name that as a supported action kind instead of embedding it in the preview.
+
+What this contract does not authorize: the steward still only proposes and
+delegates; selecting a steward executor or storing a credential grants none of
+these effects; and nothing here widens OS, provider, audience or work-state
 authority.
 
 ## Steward Channel Readiness by Milestone (2026-09-15)

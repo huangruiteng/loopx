@@ -448,11 +448,14 @@ def validate_steward_team_plan_preview(
 ) -> dict[str, Any]:
     """Validate one steward team preview, and refuse to invent its staffing.
 
-    The preview is the whole effect of this kind: it creates nothing, so it has
-    no materializer and no settlement phase. A lane whose Agent this Goal does
-    not register becomes a typed gap that keeps the work it did *not* staff
-    under ``declined_first_todo``, so the owner sees what was asked for and what
-    is missing instead of a lane that was quietly filled in or dropped.
+    Validation is the same contract at both ends: the Chat admission uses it to
+    decide whether a preview may be surfaced for confirmation, and the
+    ``PRE_SETTLEMENT`` apply of that kind calls it again with the host's own
+    facts before it creates anything, so a proposal cannot become work by
+    bypassing admission. A lane whose Agent this Goal does not register becomes
+    a typed gap that keeps the work it did *not* staff under
+    ``declined_first_todo``, so the owner sees what was asked for and what is
+    missing instead of a lane that was quietly filled in or dropped.
     """
 
     plan = _mapping(payload, "steward_team_plan_preview")

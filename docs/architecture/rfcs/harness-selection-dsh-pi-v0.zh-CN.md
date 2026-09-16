@@ -373,11 +373,11 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 `tests/capabilities/test_capability_configuration_ui.py`，以及
 `examples/loopx-steward-channel-binding-smoke.py`。
 
-## 管家团队入端口径（规划中，2026-09-16）
+## 管家团队入端口径（2026-09-16）
 
-管家今天回答问题；自 2026-09-16 起，它的出厂指引里已带一段有界流程，用于另一类请求：
-业主一句话要的是**团队**而不是单个任务。那段流程是指引，不是机器强制，因此本节记录被强制
-的契约属于哪里、以及实现落地前必须校验什么。
+管家负责回答问题。自 2026-09-16 起，它的出厂指引里还带了一段有界流程，用于另一类请求：
+业主一句话要的是**团队**而不是单个任务。本节记录这条入端口径被强制的契约、其中已经落地的
+部分，以及仍然缺失的部分。
 
 入端口径是既有的受治理提案所有者
 （`loopx/control_plane/work_items/governed_transition_proposal.py`），不是新的 CLI 命令，
@@ -386,27 +386,63 @@ Chat Turn 也早已把 `response.proposals` 投影成 `proposal.ready` 事件。
 **一种新 kind 的提案**，而不是在既有路径旁再开一条入端口。没有第二个调用方的命令、以及
 完全没有调用方的 builder 模块都不新增：本仓库要求未获调用的抽象先留在设计态。
 
-在允许任何落地之前先校验提案载荷，它必须点名：
+kind 为 `steward_team_plan_preview`（`steward_team_plan_preview_v0`）的提案，在任何落地
+之前先被校验；校验通过的预览必须点名、且不得编造：
 
-- 每条 lane 及其运行的 Agent，且只能来自 Core 已为该 Goal 注册的 Agent；
-- 该 lane 的首个有界 Todo，含其声明优先级、task class 与 action kind；
-- 约束这些 lane 的 quota 或节奏包络；
+- 每条 lane 及其运行的 Agent，且只能来自 Core 已为该 Goal 注册的 Agent，最多 8 条 lane；
+- 该 lane 的首个有界 Todo，含其声明优先级（P0..P3）、task class 与 action kind；
+- 约束这些 lane 的 quota 包络；
 - 结束每条 lane 的验收信号；
 - 结束整个团队的终止条件。
 
-配不齐的 lane 是类型化的 gap（缺哪个注册或授予），不允许靠编造 Agent、Todo 能力或本机跑不动
-的 lane 来填。计划是**预览**：不建 Todo、不注册 Agent、不设 quota、不扣额度；只有业主对这
-份确切预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——Agent 注册、
-Todo 创建、quota 或 goal policy——复用预览点名的身份，并返回一份"现在存在什么"的回读；不得
-扩大已确认范围，也不得把团队计划当作工作已完成的结算。
+配不齐的 lane 是类型化的 gap——`agent_not_registered`、`capability_not_granted` 或
+`audience_not_authorized`——并且该 gap 会把没配上人的那份工作留在 `declined_first_todo`
+里，让业主看到"要了什么、缺了什么"，而不是一条被悄悄填上或被丢掉的 lane；声明 gap 的
+lane 不得再声明工作。计划是**预览**：校验通过的载荷带 `applies: false`；只有业主对这份确切
+预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——Agent 注册、
+Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩大已确认范围，也不得把团队计划
+当作工作已完成的结算。
 
-按此顺序分两片交付：
+按交付顺序，已经落地并受强制的部分：
 
-1. **预览片（下一步）**：类型化载荷契约与其校验器，配聚焦测试，且不注册 materializer，
-   使预览即使被误用也无法落地。
-2. **落地片**：该 kind 的 materializer，含其结算相位与回读，并按上文经既有 owner 路由。
+1. **契约与校验器**（`#4519`，`3acd07697`）：kind、schema、lane 上限、优先级与 gap 词表、
+   公开安全文本，以及"拒绝编造 staffing"的行为。
+2. **聊天准入**（`#4522`，`3c8c832cb`）：`normalize_agent_response` 只在宿主提供
+   `team_plan_context`（本 Goal 已注册 Agent + 本机支持的 advancement action kind）时才让
+   预览通过；否则与其它无法接受的提案一样被丢弃，而答案正文仍然到达业主。
+3. **落地**（`#4524`，`c159a15b3`）：受治理提案所有者在 `PRE_SETTLEMENT` 相位分派该 kind，
+   落地时重新按本 Goal 已注册 Agent 与本机 shipment 的 advancement action kind 校验，经
+   canonical Todo owner 为每条 **ready** lane 创建首个有界 Todo，gap lane 不创建任何东西，
+   未知 Goal 在任何写入前就被拒绝，回执记录 proposal digest，因此重放结算复用同一条 lane
+   Todo 而不会新增第二行。
 
-这条规划契约不授权什么：管家仍然只提议与委托；选择管家执行器或存凭据都不带来这些 effect；
+这条入端口径目前在线上仍是**惰性**的，本节不作相反声明：还没有任何生产调用方传入
+`team_plan_context`，因此模型产出的预览会在准入处被丢弃，而不会浮现给业主确认；提供准入事实
+的适配器与重新推导这些事实的结算必须保持同一份契约而不是两份；而今天的落地入口是受治理能力
+执行 journal，所以被确认的 Chat 预览还需要那座桥，业主确认才能真正建成 lane。另有两处缺口
+属于这条工作线：已发布回执只带第一条 lane Todo 的身份，而不是它创建的全部 lane 身份（apply
+结果里算了完整的 `lane_todo_ids`，但回执字段集是封闭且持久化的，发布它是一次有界的兼容性
+变更）；以及多 lane 预览还没有前端确认面。
+
+### 与 multi-agent 契约的关系
+
+这条入端口径是既有 multi-agent 契约所定义内核之上的**用户层**便利：它不新增第二套团队
+runtime。
+
+- 对应 `multi_agent_three_layer_minimality_contract_v0`
+  （`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`）：业主那一句话是用户
+  层，管家那段有界流程是 preset 层，而 lanes、首个有界 Todo、quota 包络、验收与终止条件是
+  内核机制消费的声明数据。入端口径不得拥有 runner、pane、per-agent vision 预算或证据回路；
+  它只经 canonical Todo owner 建出 Goal 工作 lane，这正是它不会变成产品专用 runner 的原因。
+- 对应 `multi_agent_visible_launcher_v0`
+  （`docs/reference/protocols/multi-agent-visible-launcher-v0.md`）：launcher 从
+  `generic_multi_agent_launch_spec_v0` 启动可见本地 pane，而这条入端口径是同一意图从 Chat
+  进入。两者按身份相连（`goal_id`、`agent_id` 与该 lane 的首个 Todo），而不是互相调用；
+  launcher 自身那条规则对入端口径同样成立：不得成为 leader agent、隐藏调度器、晋升权威或
+  第二真源。需要可见 pane、pane 内 A2A tick 或晋升证据的计划，必须把它声明为受支持的
+  action kind，而不是塞进预览里。
+
+这条契约不授权什么：管家仍然只提议与委托；选择管家执行器或存凭据都不带来这些 effect；
 这里也不会扩大 OS、provider、受众或工作状态权限。
 
 ## 按里程碑看管家通道的就绪度（2026-09-15）
