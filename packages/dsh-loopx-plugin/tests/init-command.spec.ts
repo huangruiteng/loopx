@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {
@@ -337,6 +337,11 @@ describe('/loopx-init implementation', () => {
   })
 
   it('selects an available Python 3.11+ interpreter for install and readback', async () => {
+    const pythonPath = await mkdtemp(join(tmpdir(), 'loopx-installed-pythons-'))
+    onTestFinished(() => rm(pythonPath, { recursive: true, force: true }))
+    for (const name of ['python3.14', 'python3.13']) {
+      await writeFile(join(pythonPath, name), '# fixture executable\n')
+    }
     const calls: Array<{ readonly file: string; readonly args: readonly string[] }> = []
     let installed = false
     const runner: FileRunner = async (file, args) => {
@@ -374,6 +379,7 @@ describe('/loopx-init implementation', () => {
 
     const result = await initializeLoopX({
       runner,
+      env: { PATH: pythonPath },
       skillsDir: '/fixture/skills',
       runtimeDir: '/fixture/runtime',
     })
@@ -406,6 +412,11 @@ describe('/loopx-init implementation', () => {
   })
 
   it('skips an implicit version-compatible Python that cannot run pip', async () => {
+    const pythonPath = await mkdtemp(join(tmpdir(), 'loopx-installed-pythons-'))
+    onTestFinished(() => rm(pythonPath, { recursive: true, force: true }))
+    for (const name of ['python3.14']) {
+      await writeFile(join(pythonPath, name), '# fixture executable\n')
+    }
     const calls: Array<{ readonly file: string; readonly args: readonly string[] }> = []
     let installed = false
     const runner: FileRunner = async (file, args) => {
@@ -450,6 +461,7 @@ describe('/loopx-init implementation', () => {
 
     const result = await initializeLoopX({
       runner,
+      env: { PATH: pythonPath },
       skillsDir: '/fixture/skills',
       runtimeDir: '/fixture/runtime',
     })
@@ -493,7 +505,8 @@ describe('/loopx-init implementation', () => {
       stage: 'install_cli',
       causeKind: 'missing',
     })
-    expect(calls.some(call => call.file === 'python3.14')).toBe(false)
+    expect(calls.filter(call => call.args[0] === '-c')
+      .every(call => call.file === '/configured/python')).toBe(true)
     expect(calls.some(call => (
       call.file === '/configured/python'
       && call.args.join(' ') === '-m pip --version'
