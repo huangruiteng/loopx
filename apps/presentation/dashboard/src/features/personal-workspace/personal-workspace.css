@@ -796,11 +796,11 @@
 .personal-capability-preview strong { font-size: 12px; }
 .personal-capability-preview span { color: var(--pw-blue-ink); font-size: 11px; font-weight: 700; }
 .personal-capability-preview small { grid-column: 1 / -1; color: var(--pw-muted); font-size: 10.5px; }
-.personal-capability-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 18px; border-top: 1px solid var(--pw-line); background: transparent; }
-.personal-capability-actions button { min-height: 44px; padding: 0 14px; border: 1px solid var(--pw-line-strong); border-radius: 9px; background: #fff; color: var(--pw-text); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
-.personal-capability-actions button.is-primary { border-color: var(--pw-blue); background: var(--pw-blue); color: #fff; }
-.personal-capability-actions button.is-danger { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; color: var(--pw-red); }
-.personal-capability-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.personal-capability-actions, .personal-operator-credential-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 18px; border-top: 1px solid var(--pw-line); background: transparent; }
+.personal-capability-actions button, .personal-operator-credential-actions button { min-height: 44px; padding: 0 14px; border: 1px solid var(--pw-line-strong); border-radius: 9px; background: #fff; color: var(--pw-text); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.personal-capability-actions button.is-primary, .personal-operator-credential-actions button.is-primary { border-color: var(--pw-blue); background: var(--pw-blue); color: #fff; }
+.personal-capability-actions button.is-danger, .personal-operator-credential-actions button.is-danger { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; color: var(--pw-red); }
+.personal-capability-actions button:disabled, .personal-operator-credential-actions button:disabled { cursor: not-allowed; opacity: .5; }
 .personal-capability-empty, .personal-capability-error { display: flex; align-items: center; gap: 9px; max-width: 720px; min-height: 56px; margin: 0; padding: 14px; border: 1px solid var(--pw-line); border-radius: 11px; background: #fff; color: var(--pw-muted); font-size: 12px; }
 .personal-capability-error { border-color: #efc1ba; color: var(--pw-red); }
 .personal-capability-error span { display: grid; gap: 2px; }

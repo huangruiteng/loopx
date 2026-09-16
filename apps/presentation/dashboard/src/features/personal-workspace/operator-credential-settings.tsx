@@ -145,7 +145,10 @@ export function OperatorCredentialSettings() {
       {error ? <p className="personal-machine-error" role="alert">{error}</p> : null}
       {notice ? <p className="personal-machine-notice" role="status" aria-live="polite"><Check aria-hidden size={16} />{notice}</p> : null}
 
-      <footer className="personal-capability-actions">
+      {/* Not `personal-capability-actions`: the browser smoke treats that class
+          as the capability editor's own action row, and this panel renders on
+          the same page. */}
+      <footer className="personal-operator-credential-actions">
         <button
           className="is-primary"
           disabled={Boolean(busy) || (!apiKey.trim() && !baseUrl.trim())}
