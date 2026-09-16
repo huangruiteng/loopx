@@ -109,7 +109,7 @@ def _typescript_scan(
         ['node', str(root / 'scripts/semantic_production_scan.mjs')],
         input=json.dumps({'field': field, 'sources': [{'path': s.path, 'text': s.text} for s in ts_sources],
                           'return_functions': returns, 'mode': mode}),
-        capture_output=True, text=True, timeout=60, check=False,
+        capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
     )
     if completed.returncode:
         # Accept only a bounded location from the parser, never echo source
