@@ -8,7 +8,11 @@ from ..work_items.delivery_outcome import (
     PROGRESS_DELIVERY_OUTCOMES,
 )
 from ..work_items.progress_result import PROGRESS_OBSERVATION_SCHEMA_VERSION, ProgressResultClass
-from ..work_items.autonomous_replan_ack import autonomous_replan_ack_recorded
+from ..work_items.autonomous_replan_ack import (
+    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
+    autonomous_replan_ack_recorded,
+)
+from ..work_items.autonomous_replan_obligation import run_history_agent_id
 
 GOAL_SEMANTIC_HISTORY_SCHEMA_VERSION = "goal_semantic_history_v0"
 SEMANTIC_CONTEXT_RUN_FIELDS = (
@@ -261,12 +265,43 @@ def latest_runs_with_agent_context(
     runs: list[dict[str, Any]],
     *,
     limit: int,
+    agent_lane_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return a strict recent-run drill-down window.
 
     Durable control semantics live in ``goal_semantic_history_v0`` instead of
     expanding this display list beyond its advertised limit.
+
+    ``agent_lane_id`` adds one lane-scoped decision window next to the
+    goal-wide display window. Agent-lane replan triggers count only that lane's
+    material runs since its own last replan ACK, so a Goal with several active
+    lanes can interleave more than ``limit`` peer records between two rows of a
+    single lane and hide that lane's own threshold. The requesting lane keeps
+    the same ``AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK`` budget a single-lane Goal
+    would have, and the goal-wide rows stay in place.
     """
 
     bounded = max(0, limit)
-    return list(runs[:bounded])
+    goal_window = list(runs[:bounded])
+    if not agent_lane_id:
+        return goal_window
+    lane_present = False
+    lane_positions: list[int] = []
+    for position, run in enumerate(runs):
+        attributed = run_history_agent_id(run)
+        if attributed == agent_lane_id:
+            lane_present = True
+        elif attributed is not None:
+            continue
+        lane_positions.append(position)
+    if not lane_present:
+        return goal_window
+    return [
+        runs[position]
+        for position in sorted(
+            {
+                *range(min(bounded, len(runs))),
+                *lane_positions[:AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK],
+            }
+        )
+    ]

@@ -85,6 +85,7 @@ from .control_plane.work_items.attention_queue import (
 )
 from .control_plane.work_items.autonomous_replan_ack import (
     AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW,
+    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK as _AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
     compact_autonomous_replan_ack,
 )
 from .control_plane.work_items.autonomous_replan_obligation import (
@@ -325,10 +326,7 @@ MAX_AUTONOMOUS_REPLAN_TRIGGERS = _MAX_AUTONOMOUS_REPLAN_TRIGGERS_READ_MODEL
 AUTONOMOUS_REPLAN_STALL_THRESHOLD = _AUTONOMOUS_REPLAN_STALL_THRESHOLD_READ_MODEL
 DEAD_MONITOR_REPEAT_THRESHOLD = 6
 AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW
-# A normal delivery appends both a durable run and a neutral quota-spend run.
-# Keep enough internal history to observe the full material-run threshold even
-# when those records are interleaved, with headroom for other neutral events.
-AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD * 3
+AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = _AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK
 BACKLOG_HYGIENE_SECTION_HEADINGS = ("Next Action", "Operating Lessons")
 BACKLOG_HYGIENE_BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")
 BACKLOG_HYGIENE_HINT_PATTERN = re.compile(
@@ -1240,6 +1238,7 @@ def collect_status(
     recent_run_limit: int | None = None,
     include_goal_subagent_configuration: bool = False,
     activation_state_filter: str | None = None,
+    agent_lane_id: str | None = None,
 ) -> dict[str, Any]:
     return _collect_status_read_model(
         registry_path=registry_path,
@@ -1255,5 +1254,6 @@ def collect_status(
             include_goal_subagent_configuration
         ),
         activation_state_filter=activation_state_filter,
+        agent_lane_id=agent_lane_id,
         context=build_status_collection_context(),
     )

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..goals.acceptance_observation import attach_goal_acceptance_observations
+from ..goals.artifact_lifecycle import attach_goal_artifact_lifecycle_projections
 from ..goals.contract_health import project_contract_health_for_goal
 from ..goals.activation import (
     GoalActivationState,
@@ -75,6 +76,7 @@ def collect_status(
     recent_run_limit: int | None = None,
     include_goal_subagent_configuration: bool = False,
     activation_state_filter: GoalActivationState | str | None = None,
+    agent_lane_id: str | None = None,
 ) -> dict[str, Any]:
     display_limit = max(0, limit)
     control_plane_limit = max(
@@ -107,6 +109,7 @@ def collect_status(
         limit=control_plane_limit,
         include_runtime_goals=include_runtime_goals,
         activation_state_filter=activation_filter,
+        agent_lane_id=agent_lane_id,
     )
     contract = context.check_contract(
         registry_path=registry_path,
@@ -243,4 +246,5 @@ def collect_status(
             goal_channel_notification_projection
         )
     attach_goal_acceptance_observations(payload, history=history)
+    attach_goal_artifact_lifecycle_projections(payload, history=history)
     return payload

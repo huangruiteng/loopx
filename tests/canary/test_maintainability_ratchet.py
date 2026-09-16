@@ -94,6 +94,55 @@ def test_module_metric_ratchet_rejects_growth_above_checked_in_baseline(
     assert module_metrics(module_path)["any_count"] == 1
 
 
+def test_module_metric_debt_names_the_reviewed_ledger_to_refresh(
+    tmp_path: Path,
+) -> None:
+    """Module metric growth is settled in the checked-in ledger, not by exception."""
+
+    module_path = tmp_path / "loopx" / "sample.py"
+    module_path.parent.mkdir(parents=True)
+    module_path.write_text("\n".join(["# padding"] * 1501), encoding="utf-8")
+
+    payload = evaluate_maintainability_findings(
+        collect_module_metric_findings(tmp_path, tracked_paths={module_path}),
+        reviewed_exceptions={},
+    )
+    rendered = render_control_plane_maintainability_report(
+        {
+            **payload,
+            "policy": {
+                "module_metric_baseline_path": "loopx/canary/module_metric_baseline.json"
+            },
+        }
+    )
+
+    assert payload["ok"] is False
+    assert "module metric debt" in rendered
+    assert "loopx/canary/module_metric_baseline.json" in rendered
+
+
+def test_review_without_module_metric_debt_keeps_the_report_unchanged() -> None:
+    finding = {
+        "id": "compatibility_facade:loopx.sample",
+        "category": "compatibility_facade",
+        "path": "loopx/sample.py",
+    }
+
+    rendered = render_control_plane_maintainability_report(
+        evaluate_maintainability_findings(
+            [finding],
+            reviewed_exceptions={
+                finding["id"]: {
+                    "reason": "A public compatibility window still exists.",
+                    "retirement_plan": "Delete the edge after the window closes.",
+                }
+            },
+        )
+    )
+
+    assert "module metric debt" not in rendered
+
+
 def test_reviewed_exception_lifecycle_rejects_new_debt_and_stale_entries() -> None:
     finding = {
         "id": "dependency_debt:loopx.sample->loopx.presentation",

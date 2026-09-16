@@ -21,7 +21,6 @@ import { withReportScheduleTimezone } from "./periodic-report-schedule-field";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
 import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus, orderCapabilitiesForPresentation } from "./capability-workbench";
 import { useWorkspaceI18n } from "./i18n";
-import { OperatorCredentialSettings } from "./operator-credential-settings";
 
 type CapabilityDescriptor = CapabilityConfigurationCatalog["capabilities"][number];
 type EditorMode = "guided" | "json";
@@ -294,16 +293,18 @@ export function MachineConfigurationSettings() {
         <p>{t("machine.liveDefaultDescription")}</p>
       </details>
 
-      {inspection?.status === "invalid" ? (
-        <section className="personal-machine-error" data-testid="machine-invalid-repair" role="alert">
-          <strong>{t("machine.invalidStoredConfiguration")}</strong>
-          <p>{t("machine.invalidStoredConfigurationDescription")}</p>
-        </section>
-      ) : null}
+      {/* The catalog workbench is the only flexible block on this surface. It
+          lives in one body element so the surface keeps exactly two grid rows
+          however many notices the editor needs. */}
+      <div className="personal-capability-body">
+        {inspection?.status === "invalid" ? (
+          <section className="personal-machine-error" data-testid="machine-invalid-repair" role="alert">
+            <strong>{t("machine.invalidStoredConfiguration")}</strong>
+            <p>{t("machine.invalidStoredConfigurationDescription")}</p>
+          </section>
+        ) : null}
 
-      <OperatorCredentialSettings />
-
-      <div className="personal-capability-layout">
+        <div className="personal-capability-layout">
         <CapabilityCatalogNavigation capabilities={capabilities} locale={locale} onSelect={setSelectedCapabilityId} scope="machine" selectedCapabilityId={selected.capability_id} t={t} />
 
         <article aria-label={selected.display_name} className="personal-capability-detail" tabIndex={0}>
@@ -404,6 +405,7 @@ export function MachineConfigurationSettings() {
             t={t}
           /> : null}
         </article>
+        </div>
       </div>
     </section>
   );

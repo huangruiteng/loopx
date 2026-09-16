@@ -57,6 +57,7 @@ def status_projection_cache_key(
     include_task_graph: bool,
     goal_id: str | None,
     available_capabilities: Any = None,
+    agent_lane_id: str | None = None,
 ) -> str:
     request = {
         "schema_version": STATUS_PROJECTION_CACHE_SCHEMA_VERSION,
@@ -67,6 +68,7 @@ def status_projection_cache_key(
         "limit": max(0, int(limit)),
         "include_task_graph": bool(include_task_graph),
         "goal_id": str(goal_id or "").strip() or None,
+        "agent_lane_id": str(agent_lane_id or "").strip() or None,
         "available_capabilities": _normalized_available_capabilities(
             available_capabilities
         ),
@@ -94,6 +96,7 @@ def status_projection_cache_metadata(
     goal_id: str | None,
     max_age_seconds: int,
     available_capabilities: Any = None,
+    agent_lane_id: str | None = None,
 ) -> dict[str, Any]:
     key = status_projection_cache_key(
         registry_path=registry_path,
@@ -103,6 +106,7 @@ def status_projection_cache_metadata(
         include_task_graph=include_task_graph,
         goal_id=goal_id,
         available_capabilities=available_capabilities,
+        agent_lane_id=agent_lane_id,
     )
     normalized_capabilities = _normalized_available_capabilities(
         available_capabilities
@@ -113,6 +117,7 @@ def status_projection_cache_metadata(
         "path": str(status_projection_cache_path(runtime_root, key)),
         "max_age_seconds": max(0, int(max_age_seconds)),
         "goal_id": str(goal_id or "").strip() or None,
+        "agent_lane_id": str(agent_lane_id or "").strip() or None,
         "limit": max(0, int(limit)),
         "include_task_graph": bool(include_task_graph),
         "scan_roots": [str(path.expanduser()) for path in scan_roots],
@@ -130,6 +135,7 @@ def load_status_projection_cache(
     goal_id: str | None,
     max_age_seconds: int,
     available_capabilities: Any = None,
+    agent_lane_id: str | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     metadata = status_projection_cache_metadata(
         registry_path=registry_path,
@@ -140,6 +146,7 @@ def load_status_projection_cache(
         goal_id=goal_id,
         max_age_seconds=max_age_seconds,
         available_capabilities=available_capabilities,
+        agent_lane_id=agent_lane_id,
     )
     path = Path(str(metadata["path"]))
     metadata["hit"] = False
@@ -193,6 +200,7 @@ def write_status_projection_cache(
     payload: dict[str, Any],
     max_age_seconds: int,
     available_capabilities: Any = None,
+    agent_lane_id: str | None = None,
 ) -> dict[str, Any]:
     metadata = status_projection_cache_metadata(
         registry_path=registry_path,
@@ -203,6 +211,7 @@ def write_status_projection_cache(
         goal_id=goal_id,
         max_age_seconds=max_age_seconds,
         available_capabilities=available_capabilities,
+        agent_lane_id=agent_lane_id,
     )
     path = Path(str(metadata["path"]))
     path.parent.mkdir(parents=True, exist_ok=True)

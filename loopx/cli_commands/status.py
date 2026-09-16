@@ -201,6 +201,7 @@ def handle_status_command(
                 goal_id=args.goal_id,
                 max_age_seconds=args.projection_cache_ttl_seconds,
                 available_capabilities=args.available_capabilities,
+                agent_lane_id=args.agent_id,
             )
         if payload is None:
             payload = collect_status(
@@ -211,6 +212,7 @@ def handle_status_command(
                 include_task_graph=args.include_task_graph,
                 goal_id=args.goal_id,
                 available_capabilities=args.available_capabilities,
+                agent_lane_id=args.agent_id,
             )
             if args.write_projection_cache:
                 cache_metadata = write_status_projection_cache(
@@ -223,6 +225,7 @@ def handle_status_command(
                     payload=payload,
                     max_age_seconds=args.projection_cache_ttl_seconds,
                     available_capabilities=args.available_capabilities,
+                    agent_lane_id=args.agent_id,
                 )
                 payload["projection_cache"] = cache_metadata
             elif cache_metadata:
@@ -867,6 +870,7 @@ def handle_review_packet_command(
             include_task_graph=not args.handoff_only,
             goal_id=args.goal_id,
             available_capabilities=args.available_capabilities,
+            agent_lane_id=args.agent_id,
         )
         if args.agent_id:
             attach_agent_lane_next_actions(status_payload, agent_id=args.agent_id)

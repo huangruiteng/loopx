@@ -256,6 +256,7 @@ def collect_history(
     limit: int,
     include_runtime_goals: bool = True,
     activation_state_filter: GoalActivationState | str | None = None,
+    agent_lane_id: str | None = None,
 ) -> dict[str, Any]:
     from .capabilities.machine_configuration.builtins import (
         build_builtin_machine_configuration_registry,
@@ -360,7 +361,11 @@ def collect_history(
             "raw_index_records": raw_count,
             "unique_runs": len(runs),
             "latest_status_run": latest_status_run(runs),
-            "latest_runs": latest_runs_with_agent_context(runs, limit=limit),
+            "latest_runs": latest_runs_with_agent_context(
+                runs,
+                limit=limit,
+                agent_lane_id=agent_lane_id,
+            ),
             "semantic_history": goal_semantic_history_from_runs(runs),
         }
         if registry_member:

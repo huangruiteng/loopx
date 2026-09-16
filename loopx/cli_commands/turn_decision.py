@@ -60,6 +60,7 @@ def collect_turn_status_payload(
         limit=max(max(0, args.limit), AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK),
         goal_id=args.goal_id,
         available_capabilities=args.available_capabilities,
+        agent_lane_id=args.agent_id,
     )
 
 

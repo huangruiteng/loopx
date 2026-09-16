@@ -364,11 +364,23 @@ def main() -> int:
         )
         assert skill_readback["integration_mode"] == "fixed_install_script"
         assert skill_readback["source"]["revision"] == source_commit
-        assert set(skill_readback["materialized_skill_ids"]) == {
+        materialized_skill_ids = set(skill_readback["materialized_skill_ids"])
+        assert materialized_skill_ids == {
             "loopx",
-            "loopx-pr-merge",  # Source installer also ships the merge workflow.
             *PACKAGED_HOST_SKILL_IDS,
         }
+        # Only declared global scopes are delivered: a repo-kept workflow carries
+        # no scope marker, so the fixed install keeps it in the checkout instead
+        # of copying a merge-decision workflow onto a host that never merges.
+        repo_only_skill_ids = {
+            path.name
+            for path in (REPO_ROOT / "skills").iterdir()
+            if path.is_dir() and not (path / ".loopx-skill-scope").exists()
+        }
+        assert repo_only_skill_ids, "the checkout no longer carries a repo-only skill source"
+        assert not (materialized_skill_ids & repo_only_skill_ids), sorted(
+            materialized_skill_ids & repo_only_skill_ids
+        )
         skill_text = skill.read_text(encoding="utf-8")
         compact_skill_text = " ".join(skill_text.split())
         for phrase in (
