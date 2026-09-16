@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 from .chat_dsh import STEWARD_SEGMENT_ENV
+from .control_plane.operator_provider import operator_provider_environ
 from .control_plane.turn_driver.host_binding import (
     MANAGED_TURN_HOST,
     managed_executor_binding,
@@ -28,7 +30,7 @@ from .kiro_cli_goal_mode import (
 )
 
 
-def managed_host_capability() -> dict[str, Any]:
+def managed_host_capability(runtime_root: Path | None = None) -> dict[str, Any]:
     """Project the managed host as a chat endpoint with its own verdict.
 
     The channel can hold this host through the segment transport, and whether it
@@ -37,7 +39,13 @@ def managed_host_capability() -> dict[str, Any]:
     transport really does not offer them.
     """
 
-    binding = managed_executor_binding(MANAGED_TURN_HOST)
+    binding = managed_executor_binding(
+        MANAGED_TURN_HOST,
+        # A credential stored from a product surface authenticates this host,
+        # so the availability verdict has to be resolved against the machine
+        # store and not only against the service environment.
+        environ=operator_provider_environ(runtime_root),
+    )
     profile = binding.get("execution_profile") or {}
     return {
         "agent_id": MANAGED_TURN_HOST,
@@ -63,6 +71,7 @@ def builtin_chat_endpoints(
     codex_bin: str,
     claude_bin: str,
     kiro_cli_bin: str,
+    runtime_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Return the built-in endpoints, managed host included."""
 
@@ -136,5 +145,5 @@ def builtin_chat_endpoints(
             "trust_scope": "read_only",
             "source": "builtin",
         },
-        managed_host_capability(),
+        managed_host_capability(runtime_root),
     ]

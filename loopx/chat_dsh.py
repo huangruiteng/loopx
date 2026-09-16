@@ -25,7 +25,7 @@ rather than folded back into the channel's visible history.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 import threading
 from pathlib import Path
@@ -93,6 +93,12 @@ class DshChatAdapter:
     cordis: Path | None = None
     runtime_bin: str | None = None
     runner: Callable[..., Any] | None = None
+    # Only the operator credential pair the segment authenticates with, already
+    # resolved from the machine store and the service environment by the channel
+    # that owns the runtime root. A segment runs as its own process, so the pair
+    # has to be handed to it rather than read again there -- and nothing else
+    # travels with it, because the segment has no authority beyond its answer.
+    credential: Mapping[str, str] | None = None
     _slot: _SegmentSlot | None = field(default=None, init=False, repr=False)
     _slot_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
@@ -135,6 +141,11 @@ class DshChatAdapter:
 
     def _run_segment(self, prompt: str) -> dict[str, Any]:
         runner = self.runner or run_dsh_turn
+        # The dsh sandbox's own setting wins, so a caller cannot widen the
+        # segment's authority by passing a credential mapping that also carries
+        # DSH_PERMISSION_MODE.
+        segment_env = dict(self.credential or {})
+        segment_env.update(STEWARD_SEGMENT_ENV)
         outcome = runner(
             prompt=prompt,
             session_id=self.session_id,
@@ -147,7 +158,7 @@ class DshChatAdapter:
             cordis=self.cordis,
             runtime_bin=self.runtime_bin,
             request_timeout_seconds=self.timeout_sec,
-            env=dict(STEWARD_SEGMENT_ENV),
+            env=segment_env,
         )
         if isinstance(outcome, str):
             return {"final_response": outcome, "finish_reason": None, "events": []}

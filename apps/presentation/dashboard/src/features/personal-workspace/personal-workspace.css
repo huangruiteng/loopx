@@ -697,6 +697,22 @@
 .personal-capability-scope-note summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
 .personal-capability-scope-note p { padding: 10px 0 0 25px; }
 .personal-capability-scope-note svg { flex: 0 0 auto; margin-top: 2px; }
+
+/* The operator credential is a write-only machine setting: the panel keeps the
+   redacted readback and the two inputs on one hairline surface so an operator
+   can compare "what is configured" with "what I am about to store". */
+.personal-operator-credential { display: grid; gap: 12px; margin: 16px 0 24px; padding: 16px; border: 1px solid var(--pw-border); border-radius: 10px; background: var(--pw-surface); }
+.personal-operator-credential > header { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; }
+.personal-operator-credential > header strong { display: block; font-size: 13px; }
+.personal-operator-credential > header p { margin: 4px 0 0; color: var(--pw-muted); font-size: 12px; line-height: 1.5; }
+.personal-operator-credential-status { color: var(--pw-muted); font-family: var(--pw-font-mono); font-size: 11px; }
+.personal-operator-credential-readback { display: grid; gap: 6px; margin: 0; font-size: 12px; }
+.personal-operator-credential-readback > div { display: grid; grid-template-columns: 140px 1fr; gap: 10px; }
+.personal-operator-credential-readback dt { color: var(--pw-muted); }
+.personal-operator-credential-readback dd { margin: 0; overflow-wrap: anywhere; }
+.personal-operator-credential label { display: grid; gap: 4px; font-size: 12px; }
+.personal-operator-credential input { padding: 7px 9px; border: 1px solid var(--pw-border); border-radius: 8px; background: var(--pw-canvas); color: inherit; font-size: 12px; }
+.personal-operator-credential input:disabled { opacity: 0.6; }
 .personal-capability-scope-note p { margin: 0; font-size: 12px; line-height: 1.55; }
 .personal-capability-scope-note strong { display: block; color: var(--pw-text); }
 .personal-capability-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: stretch; min-width: 0; min-height: 0; overflow: hidden; }
