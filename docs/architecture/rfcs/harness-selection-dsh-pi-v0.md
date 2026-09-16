@@ -530,7 +530,7 @@ condition. Validation produces `applies: false`. Preview is not execution.
 | Validation/admission (#4519/#4522/#4532/#4533) | Exact Goal, registered Agents, supported advancement kinds and bounded public-safe fields; channel-scoped Goal lookup; unavailable facts drop the proposal while preserving answer text | `ready` checks registration/action support, not executor health, tool eligibility or budget admission |
 | Staffing gaps | Unknown Agent produces `agent_not_registered` and retains `declined_first_todo`; explicit `capability_not_granted` / `audience_not_authorized` gaps admit no work | These reason codes do not prove all capability/audience conditions are automatically detected |
 | Materialization (#4524/#4528/#4535/#4538) | Revalidates the named Goal; calls canonical Todo owner per ready lane; records proposal digest and bounded `lane_todo_ids`; existing receipt shape remains readable; no monitor key | Confirmed priority is dropped; acceptance/quota/stop are not execution constraints on this path; no atomic team commit or automatic partial-recovery proof |
-| Confirmation (#4547/#4548/#4552) | Existing frontend displays lanes/gaps and submits `team.plan`; bundle and browser fixture shipped | Lark and real worker execution were not qualified by this fixture; all-gap apply currently reports `team_plan_lanes_already_present` with no Todos |
+| Confirmation (#4547/#4548/#4552) | Existing frontend displays lanes/gaps and submits `team.plan`; bundle and browser fixture shipped; the manager conversation now lists the card its own channel stored, so an owner confirms where the sentence was typed while a Goal-scoped fetch stays in that Goal's workspace | Lark and real worker execution were not qualified by this fixture; all-gap apply currently reports `team_plan_lanes_already_present` with no Todos |
 | Freshness | Registry byte changes make the Chat preview stale; optional `intent_basis` reads alignment source facts before materialization | No exact Goal-intent/authorization/work precondition at commit; `intent_basis` is neither the full intent revision nor a CAS fence |
 
 Unchanged-plan retries are covered by focused tests. Do not generalize those
@@ -540,6 +540,8 @@ edits. R1 qualifies those cases through the actual action and recovery paths.
 Latest integration checkpoint: #4569 (`f1166e81e`) keeps unsupported action kinds as lane-local gaps, distinguishes declared gaps from host verdicts, preserves admitted gaps on revalidation and projects admitted plans into local owner-channel cards. A blocked lane no longer rejects the whole plan. The Lark manager audience still has no corresponding card. These fixes do not establish plan execution or resolve the baseline F1–F4 commitment/recovery findings.
 
 Subsequent #4572 (`0aa6179de`) appends a channel-authored confirmation-location pointer to manager answers, naming the Goal workspace. Local and remote manager audiences receive it; Goal channels are not annotated. A remote pointer does not create a Lark card or prove card persistence/team execution; model prose is preserved.
+
+The manager conversation that produced a plan now also lists the card its channel stored, instead of only the Goal workspace the pointer names. This is a presentation change over the same validated proposal: it adds no Lark card, creates nothing before confirmation, and a proposal fetched for a selected Goal stays in that Goal's workspace because it belongs to that context.
 
 ### Relationship to multi-agent and shared authority
 

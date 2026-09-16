@@ -813,6 +813,7 @@ export function PersonalWorkspacePage({
   const [quickCompletingTodoIds, setQuickCompletingTodoIds] = useState<ReadonlySet<string>>(() => new Set());
   const [refreshState, setRefreshState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [sessionProposalIds, setSessionProposalIds] = useState<string[]>([]);
+  const [managerChannelProposalIds, setManagerChannelProposalIds] = useState<string[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<WorkspaceTheme>(readWorkspaceTheme);
   const [goalContexts, setGoalContexts] = useState<Record<string, GoalRepositoryContext>>({});
@@ -985,8 +986,9 @@ export function PersonalWorkspacePage({
   }, [goalMessages, selectedGoal, selectedGoalTab]);
   const managerChatItems = useMemo(
     () => items.filter((item) => item.kind === "message"
-      || (item.kind === "proposal" && sessionProposalIds.includes(item.proposal.previewId))),
-    [items, sessionProposalIds],
+      || (item.kind === "proposal" && (sessionProposalIds.includes(item.proposal.previewId)
+        || managerChannelProposalIds.includes(item.proposal.previewId)))),
+    [items, sessionProposalIds, managerChannelProposalIds],
   );
   const lastChatItem = managerChatItems[managerChatItems.length - 1];
   const latestMessageTextLength = lastChatItem?.kind === "message" ? lastChatItem.message.text.length : 0;
@@ -1074,14 +1076,20 @@ export function PersonalWorkspacePage({
     void listTypedActions(selectedGoalId ? { goalId: selectedGoalId } : { contextKind: "manager" })
       .then((stored) => {
         if (cancelled) return;
-        const restored = Object.fromEntries(stored
+        const restoreable = stored
           .filter((proposal) => ["preview_ready", "gated", "deferred", "applying"].includes(proposal.status)
             || (proposal.action_kind === "operation.execute" && proposal.status === "applied"))
-          .map((proposal) => {
-            const projected = workspaceProposal(proposal, t);
-            return [projected.previewId, projected];
-          }));
+          .map((proposal) => workspaceProposal(proposal, t));
+        const restored = Object.fromEntries(restoreable.map((proposal) => [proposal.previewId, proposal]));
         setProposals((current) => ({ ...current, ...restored }));
+        // The manager conversation shows the cards this channel offered: a team
+        // plan the steward proposed from here is confirmed here, instead of the
+        // owner hunting for the Goal whose workspace happens to hold the card.
+        // A Goal-scoped fetch belongs to that Goal's workspace, not to this
+        // conversation, so it is left alone.
+        if (!selectedGoalId) {
+          setManagerChannelProposalIds(restoreable.map((proposal) => proposal.previewId));
+        }
       })
       .catch(() => {
         // The workspace remains usable when the optional local proposal store is unavailable.

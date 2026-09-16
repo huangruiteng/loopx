@@ -410,7 +410,7 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 | 校验/准入（#4519/#4522/#4532/#4533） | 确切 Goal、注册 Agent、支持的 advancement kind、有界公开安全字段；按通道范围查询 Goal；缺少事实时丢弃提案并保留答案正文 | `ready` 只校验注册/action 支持，不证明执行器健康、工具资格或预算准入 |
 | Staffing gap | 未注册 Agent 产生 `agent_not_registered` 并保留 `declined_first_todo`；显式 `capability_not_granted` / `audience_not_authorized` gap 不允许工作 | 存在这些 reason code 不证明全部 capability/audience 条件已经自动检测 |
 | 物化（#4524/#4528/#4535/#4538） | 重新校验点名 Goal，逐 ready lane 调 canonical Todo owner；回执保存 proposal digest 与有界 `lane_todo_ids`，兼容旧回执且没有 monitor key | 确认的 priority 丢失；acceptance/quota/stop 未成为此路径的执行约束；没有整队原子提交或自动 partial recovery 证明 |
-| 确认（#4547/#4548/#4552） | 现有前端展示 lanes/gaps 并提交 `team.plan`，bundle 与 browser fixture 已交付 | 此 fixture 未验收 Lark 或真实 worker 执行；all-gap apply 仍以零 Todo 返回 `team_plan_lanes_already_present` |
+| 确认（#4547/#4548/#4552） | 现有前端展示 lanes/gaps 并提交 `team.plan`，bundle 与 browser fixture 已交付；产生计划的**管家会话本身也会列出该通道存入的卡片**，业主在说出这句话的地方即可确认，而为已选 Goal 拉取的提案仍留在该 Goal 工作区 | 此 fixture 未验收 Lark 或真实 worker 执行；all-gap apply 仍以零 Todo 返回 `team_plan_lanes_already_present` |
 | 新鲜度 | registry bytes 变化会使 Chat preview stale；可选 `intent_basis` 在物化前读取 alignment source facts | commit 未绑定精确 Goal intent/授权/工作前置条件；`intent_basis` 不是完整意图修订或 CAS fence |
 
 现有测试覆盖未变化计划的重复提交，不能推广到并发计划、多 lane 中断或中途 Todo 被编辑的情况。R1 通过实际 action/recovery 路径补这些资格。
@@ -418,6 +418,8 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 最新集成检查点：#4569（`f1166e81e`）将不支持的 action kind 保留为 lane 级 gap，区分计划声明的 gap 与 host 判断，复验不把已确认的 gap 静默转为工作，并将 admitted plan 投影到本地 owner channel 卡片。一条 lane 无法承接不再拒绝整份计划；Lark manager audience 仍无对应卡片。这些修复不代表团队已执行，也未闭合基线 F1–F4 的承诺与恢复问题。
 
 后续 #4572（`0aa6179de`）在 manager 回答中追加 channel-authored 的确认位置提示，指出目标 Goal 工作区；本地与远端 manager 均收到提示，Goal channel 不追加。远端提示不等于在 Lark 生成卡片，也不证明卡片写入或团队执行成功；原模型正文保留。
+
+产生计划的管家会话现在也会列出它自己通道存入的那张卡片，而不只是提示里点名的 Goal 工作区。这是同一份已校验提案上的展示改动：不新增 Lark 卡片，确认前不创建任何东西，而为已选 Goal 拉取的提案仍留在该 Goal 工作区，因为它属于那个上下文。
 
 ### 与 multi-agent / shared authority 契约的关系
 

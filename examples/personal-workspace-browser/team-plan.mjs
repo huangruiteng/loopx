@@ -12,6 +12,10 @@ import { openWorkspacePage } from "./scenario-context.mjs";
 
 const GOAL_ID = "product-release";
 const PROPOSAL_ID = "proposal-team-plan-fixture";
+const MANAGER_PROPOSAL_ID = "proposal-team-plan-manager-fixture";
+// The manager-channel card is deliberately a different plan from the Goal-scoped
+// one, so a row in the manager conversation cannot be the Goal's card leaking in.
+const MANAGER_PROPOSAL_TITLE = "为 product-release 配出 3 条 lane 的团队";
 const READY_TODO = "Implement the bounded intake";
 const GAP_TODO = "Independently review the intake";
 
@@ -75,6 +79,46 @@ function teamPlanProposal() {
   };
 }
 
+/**
+ * The same plan as the manager channel stored it.
+ *
+ * A plan the steward offers from the manager conversation is stored by that
+ * channel, and its card has to be confirmable in the conversation that produced
+ * it -- not only under the Goal whose workspace it is scoped to.
+ */
+function managerTeamPlanProposal() {
+  const plan = teamPlanProposal();
+  const parameters = plan.normalized_parameters;
+  return {
+    ...plan,
+    proposal_id: MANAGER_PROPOSAL_ID,
+    summary: MANAGER_PROPOSAL_TITLE,
+    context: { kind: "manager", goal_id: GOAL_ID },
+    normalized_parameters: {
+      ...parameters,
+      plan: {
+        ...parameters.plan,
+        objective: "Ship the manager-channel intake",
+        lanes: [
+          ...parameters.plan.lanes,
+          {
+            lane_id: "lane_manager",
+            agent_id: "agent-manager",
+            acceptance: "the manager lane reports its receipt",
+            staffing: "ready",
+            first_todo: {
+              text: "Review the steward handoff",
+              priority: "P2",
+              task_class: "advancement_task",
+              action_kind: "validate",
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
 export const teamPlanScenario = {
   id: "team-plan",
   async run({ browser, collectCoverage, url }) {
@@ -85,7 +129,7 @@ export const teamPlanScenario = {
       else failures.push(message);
     };
     const context = await openWorkspacePage(browser, url, {
-      apiOptions: { initialActionProposals: [teamPlanProposal()] },
+      apiOptions: { initialActionProposals: [teamPlanProposal(), managerTeamPlanProposal()] },
       collectCoverage,
     });
     try {
@@ -165,6 +209,30 @@ export const teamPlanScenario = {
         .waitFor({ state: "visible", timeout: 15_000 });
       await page.screenshot({
         path: resolve(outputDir, "team-plan-applied.png"),
+        fullPage: false,
+        animations: "disabled",
+      });
+
+      // The manager conversation offers the card its own channel produced, so a
+      // plan asked for there is confirmable there instead of only under the Goal
+      // it staffs. The Goal-scoped card stays in that Goal's workspace.
+      await page.locator(".personal-manager-link").first().click();
+      await page.locator(".personal-goal-tabs button", { hasText: "Chat" }).click();
+      const managerCard = page.locator(".personal-proposal-row", { hasText: MANAGER_PROPOSAL_TITLE });
+      try {
+        await managerCard.waitFor({ state: "visible", timeout: 15_000 });
+      } catch (error) {
+        throw new Error(
+          `${error.message}; manager rows=${JSON.stringify(await page.locator(".personal-proposal-row").allInnerTexts())};`
+          + ` body=${(await page.locator("body").innerText()).slice(0, 1200)}`,
+        );
+      }
+      check(
+        (await managerCard.innerText()).includes("team.plan"),
+        "the manager conversation offers the team plan card it produced",
+      );
+      await page.screenshot({
+        path: resolve(outputDir, "team-plan-manager-conversation.png"),
         fullPage: false,
         animations: "disabled",
       });
