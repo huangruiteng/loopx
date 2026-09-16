@@ -298,7 +298,9 @@ Progress means another independently reproducible user journey, not more fields 
 
 ### Verified Findings
 
-These are synthetic-fixture results at the exact baseline, without live user content. F1–F4 exercise existing `ChatActionService.preview/apply` with isolated Goals. F4 injects failure immediately before the second Todo write; the other writes use the actual local Todo writer. F5–F7 are source/contract findings. Runtime repairs are outstanding; this documentation change does not implement them.
+These are synthetic-fixture results at the exact baseline, without live user content. F1–F4 exercise existing `ChatActionService.preview/apply` with isolated Goals. F4 injects failure immediately before the second Todo write; the other writes use the actual local Todo writer. F5–F7 are source/contract findings.
+
+**Repair status (2026-09-17, baseline `6979d528b`).** The rows below stay as the record of what the audit found. R1 has since closed part of F1 and F3: a confirmed lane now keeps the priority it declared in its own Todo label, the settlement receipt retains each lane's acceptance beside the Todo identity it became, a partial application reports `team_plan_partially_applied` with a gap count instead of a full success, and a confirmation that staffed no lane is recorded as the typed failure `team_plan_no_staffable_lane` rather than as an applied plan with an empty Todo id. The remainder is open and owned by canonical Todos: the plan-level quota/stop classification, F2's commit precondition, F4's per-lane recovery, and rendering a partial application as partial on the confirmation card.
 
 | ID / Priority | Trigger, result and consequence | Location and successor |
 | --- | --- | --- |

@@ -44,10 +44,27 @@ _RECEIPT_FIELDS = {
 # closed and a new field is admitted only as an explicitly bounded addition
 # that an older receipt may still omit. `lane_todo_ids` is the readback of a
 # team plan: every lane Todo the settlement ensured, not just the first one.
-_OPTIONAL_RECEIPT_FIELDS = {"lane_todo_ids", "intent_basis"}
+# `lane_settlements` keeps the lane->Todo->acceptance relationship the owner
+# confirmed, so a committed plan can still be read as "which lane was meant to
+# end on what" after the prose answer is gone.
+_OPTIONAL_RECEIPT_FIELDS = {
+    "lane_todo_ids",
+    "intent_basis",
+    "lane_settlements",
+    "gap_count",
+}
 _LANE_TODO_ID_LIMIT = 8
 _LANE_TODO_ID = re.compile(r"^todo_[A-Za-z0-9]{1,40}$")
 _INTENT_BASIS = re.compile(r"^sha256:[0-9a-f]{64}$")
+_LANE_SETTLEMENT_FIELDS = {
+    "lane_id",
+    "agent_id",
+    "priority",
+    "disposition",
+    "todo_id",
+    "acceptance",
+}
+_LANE_SETTLEMENT_DISPOSITIONS = ("created", "reused")
 
 
 TransitionCheckpoint = Callable[[list[dict[str, Any]]], None]
@@ -161,9 +178,73 @@ def validate_governed_transition_receipts(
             raise ValueError(
                 "governed transition proposal receipt intent_basis is invalid"
             )
+        lane_settlements = receipt.get("lane_settlements")
+        if lane_settlements is not None:
+            normalize_lane_settlements(lane_settlements)
+        gap_count = receipt.get("gap_count")
+        if gap_count is not None and (
+            isinstance(gap_count, bool)
+            or not isinstance(gap_count, int)
+            or not 1 <= gap_count <= STEWARD_TEAM_PLAN_LANE_LIMIT
+        ):
+            raise ValueError("governed transition proposal receipt gap_count is invalid")
         validate_public_safe_value(receipt, path=f"transition_receipts[{index}]")
         receipts.append(receipt)
     return receipts
+
+
+def normalize_lane_settlements(value: object) -> list[dict[str, str]]:
+    """Read the lane->Todo->acceptance relationship one plan settlement made.
+
+    A confirmed plan carries a lane's acceptance signal as well as the work it
+    starts. The Todo owner stores the work, so the acceptance a lane was meant
+    to end on is retained beside the Todo identity it became, in the order the
+    plan declared its lanes. A lane that was not materialized is absent: the
+    settlement reports what exists now, not what was hoped for.
+    """
+
+    if (
+        not isinstance(value, list)
+        or not 1 <= len(value) <= STEWARD_TEAM_PLAN_LANE_LIMIT
+    ):
+        raise ValueError("governed transition lane settlements are invalid")
+    settlements: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(value):
+        item = _mapping(raw, f"lane_settlement[{index}]")
+        if set(item) != _LANE_SETTLEMENT_FIELDS:
+            raise ValueError("governed transition lane settlement fields are invalid")
+        lane_id = str(item["lane_id"])
+        if not lane_id or lane_id in seen:
+            raise ValueError("governed transition lane settlement identity is invalid")
+        seen.add(lane_id)
+        disposition = str(item["disposition"])
+        if disposition not in _LANE_SETTLEMENT_DISPOSITIONS:
+            raise ValueError(
+                "governed transition lane settlement disposition is invalid"
+            )
+        todo_id = str(item["todo_id"])
+        if not _LANE_TODO_ID.fullmatch(todo_id):
+            raise ValueError("governed transition lane settlement todo_id is invalid")
+        priority = str(item["priority"])
+        if priority not in STEWARD_TEAM_PLAN_PRIORITIES:
+            raise ValueError(
+                "governed transition lane settlement priority is invalid"
+            )
+        settlements.append(
+            {
+                "lane_id": lane_id,
+                "agent_id": _plan_text(item["agent_id"], "lane settlement agent_id"),
+                "priority": priority,
+                "disposition": disposition,
+                "todo_id": todo_id,
+                "acceptance": _plan_text(
+                    item["acceptance"], "lane settlement acceptance"
+                ),
+            }
+        )
+    validate_public_safe_value(settlements, path="lane_settlements")
+    return settlements
 
 
 def _monitor_for_key(
@@ -305,6 +386,24 @@ def _intent_basis_for(
     return str(basis) if basis else None
 
 
+def _lane_todo_text(text: str, priority: str) -> str:
+    """Give a lane's first Todo the priority the owner confirmed.
+
+    LoopX expresses a Todo's priority through the label the canonical Todo
+    readers parse, so a confirmed lane carries it in its own text rather than in
+    a second field no reader owns. A lane whose text already declares a
+    priority keeps it: the plan the owner reviewed wins, and re-reading a
+    preview cannot stack two labels on one row.
+    """
+
+    from ..todos.text import normalize_new_todo, todo_priority_prefix
+
+    normalized = normalize_new_todo(text)
+    if todo_priority_prefix(normalized):
+        return normalized
+    return f"[{priority}] {normalized}"
+
+
 def _apply_team_plan(
     *,
     registry_path: Path,
@@ -357,35 +456,54 @@ def _apply_team_plan(
     intent_basis = _intent_basis_for(goal_id=goal_id, goal=goal, registry_path=registry_path, preview=preview)
     created: list[str] = []
     reused: list[str] = []
+    lane_settlements: list[dict[str, str]] = []
     for lane in preview["lanes"]:
         if lane.get("staffing") != "ready":
             continue
         first_todo = lane["first_todo"]
+        priority = str(first_todo["priority"])
         result = add_goal_todo(
             registry_path=Path(registry_path).expanduser(),
             goal_id=goal_id,
             role="agent",
-            text=str(first_todo["text"]),
+            text=_lane_todo_text(str(first_todo["text"]), priority),
             status=TODO_STATUS_OPEN,
             task_class=TODO_TASK_CLASS_ADVANCEMENT,
             action_kind=str(first_todo["action_kind"]),
             claimed_by=str(lane["agent_id"]),
             agent_id=str(lane["agent_id"]),
         )
+        todo_id = str(result["todo_id"])
         if result.get("added"):
-            created.append(str(result["todo_id"]))
+            created.append(todo_id)
         else:
-            reused.append(str(result["todo_id"]))
+            reused.append(todo_id)
+        # The acceptance a lane was confirmed to end on is retained beside the
+        # Todo identity it became, so the commitment survives the answer.
+        lane_settlements.append(
+            {
+                "lane_id": str(lane["lane_id"]),
+                "agent_id": str(lane["agent_id"]),
+                "priority": priority,
+                "disposition": "created" if result.get("added") else "reused",
+                "todo_id": todo_id,
+                "acceptance": str(lane["acceptance"]),
+            }
+        )
     # The receipt names every lane Todo this settlement ensured, whether the
     # canonical owner added it or found it already present, so a replayed
     # settlement still reports the same identities instead of an empty one.
     lane_todo_ids = [*created, *reused]
     return {
-        "action": "created" if created else "reused",
+        # A plan that staffed no lane is neither a creation nor a reuse, and
+        # saying "reused" for it is what let an empty confirmation read as
+        # success. The three outcomes stay distinct.
+        "action": "created" if created else ("reused" if reused else "unstaffed"),
         "todo_id": lane_todo_ids[0] if lane_todo_ids else "",
         "target_key": None,
         "created_todo_ids": created,
         "lane_todo_ids": lane_todo_ids,
+        "lane_settlements": lane_settlements,
         "intent_basis": intent_basis,
         "reused_lane_count": len(reused),
         "gap_count": len(preview["gaps"]),
@@ -515,6 +633,20 @@ def settle_governed_transition_proposals(
             # The apply ensured every ready lane's first Todo; a receipt that
             # named only the first one could not be read as "what exists now".
             receipt["lane_todo_ids"] = [str(item) for item in lane_todo_ids]
+        lane_settlements = result.get("lane_settlements")
+        if lane_settlements:
+            # Retain the relationship, not only the identities: which lane the
+            # owner confirmed, what it was meant to end on, and the Todo it
+            # became.
+            receipt["lane_settlements"] = normalize_lane_settlements(
+                [dict(item) for item in lane_settlements]
+            )
+        gap_count = result.get("gap_count")
+        if gap_count:
+            # A settlement that staffed some lanes and left others a gap is a
+            # partial application, and the reader has to be able to tell
+            # without re-deriving the plan.
+            receipt["gap_count"] = int(gap_count)
         if result.get("intent_basis"):
             # The work-graph edit this receipt records is traceable to the
             # canonical basis it was applied against, so a lane Todo can be tied

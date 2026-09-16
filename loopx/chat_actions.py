@@ -1005,6 +1005,36 @@ class ChatActionService(
         settlement = settlements[0]
         lane_todo_ids = [str(item) for item in (settlement.get("lane_todo_ids") or [])]
         intent_basis = str(settlement.get("intent_basis") or "")
+        gap_count = int(settlement.get("gap_count") or 0)
+        if not lane_todo_ids:
+            # Every lane stayed a gap, so this confirmation created nothing and
+            # reused nothing. The old path wrote a receipt that reported
+            # "lanes already present" with a verified projection and an empty
+            # Todo id, which reads as success where the readback finds no work.
+            # A confirmation that can only create nothing is recorded as the
+            # typed failure it is, and the plan's lanes and reasons stay in the
+            # card the owner confirmed.
+            return {
+                "proposal": self.store.mark_failed(
+                    proposal_id,
+                    error_code="team_plan_no_staffable_lane",
+                    message=(
+                        f"none of the plan's {gap_count} lane(s) can be staffed by "
+                        "this host, so confirming it created no work"
+                    ),
+                ),
+                "turn": None,
+            }
+        # The outcome is read from what the settlement actually produced, not
+        # from "the action was not a creation": a plan that created lanes beside
+        # a gap is a partial application, and reporting it as a full success
+        # told the owner the commitment was kept when part of it was not.
+        if str(settlement.get("action") or "") == "reused":
+            outcome = "team_plan_lanes_already_present"
+        elif gap_count:
+            outcome = "team_plan_partially_applied"
+        else:
+            outcome = "team_plan_applied"
         receipt = {
             "receipt_id": _digest(
                 {
@@ -1013,11 +1043,7 @@ class ChatActionService(
                     "lane_todo_ids": lane_todo_ids,
                 }
             )[:32],
-            "outcome": (
-                "team_plan_applied"
-                if settlement.get("action") == "created"
-                else "team_plan_lanes_already_present"
-            ),
+            "outcome": outcome,
             "projection_verified": True,
             "resource_ids": {
                 "goal_id": goal_id,
@@ -1025,6 +1051,14 @@ class ChatActionService(
                 "lane_todo_ids": lane_todo_ids,
             },
         }
+        lane_settlements = settlement.get("lane_settlements")
+        if lane_settlements:
+            # Which lane each created Todo is, who runs it, the priority it
+            # carries and the acceptance it was confirmed to end on, so the
+            # owner's readback still names the commitment and not just the work.
+            receipt["lanes"] = [dict(item) for item in lane_settlements]
+        if gap_count:
+            receipt["gap_count"] = gap_count
         if intent_basis:
             # The canonical revision these lanes were created against, so the
             # owner's readback can name what the work advances.

@@ -131,16 +131,25 @@ def test_a_confirmed_plan_creates_each_ready_lane_first_todo(tmp_path: Path) -> 
     assert state.count("loopx:todo ") == 1
 
 
-def test_a_lane_with_an_unregistered_agent_becomes_a_gap_and_creates_nothing(
+def test_confirming_a_plan_that_staffs_no_lane_is_not_reported_as_success(
     tmp_path: Path,
 ) -> None:
+    """A confirmation that can only create nothing reports exactly that.
+
+    The plan stays visible with its typed gap -- the owner sees what was asked
+    for and what is missing -- and confirming it does not produce a receipt that
+    reads as an applied plan with a verified projection.
+    """
+
     project, _registry_path, service = _fixture(tmp_path)
 
     preview = _preview(service, _plan(agent_id="agent-not-registered"))
     applied = service.apply(preview["proposal_id"])
-    # The preview is admitted with its gap, and confirming it creates nothing:
-    # the owner sees what was asked for and what is missing.
-    assert applied["proposal"]["receipt"]["resource_ids"]["lane_todo_ids"] == []
+    proposal = applied["proposal"]
+    assert proposal["status"] == "failed"
+    assert proposal["failure"]["error_code"] == "team_plan_no_staffable_lane"
+    assert proposal["failure"]["retry_safe"] is True
+    assert "receipt" not in proposal or proposal["receipt"] is None
     assert "loopx:todo " not in _todos(project)
 
 
@@ -227,10 +236,18 @@ def test_an_admitted_preview_becomes_the_card_the_surfaces_list(
 
     applied = service.apply(proposal["proposal_id"])
     receipt = applied["proposal"]["receipt"]
-    assert receipt["outcome"] == "team_plan_applied"
+    # One lane became work and one stayed a gap, so this is a partial
+    # application: the readback names the gap rather than reporting a full
+    # success for a plan the host could only partly staff.
+    assert receipt["outcome"] == "team_plan_partially_applied"
+    assert receipt["gap_count"] == 1
     # Confirming the card creates the lane that can run and not the one whose
     # kind this host does not ship.
     assert len(receipt["resource_ids"]["lane_todo_ids"]) == 1
+    assert receipt["lanes"][0]["lane_id"] == "lane-alpha"
+    assert receipt["lanes"][0]["acceptance"] == (
+        "The lane's first Todo is delivered with evidence"
+    )
     state = _todos(project)
     assert "Advance the intake contract" in state
     assert "Repair the public smoke" not in state
