@@ -12,6 +12,8 @@ import {
   decodeAuthorityStateDelta,
   isAuthorityStateCheckpoint,
 } from "../../loopx/control_plane/coordination/authority_state_log.ts";
+import {canonicalAuthorityBytes} from
+  "../../loopx/control_plane/coordination/authority_store_codec.ts";
 
 test("authority state deltas reconstruct every committed projection exactly", () => {
   const previous = {
@@ -107,4 +109,44 @@ test("authority state digests and checkpoint windows are stable and bounded", ()
   assert.equal(isAuthorityStateCheckpoint(1n), true);
   assert.equal(isAuthorityStateCheckpoint(64n), false);
   assert.throws(() => authorityStateCheckpointCursor(0n), /checkpoint cursor/u);
+});
+
+test("authority state deltas keep every JSON key the stored projection could carry", () => {
+  // V1 retained a whole projection per commit, so every JSON object key was
+  // legal legacy input. The delta codec inherits that contract: an empty key
+  // is an ordinary key, and a `__proto__` key is stored data instead of the
+  // inherited accessor. Keys that only existed in V1 data would otherwise be
+  // copied into the new format and fail on the first read.
+  const text = (value: unknown): string => canonicalAuthorityBytes(value).toString("utf8");
+  const stored = (previous: unknown, next: unknown): unknown => JSON.parse(
+    JSON.stringify(authorityStateDelta(previous as never, next as never))) as unknown;
+
+  const previous = JSON.parse('{"": {"empty": true}, "__proto__": {"own": 1}, "todos": []}') as
+    Record<string, unknown>;
+  const next = JSON.parse('{"": {"empty": false}, "__proto__": {"own": 2},' +
+    ' "nested": {"__proto__": {"deep": true}}, "todos": [{"todo_id": "todo-0"}]}') as
+    Record<string, unknown>;
+  const applied = applyAuthorityStateDelta(previous, decodeAuthorityStateDelta(stored(previous, next)));
+  assert.equal(text(applied), text(next));
+  // The reconstruction is an ordinary JSON object: `__proto__` stayed a key.
+  assert.equal(Object.getPrototypeOf(applied), Object.prototype);
+  assert.deepEqual(Object.keys(applied).sort(), ["", "__proto__", "nested", "todos"]);
+  assert.deepEqual(applied[""], {empty: false});
+  assert.deepEqual(applied["__proto__"], {own: 2});
+  assert.deepEqual(applied["nested"], {["__proto__"]: {deep: true}});
+
+  // Removing a legacy key is legal too, including the empty key and a key that
+  // the previous state only carried inside a nested object.
+  const trimmed = JSON.parse('{"nested": {}, "todos": []}') as Record<string, unknown>;
+  const removal = applyAuthorityStateDelta(next, decodeAuthorityStateDelta(stored(next, trimmed)));
+  assert.equal(text(removal), text(trimmed));
+  assert.deepEqual(Object.keys(removal).sort(), ["nested", "todos"]);
+  assert.equal(Object.hasOwn(removal, "__proto__"), false);
+
+  // A legacy key the delta has to create is an own data property as well.
+  const legacyText = '{"__proto__": {"own": 1}, "": 0}';
+  const created = applyAuthorityStateDelta({},
+    decodeAuthorityStateDelta(stored({}, JSON.parse(legacyText) as Record<string, unknown>)));
+  assert.equal(text(created), text(JSON.parse(legacyText)));
+  assert.equal(Object.getPrototypeOf(created), Object.prototype);
 });

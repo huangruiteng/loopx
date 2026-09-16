@@ -232,6 +232,74 @@ function runMigrationCli(args: readonly string[]): {status: number | null; stdou
     "--experimental-strip-types", script, ...args], {encoding: "utf8"});
 }
 
+/**
+ * Retained V1 history that used only JSON object keys V1 never restricted.
+ *
+ * V1 stored a whole projection per commit, so `""` was an ordinary key and
+ * `__proto__` was data. The migration has to carry both into the new format and
+ * prove they still read back before it commits.
+ */
+function legacyKeySeeds(): SqliteAuthorityV1Seed[] {
+  return [
+    {operation_id: "legacy-op-001",
+      projection: {authority_revision: 1, "": {empty: true}, ["__proto__"]: {own: 1}, todos: []}},
+    {operation_id: "legacy-op-002",
+      projection: {authority_revision: 2, "": {empty: true}, ["__proto__"]: {own: 1},
+        nested: {["__proto__"]: {deep: true}}, todos: [{todo_id: "todo-0", status: "open"}]}},
+    {operation_id: "legacy-op-003",
+      projection: {authority_revision: 3, "": {empty: false}, nested: {},
+        todos: [{todo_id: "todo-0", status: "done"}]}},
+  ];
+}
+
+test("SQLite V1 migration keeps every legacy JSON key readable", async t => {
+  const root = await directory(t);
+  const v1 = createSqliteAuthorityStoreV1(root, GOAL_ID, legacyKeySeeds());
+  const {DatabaseSync: Reader} = createRequire(import.meta.url)("node:sqlite");
+  const legacy = new Reader(v1.path, {readOnly: true});
+  try {
+    // The frozen V1 rows really carry the keys this test is about.
+    const text = String(legacy.prepare("SELECT projection FROM commits WHERE cursor = 2").get()?.projection);
+    assert.match(text, /"__proto__"/u);
+    assert.match(text, /""\s*:/u);
+  } finally { legacy.close(); }
+  const migrated = migrateSqliteAuthorityStoreV1ToV2(root, GOAL_ID, {execute: true});
+  assert.equal(migrated.status, "migrated", JSON.stringify(migrated));
+  assert.equal(migrated.commits, 3);
+  const store = new SqliteAuthorityStore(root, GOAL_ID, {existingOnly: true, expectedIdentity: v1.identity});
+  // The live head reads back as the exact projection the last V1 commit published.
+  const head = await store.loadAuthority();
+  assert.equal(head.status, "loaded", JSON.stringify(head));
+  if (head.status === "loaded") {
+    assert.equal(canonicalAuthorityBytes(head.head).toString("utf8"),
+      JSON.stringify(v1.rows[2]!.operation_receipt.projection));
+    // The empty key survives the migration, and the last commit really did
+    // drop `__proto__` rather than the codec silently dropping it for us.
+    assert.equal(Object.hasOwn(head.head, ""), true);
+    assert.equal(Object.hasOwn(head.head, "__proto__"), false);
+    assert.equal(Object.getPrototypeOf(head.head), Object.prototype);
+  }
+  // A retained projection keeps the legacy `__proto__` key as stored data.
+  const page = await store.scanCommitted(null, 6);
+  assert.equal(page.status, "page", JSON.stringify(page));
+  if (page.status === "page") {
+    const retained = page.transactions[1]!.projection;
+    assert.equal(Object.hasOwn(retained, "__proto__"), true);
+    assert.equal(Object.hasOwn(retained, ""), true);
+    assert.equal(Object.getPrototypeOf(retained), Object.prototype);
+    assert.deepEqual(retained["__proto__"], {own: 1});
+  }
+  // Every retained projection reads back byte-identically, not only the head.
+  const history = await logicalHistory(store);
+  for (const [index, row] of v1.rows.entries()) {
+    const parsed = JSON.parse(history[2 + index]!) as Record<string, unknown>;
+    assert.equal(parsed.cursor, row.cursor);
+    assert.equal(parsed.operation_id, row.operation_id);
+    assert.deepEqual(parsed.projection, JSON.stringify(row.operation_receipt.projection));
+  }
+  assert.equal((await store.verifyAuthorityHistory()).status, "verified");
+});
+
 test("SQLite V1 migration refuses a rewritten proof and leaves the database intact", async t => {
   const root = await directory(t);
   const v1 = createSqliteAuthorityStoreV1(root, GOAL_ID, seeds());

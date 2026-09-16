@@ -22,8 +22,9 @@ import type { DatabaseSync } from "node:sqlite";
 import type { JsonObject } from "../effect_program.ts";
 import { AuthorityStoreProtocolError, canonicalAuthorityObject,
   canonicalAuthorityObjectList, requireAuthorityStoreId } from "./authority_store_codec.ts";
-import { authorityStateCheckpointCursor, authorityStateDelta,
-  authorityStateDigest, isAuthorityStateCheckpoint } from "./authority_state_log.ts";
+import { applyAuthorityStateDelta, authorityStateCheckpointCursor, authorityStateDelta,
+  authorityStateDigest, decodeAuthorityStateDelta,
+  isAuthorityStateCheckpoint } from "./authority_state_log.ts";
 import {
   SQLITE_AUTHORITY_STORE_SCHEMA,
   commitDigest,
@@ -192,6 +193,13 @@ function executeSqliteAuthorityMigration(
         }
         const stateDigest = authorityStateDigest(projection);
         const delta = authorityStateDelta(previous ?? {}, projection);
+        // Prove the encoder before anything is written, exactly like a live
+        // commit: replaying the stored delta must reproduce this projection
+        // byte for byte. A retained projection the new format cannot read
+        // would otherwise be copied into V2 and only fail on a later read.
+        if (authorityStateDigest(applyAuthorityStateDelta(previous ?? {}, delta)) !== stateDigest) {
+          throw new AuthorityStoreProtocolError("V1 authority state delta does not reconstruct its commit");
+        }
         if (isAuthorityStateCheckpoint(cursor)) {
           insertCheckpoint.run(cursor.toString(), JSON.stringify(projection), stateDigest);
           checkpoints += 1;
@@ -214,6 +222,11 @@ function executeSqliteAuthorityMigration(
       db.prepare("INSERT INTO head_v2 VALUES (1, ?, ?, ?)").run(cursor.toString(),
         JSON.stringify(previous), previousDigest);
     }
+    // Prove the new format is readable before it is adopted: every retained
+    // row is read back from its stored text and replayed through the codec the
+    // store reads with, so the swap cannot publish a log only its writer can
+    // decode.
+    verifyWrittenStateLogReadable(db, commits);
     // Swap only after every retained row was proved and re-published.
     db.exec("DROP TABLE head");
     db.exec("DROP TABLE commits");
@@ -241,6 +254,78 @@ function executeSqliteAuthorityMigration(
     reason: error instanceof Error ? error.message : "SQLite authority migration failed",
     database_bytes_before: before};
   } finally { db?.close(); }
+}
+
+/**
+ * Read the not-yet-swapped V2 tables back and prove they reconstruct.
+ *
+ * The migration already proved each delta against its in-memory predecessor.
+ * This reads the rows it actually wrote, decodes them with the store's own
+ * delta decoder, replays them from the empty state, and requires every payload
+ * to match the digest the row published. Identical identity and digest columns
+ * alone would not catch a state log the new format cannot read.
+ */
+function verifyWrittenStateLogReadable(db: DatabaseSync, commits: number): void {
+  const page = db.prepare(`SELECT CAST(cursor AS TEXT) AS sequence, state_digest, parent_state_digest,
+      delta FROM commits_v2 WHERE cursor > ? ORDER BY cursor LIMIT ?`);
+  let state: JsonObject = {};
+  let digest: string | null = null;
+  let cursor = 0n;
+  let read = 0;
+  for (;;) {
+    const rows = page.all(cursor.toString(), BigInt(MIGRATION_PAGE)) as unknown as
+      Record<string, unknown>[];
+    if (rows.length === 0) break;
+    for (const row of rows) {
+      const sequence = row.sequence;
+      if (typeof sequence !== "string" || !/^[1-9]\d*$/.test(sequence)) {
+        throw new AuthorityStoreProtocolError("migrated authority store cursor is invalid");
+      }
+      cursor = BigInt(sequence);
+      read += 1;
+      if ((row.parent_state_digest === null ? null : String(row.parent_state_digest)) !== digest) {
+        throw new AuthorityStoreProtocolError("migrated authority state log parent lineage is invalid");
+      }
+      state = applyAuthorityStateDelta(state,
+        decodeAuthorityStateDelta(JSON.parse(String(row.delta)) as unknown));
+      if (authorityStateDigest(state) !== row.state_digest) {
+        throw new AuthorityStoreProtocolError("migrated authority state log digest mismatch");
+      }
+      digest = String(row.state_digest);
+    }
+  }
+  if (read !== commits) {
+    throw new AuthorityStoreProtocolError("migrated authority state log lost retained transactions");
+  }
+  const retainedDigest = db.prepare("SELECT state_digest FROM commits_v2 WHERE cursor = ?");
+  for (const row of db.prepare(`SELECT CAST(cursor AS TEXT) AS sequence, projection, projection_digest
+      FROM checkpoints_v2 ORDER BY cursor`).all() as unknown as Record<string, unknown>[]) {
+    const projection = canonicalAuthorityObject(JSON.parse(String(row.projection)) as unknown,
+      "migrated authority checkpoint projection");
+    if (authorityStateDigest(projection) !== row.projection_digest) {
+      throw new AuthorityStoreProtocolError("migrated authority checkpoint is not readable");
+    }
+    if (retainedDigest.get(String(row.sequence))?.state_digest !== row.projection_digest) {
+      throw new AuthorityStoreProtocolError("migrated authority checkpoint does not cover its cursor");
+    }
+  }
+  const head = db.prepare("SELECT CAST(cursor AS TEXT) AS sequence, projection, state_digest FROM head_v2 WHERE singleton = 1")
+    .get() as Record<string, unknown> | undefined;
+  if (read === 0) {
+    if (head !== undefined) {
+      throw new AuthorityStoreProtocolError(
+        "migrated authority head was published without a retained transaction");
+    }
+    return;
+  }
+  if (head === undefined || head.sequence !== cursor.toString() || head.state_digest !== digest) {
+    throw new AuthorityStoreProtocolError("migrated authority head does not match its state log");
+  }
+  const projection = canonicalAuthorityObject(JSON.parse(String(head.projection)) as unknown,
+    "migrated authority head projection");
+  if (authorityStateDigest(projection) !== digest) {
+    throw new AuthorityStoreProtocolError("migrated authority head is not readable");
+  }
 }
 
 /**
