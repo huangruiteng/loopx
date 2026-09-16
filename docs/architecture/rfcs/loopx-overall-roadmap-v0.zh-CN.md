@@ -300,7 +300,7 @@ R2 的一条依赖必须通过真实 LoopX Agent 间的请求/产物交接完成
 
 以下是精确基线上的合成 fixture 结果，不含线上用户内容。F1–F4 用现有 `ChatActionService.preview/apply` 及隔离 Goal 复核；F4 只在第二次 Todo 写入前注入失败，其余走实际本地 Todo writer。F5–F7 是源码/合同审计。
 
-**修复状态（2026-09-17，基线 `6979d528b`）。** 下表保留审计当时的事实。R1 已收口 F1 与 F3 的一部分：确认后的 lane 现在把声明的优先级保留在自己的 Todo 标签里；结算 receipt 会把每条 lane 的 acceptance 保留在它变成的 Todo 身份旁；部分落地返回 `team_plan_partially_applied` 并带缺口数量，而不是完整成功；没有任何 lane 可组建的确认记为 typed failure `team_plan_no_staffable_lane`，不再是一份空 Todo id 的已应用计划。剩余部分由 canonical Todo 承接：计划级 quota/stop 分类、F2 的 commit 前置条件、F4 的 per-lane 恢复，以及确认卡片把部分落地渲染为部分。
+**修复状态（2026-09-17，基线 `6979d528b`）。** 下表保留审计当时的事实。R1 已收口 F1 的优先级与验收部分、全部 F3，以及 F2：确认后的 lane 现在把声明的优先级保留在自己的 Todo 标签里；结算 receipt 会把每条 lane 的 acceptance 保留在它变成的 Todo 身份旁；部分落地返回 `team_plan_partially_applied` 并带缺口数量，而不是完整成功；没有任何 lane 可组建的确认记为 typed failure `team_plan_no_staffable_lane`，不再是一份空 Todo id 的已应用计划；团队计划预览现在绑定该 Goal 的 active-state 意图与这些 lane 将要推进的 canonical basis，因此在预览之后改写 objective 会要求业主重新确认，而不是继续应用旧计划。剩余部分由 canonical Todo 承接：计划级 quota/stop 分类、F4 的 per-lane 恢复，以及确认卡片把部分落地渲染为部分。
 
 | ID / 优先级 | 触发、结果与影响 | 定位与修复卡 |
 | --- | --- | --- |

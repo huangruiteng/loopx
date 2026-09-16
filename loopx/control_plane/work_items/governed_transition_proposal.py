@@ -386,6 +386,30 @@ def _intent_basis_for(
     return str(basis) if basis else None
 
 
+def steward_team_plan_intent_basis(
+    *,
+    goal_id: str,
+    goal: Mapping[str, Any],
+    registry_path: Path,
+    plan: Mapping[str, Any],
+) -> str | None:
+    """The canonical source basis a team plan's lanes would be created against.
+
+    A confirmation surface needs this fact *before* the owner confirms, not
+    only in the receipt afterwards: it is the intent the plan is reviewed
+    against, so a plan confirmed against one basis may not be applied against
+    another. The reader is the same one the settlement records, exposed here so
+    the preview can bind it instead of re-deriving a second basis.
+    """
+
+    return _intent_basis_for(
+        goal_id=goal_id,
+        goal=goal,
+        registry_path=Path(registry_path),
+        preview=plan,
+    )
+
+
 def _lane_todo_text(text: str, priority: str) -> str:
     """Give a lane's first Todo the priority the owner confirmed.
 
