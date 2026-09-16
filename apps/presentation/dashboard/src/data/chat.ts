@@ -332,6 +332,9 @@ export const typedActionKindSchema = z.enum([
   "gate.resolve",
   "run.correct",
   "operation.execute",
+  // The steward's team intake: one validated multi-lane preview that the owner
+  // confirms. The apply re-validates the same payload before creating work.
+  "team.plan",
 ]);
 
 const typedOperationEnvelopeSchema = z.object({

@@ -3,6 +3,7 @@ import {
   isStaleActionFailure,
 } from "../../../../../../loopx/control_plane/presentation/action_review_plan.js";
 import { refreshAttention } from "./attention-details";
+import { teamPlanFields, teamPlanGoalId, teamPlanLaneCount } from "./team-plan-preview";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import { AlertCircle, Bot, CalendarClock, FileText, ListPlus, MessageCircleQuestion, Paperclip, Plus, RefreshCw, Send, X } from "lucide-react";
 
@@ -561,6 +562,11 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
   const operationTitle = operationFrame?.content.title ?? proposal.summary;
   const localizedSummary = proposal.action_kind === "operation.execute"
     ? operationTitle
+    : proposal.action_kind === "team.plan"
+    ? t("proposal.summary.teamPlan", {
+      goal: teamPlanGoalId(proposal.normalized_parameters),
+      count: teamPlanLaneCount(proposal.normalized_parameters),
+    })
     : proposal.action_kind === "goal.create"
     ? t("proposal.summary.goalCreate", { title })
     : proposal.action_kind === "heartbeat.bind"
@@ -579,10 +585,14 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
     reviewPlan,
     fields: proposal.action_kind === "operation.execute"
       ? operationProposalFields(proposal, reviewPlan, t)
+      : proposal.action_kind === "team.plan"
+      ? teamPlanFields(proposal.normalized_parameters, t)
       : proposalFields(proposal.normalized_parameters, t),
     goalId: typeof proposal.normalized_parameters.goal_id === "string" ? proposal.normalized_parameters.goal_id : undefined,
     impact: proposal.action_kind === "operation.execute"
       ? t("proposal.impact.operation")
+      : proposal.action_kind === "team.plan"
+      ? t("proposal.impact.teamPlan")
       : proposal.action_kind === "goal.create"
       ? t("proposal.impact.goalCreate")
       : proposal.action_kind === "goal.lifecycle" && lifecycleOperation === "stop"
@@ -607,6 +617,7 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
           ? t("proposal.primary.operationResultVerified")
           : t("proposal.primary.operationResultPending")
         : t("proposal.primary.operationGroup")
+      : proposal.action_kind === "team.plan" ? t("proposal.primary.teamPlan")
       : proposal.action_kind === "goal.create" ? t("proposal.primary.goalCreate")
       : proposal.action_kind === "goal.lifecycle" && lifecycleOperation === "stop"
         ? t("proposal.primary.lifecycleStop")
