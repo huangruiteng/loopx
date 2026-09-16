@@ -36,6 +36,20 @@ MARKER_NAME = "docs/turn-e2e-marker.txt"
 MARKER_VALUE = "loopx-turn-dsh-e2e-step-1"
 ADAPTER = REPO_ROOT / "scripts" / "dsh_turn_host_adapter.py"
 
+# The fake runner stands in for the DeepSeek Harness host, so its keyword
+# signature must track the keyword set the adapter supplies, which
+# ``loopx.dsh_goal_mode.turn_host_adapter.load_dsh_runner`` documents. Three
+# smokes load a fake runner, so the signature is emitted from this one place: a
+# fixture that lags the adapter otherwise surfaces as an unattributed
+# ``host_failure`` instead of a readable error at the seam that moved.
+FAKE_DSH_RUNNER_SIGNATURE = (
+    "def run_dsh_turn(*, prompt, session_id, workspace, session_root,\n"
+    "                 provider, model, reasoning_effort, max_tokens, cordis,\n"
+    "                 runtime_bin, request_timeout_seconds):\n"
+    "    assert provider and model and reasoning_effort, (\n"
+    "        'the adapter must hand over the resolved execution profile')\n"
+)
+
 
 def _write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     project = root / "project"
@@ -127,12 +141,10 @@ def _write_fake_dsh_runner(root: Path, workspace: Path) -> Path:
     )
     runner.write_text(
         "import pathlib\n"
-        "def run_dsh_turn(*, prompt, session_id, workspace, session_root,\n"
-        "                 provider, model, max_tokens, cordis, runtime_bin,\n"
-        "                 request_timeout_seconds):\n"
-        f"    pathlib.Path({str(workspace)!r}).joinpath({MARKER_NAME!r}).write_text("
-        f"{MARKER_VALUE!r}, encoding='utf-8')\n"
-        f"    return {block!r}\n",
+        + FAKE_DSH_RUNNER_SIGNATURE
+        + f"    pathlib.Path({str(workspace)!r}).joinpath({MARKER_NAME!r}).write_text("
+        + f"{MARKER_VALUE!r}, encoding='utf-8')\n"
+        + f"    return {block!r}\n",
         encoding="utf-8",
     )
     return runner
