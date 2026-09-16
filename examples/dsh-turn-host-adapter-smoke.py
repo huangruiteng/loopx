@@ -9,6 +9,7 @@ real LoopX host-result validator.
 from __future__ import annotations
 
 from hashlib import sha256
+import importlib.util
 import json
 import subprocess
 import sys
@@ -20,6 +21,16 @@ SCRIPTS = REPO_ROOT / "scripts"
 for path in (str(REPO_ROOT), str(SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
+
+# The generic-cli e2e smoke owns the fake runner source every host smoke reuses,
+# because a fake runner whose keyword signature lags the adapter turns into an
+# unattributed ``host_failure`` instead of naming the seam that moved.
+_BASE_PATH = REPO_ROOT / "examples" / "loopx-turn-dsh-e2e-smoke.py"
+_SPEC = importlib.util.spec_from_file_location("loopx_turn_dsh_e2e_smoke", _BASE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+_base = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = _base
+_SPEC.loader.exec_module(_base)
 
 import dsh_turn_host_adapter as adapter  # noqa: E402
 from loopx.control_plane.turn_driver.executor import (  # noqa: E402
@@ -284,11 +295,10 @@ def test_subprocess_adapter_roundtrip_with_fake_dsh_runner() -> None:
         )
         runner.write_text(
             "import json, pathlib, sys\n"
-            "def run_dsh_turn(*, prompt, session_id, workspace, session_root,\n"
-            "                 provider, model, max_tokens, cordis, runtime_bin,\n"
-            "                 request_timeout_seconds):\n"
-            f"    pathlib.Path({str(marker)!r}).write_text(prompt, encoding='utf-8')\n"
-            f"    return {block!r}\n",
+            + _base.FAKE_DSH_RUNNER_SIGNATURE
+            + f"    pathlib.Path({str(marker)!r}).write_text(prompt, "
+            + "encoding='utf-8')\n"
+            + f"    return {block!r}\n",
             encoding="utf-8",
         )
 
