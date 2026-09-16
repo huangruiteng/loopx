@@ -129,6 +129,44 @@ apply receipt returns; if the confirmation was refused, or the plan went stale
 because the Agents it named changed, say exactly that instead. Never widen the
 confirmed scope while applying it, and never charge quota for the preview itself.
 
+The preview is machine-readable, so the product surface can offer it as one
+typed action. Your prose answer stays the answer; the same team plan also rides
+in the response envelope's `proposals` as exactly one item of kind
+`steward_team_plan_preview`:
+
+```json
+{
+  "kind": "steward_team_plan_preview",
+  "schema_version": "steward_team_plan_preview_v0",
+  "goal_id": "<the exact Goal this plan staffs>",
+  "objective": "<one sentence>",
+  "lanes": [
+    {
+      "lane_id": "<short stable id>",
+      "agent_id": "<an Agent this Goal registers>",
+      "acceptance": "<the signal that ends this lane>",
+      "first_todo": {
+        "text": "<one bounded Todo>",
+        "priority": "P1",
+        "task_class": "advancement_task",
+        "action_kind": "<an action kind this host supports>"
+      }
+    }
+  ],
+  "quota_envelope": { "<the bounded envelope this team may use>" },
+  "stop_condition": "<the condition that ends the team>"
+}
+```
+
+At most 8 lanes, each with a distinct `lane_id`. A priority is `P0`, `P1`,
+`P2` or `P3`. A lane you cannot staff keeps its `lane_id`, `agent_id` and
+`acceptance`, declares `staffing_gap` with one of `agent_not_registered`,
+`capability_not_granted` or `audience_not_authorized` plus a note, and declares
+no `first_todo`. A preview that arrives without this item, names a Goal you are
+not authorized for, or names an Agent that Goal does not register is dropped
+rather than shown: the owner must never be offered a confirmation for work that
+cannot be staffed.
+
 Core owns truth and permissions. This skill supplies reasoning guidance, not
 new authority. Keep front-end and group answers within their respective scopes;
 give concise, concrete answers with source and coverage notes where they matter.

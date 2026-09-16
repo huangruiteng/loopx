@@ -56,3 +56,49 @@ def test_the_owner_visible_failure_names_the_executor_that_refused() -> None:
         error_code = "some_future_code"
 
     assert manager_failure_reply(_Unknown("x"))[0] == "processing_failed"
+
+
+def test_manager_guidance_ships_the_machine_readable_preview_contract() -> None:
+    """The preview the owner confirms is the one admission can validate.
+
+    Prose alone cannot reach the product surface: admission only surfaces a
+    team preview that arrives as this typed item, so guidance that never states
+    the item leaves a live steward answering correctly and still offering the
+    owner nothing to confirm. The guidance and the validator therefore share
+    their identifiers, and drift fails here instead of in a live answer.
+    """
+
+    from loopx.control_plane.work_items.governed_transition_proposal import (
+        STEWARD_TEAM_PLAN_GAP_REASONS,
+        STEWARD_TEAM_PLAN_LANE_LIMIT,
+        STEWARD_TEAM_PLAN_PREVIEW_KIND,
+        STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION,
+    )
+
+    text = manager_skill_text()
+
+    assert STEWARD_TEAM_PLAN_PREVIEW_KIND in text
+    assert STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION in text
+    assert "proposals" in text
+    assert f"{STEWARD_TEAM_PLAN_LANE_LIMIT} lanes" in text
+    for field in (
+        '"goal_id"',
+        '"objective"',
+        '"lanes"',
+        '"lane_id"',
+        '"agent_id"',
+        '"acceptance"',
+        '"first_todo"',
+        '"action_kind"',
+        '"task_class"',
+        '"quota_envelope"',
+        '"stop_condition"',
+    ):
+        assert field in text, field
+    assert "staffing_gap" in text
+    assert "declares\nno `first_todo`" in text
+    assert "advancement_task" in text
+    for reason in STEWARD_TEAM_PLAN_GAP_REASONS:
+        assert reason in text, reason
+    # The preview never claims an effect of its own.
+    assert "is dropped\nrather than shown" in text
