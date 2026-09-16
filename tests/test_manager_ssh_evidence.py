@@ -444,7 +444,10 @@ def test_failed_source_read_is_typed_and_never_claims_no_progress(tmp_path):
     assert result["read_status"] == "unavailable"
     source = result["sources"][0]
     assert source["status"] == "unavailable"
-    assert source["reason"] == "remote_evidence_unavailable_or_upgrade_required"
+    # The reason now names the side that has to change instead of echoing an
+    # internal code; the typed code travels beside it for programmatic readers.
+    assert source["reason"] != "remote_evidence_unavailable_or_upgrade_required"
+    assert source["reason_code"] == "remote_evidence_unavailable"
     assert source["last_success_at"] and source["stale_rows_included"] is True
     assert source["coverage_effect"] == "remote_goals_may_be_outdated_not_absent"
     assert result["stale_rows_included"] is True
@@ -584,3 +587,118 @@ def test_scope_change_between_reads_refuses_the_packet(tmp_path):
     assert result["sources"][0]["status"] == "unavailable"
     assert result["sources"][0]["reason"] == "source_outside_available_scope"
     assert result["read_status"] == "unavailable"
+
+
+@pytest.mark.parametrize(
+    "stderr,returncode,expected",
+    [
+        ("huangruiteng@10.0.0.1: Permission denied (gssapi-with-mic).", 255, "ssh_auth_required"),
+        # A remote command reporting a bare permission error about its own
+        # files is not this machine's rejected credential.
+        ("loopx: /home/x/.config: Permission denied", 1, "remote_evidence_unavailable"),
+        ("ssh: connect to host 10.0.0.1 port 22: Operation timed out", 255, "ssh_host_unreachable"),
+        ("ssh: Could not resolve hostname ark-devbox: Name or service not known", 255, "ssh_host_unreachable"),
+        ("bash: line 1: /home/x/.local/bin/loopx: No such file or directory", 127, "remote_cli_missing"),
+        ("some other ssh failure", 255, "remote_evidence_unavailable"),
+    ],
+)
+def test_a_failed_read_names_the_side_that_has_to_change(
+    stderr: str, returncode: int, expected: str
+) -> None:
+    from loopx.capabilities.manager_context.ssh_evidence import _remote_read_failure
+
+    code, reason = _remote_read_failure(returncode=returncode, stderr=stderr)
+
+    assert code == expected
+    assert reason
+
+
+def test_an_authentication_failure_is_reported_as_such_not_as_a_dead_host(
+    tmp_path,
+) -> None:
+    """A missing Kerberos ticket must not read as 'the host is down'."""
+
+    config, channel = _evidence_root(tmp_path)
+
+    def runner(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv,
+            255,
+            stdout="",
+            stderr="huangruiteng@10.0.0.1: Permission denied (gssapi-with-mic).",
+        )
+
+    packet = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+
+    assert packet["read_status"] == "unavailable"
+    source = packet["sources"][0]
+    assert source["status"] == "unavailable"
+    assert source["reason_code"] == "ssh_auth_required"
+    # The reason names the repair, not only the symptom, because renewing the
+    # credential is the owner's action and the answer has to be able to say so.
+    assert "Kerberos" in source["reason"] and "kinit" in source["reason"]
+    assert packet["limitations"] == ["remote_source_ssh_auth_required"]
+    assert "Tell the owner" in source["next_action"]
+    # The compatibility code stays, so older readers still see an unread source.
+    assert source["coverage_effect"] == "remote_goals_may_be_outdated_not_absent"
+
+
+@pytest.mark.parametrize(
+    "stderr,returncode,expected_limitation",
+    [
+        (
+            "huangruiteng@10.0.0.1: Permission denied (gssapi-with-mic).",
+            255,
+            "remote_source_ssh_auth_required",
+        ),
+        (
+            "ssh: connect to host 10.0.0.1 port 22: Operation timed out",
+            255,
+            "remote_source_ssh_host_unreachable",
+        ),
+        (
+            "bash: line 1: /home/x/.local/bin/loopx: No such file or directory",
+            127,
+            "remote_source_cli_missing",
+        ),
+        # A zero exit with an unparseable answer is the remote CLI being older
+        # than the read, not a host or a credential problem.
+        ("", 0, "remote_source_protocol_unavailable"),
+        # A cause outside the classification still declares a source that needs
+        # a repair rather than a remote Goal without progress.
+        ("some unclassified ssh failure", 255, "remote_source_unavailable"),
+    ],
+)
+def test_every_failed_read_declares_a_bounded_typed_limitation(
+    tmp_path, stderr: str, returncode: int, expected_limitation: str
+) -> None:
+    config, channel = _evidence_root(tmp_path)
+
+    def runner(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv, returncode, stdout="", stderr=stderr
+        )
+
+    packet = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+
+    assert packet["read_status"] == "unavailable"
+    assert packet["sources"][0]["status"] == "unavailable"
+    # Exactly one code per cause: the summary teaches the repair without letting
+    # a reader mistake an unread source for a remote Goal with no progress.
+    assert packet["limitations"] == [expected_limitation]

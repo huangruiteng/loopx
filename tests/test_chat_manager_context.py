@@ -300,6 +300,56 @@ def test_prompt_only_turn_reads_declared_sources_once_and_declares_freshness(
     assert again["remote_evidence"]["rows"] == remote["rows"]
 
 
+def test_a_failed_source_read_reaches_the_turn_context_with_its_cause(
+    monkeypatch, tmp_path
+):
+    """The Turn context itself must carry the cause and the repair to name."""
+
+    from loopx.capabilities.manager_context.ssh_evidence import configure
+
+    config = tmp_path / "ssh_config"
+    config.write_text("Host research-host\n  HostName research-host.invalid\n")
+    configure(
+        tmp_path,
+        channel="manager.external." + "f" * 24,
+        host="research-host",
+        goal_ids=["remote-goal"],
+        execute=True,
+        config_path=config,
+    )
+    monkeypatch.setattr(
+        context,
+        "build_goal_portfolio",
+        lambda **_: {"goals": [], "coverage": {"discovered": 0}},
+    )
+
+    def run(argv, **kwargs):
+        return SimpleNamespace(
+            returncode=255,
+            stdout="",
+            stderr="huangruiteng@10.0.0.1: Permission denied (gssapi-with-mic).",
+        )
+
+    result = context.manager_turn_context(
+        tmp_path / "registry.json",
+        {"channel_id": "manager"},
+        tmp_path,
+        remote_evidence=True,
+        remote_runner=run,
+        remote_config_path=config,
+    )
+    remote = result["remote_evidence"]
+    assert remote["read_status"] == "unavailable"
+    assert remote["rows"] == []
+    assert remote["limitations"] == ["remote_source_ssh_auth_required"]
+    source = remote["sources"][0]
+    assert source["reason_code"] == "ssh_auth_required"
+    # An expired Kerberos ticket is the owner's own repair, so the Turn context
+    # has to name it instead of reporting an untyped unavailable source.
+    assert "kinit" in source["reason"]
+    assert "Tell the owner" in source["next_action"]
+
+
 def test_prompt_only_transport_receives_the_source_read_instead_of_a_tool(
     monkeypatch, tmp_path
 ):
