@@ -12,6 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "loopx" / "cli.py"
 MODULE = ROOT / "loopx" / "cli_commands" / "project_lifecycle.py"
+# The `refresh-state` command owns its own module since #4521, so the markers
+# that belong to that command are required there instead of in the dispatcher.
+REFRESH_MODULE = ROOT / "loopx" / "cli_commands" / "project_lifecycle_refresh_state.py"
 INIT = ROOT / "loopx" / "cli_commands" / "__init__.py"
 GOAL_ID = "project-lifecycle-smoke"
 
@@ -187,9 +190,14 @@ def main() -> None:
         "read-only-map",
         "reward",
         "operator-gate",
-        "retry it before delivery",
     ):
         require(marker in module_source, f"project lifecycle module missing {marker}")
+    refresh_source = REFRESH_MODULE.read_text(encoding="utf-8")
+    for marker in (
+        "retry it before delivery",
+        "refresh-state",
+    ):
+        require(marker in refresh_source, f"refresh-state module missing {marker}")
     sink_source = (MODULE.parent / "project_lifecycle_sinks.py").read_text(encoding="utf-8")
     for marker in (
         "apply_external_sink_postcondition",
