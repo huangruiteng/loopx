@@ -97,6 +97,17 @@ adapters, smoke tests, public docs, or commit/push workflows, use the
    - focused validation or cleanup.
 6. Push a branch and open a PR for reviewable batches.
 
+Control-plane, runtime and product surfaces are never self-merged. A change
+that alters the behavior of `loopx/**`, `apps/**` or `packages/**`, a
+permission or authority boundary, a persisted state or receipt contract, a
+quota/scheduler/todo rule, or a CLI/API contract is proposed, reviewed on its
+exact head, and then left for the maintainer to merge -- including when the
+author has already validated it, its review is published, and its CI is green.
+Admin bypass does not convert one of those changes into a self-mergeable one,
+and neither does a small diff: a validated fix is still a control-plane change
+when it changes control-plane behavior. When the author cannot tell whether a
+change is in that set, it is not self-merged.
+
 For small, low-risk PRs, maintainers may self-merge after validation when all
 of the following are true:
 
@@ -106,7 +117,8 @@ self-merge whose head carries no published review is a process gap, not a
 smaller form of review: repair it by publishing the exact-head review for the
 merged commit and correcting the rule that let it through.
 
-- the PR only touches public docs, contributor metadata, or narrow cleanup;
+- the PR only touches public docs, contributor metadata, tests, examples, or
+  narrow cleanup, and none of the surfaces named above;
 - the change is single-purpose and easy to review from the diff;
 - required checks or focused smokes have passed;
 - the exact head carries a published self-review, and
