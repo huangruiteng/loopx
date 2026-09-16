@@ -16,9 +16,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.chat_agent import CodexChatAgentError  # noqa: E402
 from loopx.chat_manager import (  # noqa: E402
-    MANAGER_ENDPOINT_DEFAULT_MANAGED,
-    MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT,
-    MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED,
+    MANAGER_ENDPOINT_MANAGED,
+    MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT,
     MANAGER_ENDPOINT_ENV_VAR,
     MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
     MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
@@ -46,15 +45,15 @@ def _assert(condition: bool, message: str) -> None:
         raise SystemExit(f"steward channel binding smoke failed: {message}")
 
 
-def _assert_credential_decides_the_disclosed_default() -> dict[str, object]:
-    """The shipped default follows one reported local fact, and says so."""
+def _assert_the_shipped_default_ignores_the_credential() -> dict[str, object]:
+    """The shipped default is one endpoint, and a credential does not move it."""
 
     without_credential = manager_channel_binding({})
     with_credential = manager_channel_binding({CREDENTIAL_ENV: CREDENTIAL_VALUE})
     _assert(
         without_credential["executor_endpoint"] == "codex"
-        and with_credential["executor_endpoint"] == MANAGER_ENDPOINT_DEFAULT_MANAGED,
-        "the shipped default must resolve to the reachable executor either way",
+        and with_credential["executor_endpoint"] == "codex",
+        "the shipped default must be the reachable CLI endpoint on every machine",
     )
     _assert(
         without_credential["executor_endpoint_source"]
@@ -64,22 +63,15 @@ def _assert_credential_decides_the_disclosed_default() -> dict[str, object]:
     )
     _assert(
         without_credential["executor_endpoint_default_reason"]
-        == MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT
-        and with_credential["executor_endpoint_default_reason"]
-        == MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED,
-        "the readback must name the local fact behind the shipped default",
+        == with_credential["executor_endpoint_default_reason"]
+        == MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT,
+        "the one shipped decision must be named, and it is not a credential branch",
     )
     _assert(
-        without_credential["model"] == "gpt-6-astra"
-        and without_credential["model_source"] == MANAGER_MODEL_SOURCE_VENDOR_DEFAULT
-        and without_credential["execution_profile"] is None,
-        "the CLI endpoint keeps its vendor model and carries no managed profile",
-    )
-    _assert(
-        with_credential["model"] == "deepseek-v4-flash"
-        and with_credential["model_source"] == MANAGER_MODEL_SOURCE_MANAGED_PROFILE
-        and with_credential["execution_profile"] == "deepseek-v4-flash@high",
-        "the managed endpoint must run the managed execution profile",
+        without_credential["model"] == with_credential["model"] == "gpt-6-astra"
+        and with_credential["model_source"] == MANAGER_MODEL_SOURCE_VENDOR_DEFAULT
+        and with_credential["execution_profile"] is None,
+        "a credential must not hand the CLI endpoint a managed model or profile",
     )
     _assert(
         with_credential["operator_credential_configured"] is True
@@ -87,10 +79,9 @@ def _assert_credential_decides_the_disclosed_default() -> dict[str, object]:
         "the credential must still be reported as a fact",
     )
     _assert(
-        CREDENTIAL_VALUE not in json.dumps(with_credential)
-        and with_credential["credential_env_var"] == CREDENTIAL_ENV
-        and without_credential["credential_env_var"] == "",
-        "the binding must name the credential without ever echoing its value",
+        with_credential["credential_env_var"] == ""
+        and CREDENTIAL_VALUE not in json.dumps(with_credential),
+        "the credential must be reported by name for the endpoint it authenticates",
     )
     _assert(
         manager_model_config(
@@ -103,6 +94,33 @@ def _assert_credential_decides_the_disclosed_default() -> dict[str, object]:
         "without_credential": without_credential,
         "with_credential": with_credential,
     }
+
+
+def _assert_selection_moves_the_channel_to_the_managed_host() -> dict[str, object]:
+    """Selecting the managed host is what puts the managed profile on it."""
+
+    selected = manager_channel_binding(
+        {MANAGER_ENDPOINT_ENV_VAR: "dsh", CREDENTIAL_ENV: CREDENTIAL_VALUE}
+    )
+    _assert(
+        selected["executor_endpoint"] == MANAGER_ENDPOINT_MANAGED
+        and selected["executor_kind"] == "managed"
+        and selected["executor_endpoint_source"] == "explicit_config"
+        and selected["executor_endpoint_default_reason"] == "",
+        "an explicit endpoint selection must be the only way onto the managed host",
+    )
+    _assert(
+        selected["model"] == "deepseek-v4-flash"
+        and selected["model_source"] == MANAGER_MODEL_SOURCE_MANAGED_PROFILE
+        and selected["execution_profile"] == "deepseek-v4-flash@high",
+        "the managed endpoint must run the managed execution profile",
+    )
+    _assert(
+        selected["credential_env_var"] == CREDENTIAL_ENV
+        and CREDENTIAL_VALUE not in json.dumps(selected),
+        "the binding must name the credential without ever echoing its value",
+    )
+    return selected
 
 
 def _assert_explicit_selection_and_managed_host_verdict() -> dict[str, object]:
@@ -180,7 +198,7 @@ def _assert_managed_host_verdict() -> dict[str, object]:
     capability = next(
         item
         for item in runtime.capabilities()
-        if item["agent_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+        if item["agent_id"] == MANAGER_ENDPOINT_MANAGED
     )
     _assert(
         capability["adapter_kind"] == "deepseek_harness_segment"
@@ -224,9 +242,21 @@ def _assert_session_opens_the_resolved_endpoint() -> str:
                 work_dir=Path(work_dir),
             )
             _assert(
-                opened[-1]["agent_id"]
-                == manager_executor_endpoint_default({CREDENTIAL_ENV: CREDENTIAL_VALUE}),
-                "the manager session must open the endpoint the readback resolved",
+                opened[-1]["agent_id"] == "codex",
+                "a credential must not re-point an endpoint nobody selected",
+            )
+
+            # Selecting the managed host is how a machine runs its steward on
+            # the operator-billed executor, which is what the env var is for.
+            os.environ[MANAGER_ENDPOINT_ENV_VAR] = MANAGER_ENDPOINT_MANAGED
+            open_manager_session(
+                controller=controller,
+                goal_id="loopx-steward-binding-fixture",
+                work_dir=Path(work_dir),
+            )
+            _assert(
+                opened[-1]["agent_id"] == MANAGER_ENDPOINT_MANAGED,
+                "the manager session must open the endpoint the operator selected",
             )
         finally:
             os.environ.pop(CREDENTIAL_ENV, None)
@@ -234,23 +264,36 @@ def _assert_session_opens_the_resolved_endpoint() -> str:
                 os.environ[CREDENTIAL_ENV] = ambient
             if ambient_endpoint is not None:
                 os.environ[MANAGER_ENDPOINT_ENV_VAR] = ambient_endpoint
+            else:
+                os.environ.pop(MANAGER_ENDPOINT_ENV_VAR, None)
     return str(opened[-1]["agent_id"])
 
 
 def _assert_mode_readback_quotes_the_session() -> dict[str, object]:
     """The channel reports the mode it serves, and derives none on its own."""
 
-    unbound = manager_channel_binding({CREDENTIAL_ENV: CREDENTIAL_VALUE})
+    selected = {
+        MANAGER_ENDPOINT_ENV_VAR: MANAGER_ENDPOINT_MANAGED,
+        CREDENTIAL_ENV: CREDENTIAL_VALUE,
+    }
+    # Pin the runtime probe: this assertion is about the mode, and whether the
+    # machine running the smoke has the dsh runtime installed is not the fact
+    # under test. The unavailable reasons have their own pinned coverage.
+    with mock.patch.object(
+        host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+    ):
+        unbound = manager_channel_binding(selected)
+        attached = manager_channel_binding(
+            selected,
+            session={"session_mode": "attached_host", "status": "busy"},
+        )
     _assert(
         unbound["executor_kind"] == "managed"
+        and unbound["available"] is True
         and unbound["session_mode"] is None
         and unbound["session_mode_source"]
         == MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
         "a ready managed endpoint is not evidence that the channel is bound",
-    )
-    attached = manager_channel_binding(
-        {CREDENTIAL_ENV: CREDENTIAL_VALUE},
-        session={"session_mode": "attached_host", "status": "busy"},
     )
     _assert(
         attached["session_mode"] == "attached_host"
@@ -279,7 +322,10 @@ def _assert_mode_readback_quotes_the_session() -> dict[str, object]:
 def main() -> int:
     payload = {
         "ok": True,
-        "credential_default_probe": _assert_credential_decides_the_disclosed_default(),
+        "shipped_default_probe": _assert_the_shipped_default_ignores_the_credential(),
+        "selected_managed_host": (
+            _assert_selection_moves_the_channel_to_the_managed_host()
+        ),
         "explicit_selection": _assert_explicit_selection_and_managed_host_verdict(),
         "mode_readback": _assert_mode_readback_quotes_the_session(),
         "opened_endpoint": _assert_session_opens_the_resolved_endpoint(),
