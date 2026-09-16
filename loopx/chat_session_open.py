@@ -7,9 +7,8 @@ own owner, so an entry point can never disagree with the readback the same
 channel publishes:
 
 * the steward channel resolves through :func:`chat_manager.open_manager_session`
-  -- its explicit configuration, else its shipped credential-conditional
-  default -- and its transcript is one conversation across whatever executor it
-  currently resolves;
+  -- its explicit configuration, else its shipped default -- and its transcript
+  is one conversation across whatever executor it currently resolves;
 * a Goal-scoped channel runs on ``DEFAULT_GOAL_AGENT_ID`` when the caller makes
   no explicit pick.
 

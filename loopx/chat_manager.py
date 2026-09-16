@@ -112,26 +112,29 @@ def is_manager_channel(value: Any) -> bool:
 
 
 # The steward channel resolves its executor and its model from one product
-# default that is conditional on a single local fact, and an explicit
-# configuration always wins over it. The managed host is the default when the
-# operator credential that authenticates it is configured, because that is the
-# executor the managed stack bills to the operator instead of to one person's
-# CLI login. Without that credential the channel keeps the interactive CLI
-# endpoint: the steward must stay reachable on a machine that has only a
-# personal login, and it must never half-connect to a managed host it cannot
-# authenticate. The resolved endpoint, the reason for the product default, the
-# model and the reasoning effort are all reported, so this is a disclosed
-# default rather than a silent re-point.
+# default plus one explicit override. The shipped default is the interactive CLI
+# endpoint (`codex`), and it does not move: the steward is the surface a person
+# talks to, it must stay reachable on a machine that has only a personal login,
+# and a credential authenticates an endpoint rather than choosing one. An
+# operator who wants the steward on the operator-billed managed host selects it
+# explicitly (`LOOPX_MANAGER_ENDPOINT=dsh`). The resolved endpoint, the reason
+# for the product default, the model and the reasoning effort are all reported,
+# so the channel always says which of the two it is running and why.
 MANAGER_CHANNEL_BINDING_SCHEMA_VERSION = "manager_channel_binding_v0"
 MANAGER_ENDPOINT_ENV_VAR = "LOOPX_MANAGER_ENDPOINT"
-MANAGER_ENDPOINT_DEFAULT_MANAGED = MANAGED_TURN_HOST
-MANAGER_ENDPOINT_DEFAULT_INDIVIDUAL = "codex"
+# The endpoint an operator selects to run the steward on the managed executor,
+# and the endpoint the channel runs when nothing is selected. Neither name is
+# "default" beyond that: the shipped default is stated once, in the resolution
+# below, so a reader cannot mistake the pair for two competing defaults.
+MANAGER_ENDPOINT_MANAGED = MANAGED_TURN_HOST
+MANAGER_ENDPOINT_INDIVIDUAL = "codex"
 MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT = "product_default"
 MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG = "explicit_config"
 # Why the shipped default resolved the way it did. One typed reason, never
-# prose, so a reader can tell a decided default from a discovered one.
-MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED = "operator_credential_configured"
-MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT = "operator_credential_absent"
+# prose, so a reader can tell a decided default from a discovered one. The
+# steward has exactly one such decision, and it is not conditional on a
+# credential, which is why no credential branch appears beside it.
+MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT = "steward_channel_default"
 # Executor kinds name where this channel's model work is billed and bounded
 # rather than which adapter is launched, and they use the same vocabulary as the
 # governed Turn surface: an individual executor runs on one person's own CLI
@@ -141,10 +144,10 @@ MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT = "operator_credential_absent"
 MANAGER_EXECUTOR_KIND_INDIVIDUAL = "individual"
 MANAGER_EXECUTOR_KIND_MANAGED = EXECUTOR_KIND_MANAGED
 MANAGER_ENDPOINT_KINDS = {
-    MANAGER_ENDPOINT_DEFAULT_INDIVIDUAL: MANAGER_EXECUTOR_KIND_INDIVIDUAL,
+    MANAGER_ENDPOINT_INDIVIDUAL: MANAGER_EXECUTOR_KIND_INDIVIDUAL,
     # The managed host is billed to the operator's own endpoint, not to one
-    # person's CLI login.
-    MANAGER_ENDPOINT_DEFAULT_MANAGED: MANAGER_EXECUTOR_KIND_MANAGED,
+    # person's CLI login, so it is reached only by selecting it.
+    MANAGER_ENDPOINT_MANAGED: MANAGER_EXECUTOR_KIND_MANAGED,
 }
 
 MANAGER_MODEL_ENV_VAR = "LOOPX_MANAGER_MODEL"
@@ -168,16 +171,10 @@ def _resolve_manager_endpoint(
     explicit = env_text(MANAGER_ENDPOINT_ENV_VAR, environ)
     if explicit:
         return explicit, MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG, ""
-    if operator_credential_configured(environ):
-        return (
-            MANAGER_ENDPOINT_DEFAULT_MANAGED,
-            MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT,
-            MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED,
-        )
     return (
-        MANAGER_ENDPOINT_DEFAULT_INDIVIDUAL,
+        MANAGER_ENDPOINT_INDIVIDUAL,
         MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT,
-        MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT,
+        MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT,
     )
 
 
@@ -187,11 +184,9 @@ def selected_manager_executor_endpoint(
     """Return the selected steward executor endpoint and the source selecting it.
 
     One explicit override decides the endpoint; otherwise the shipped default
-    applies. That default is conditional on exactly one reported local fact --
-    whether the operator credential that authenticates the managed host is
-    configured -- so the channel either runs on the operator-billed executor or
-    stays on the interactive CLI endpoint, and never selects an executor it
-    cannot authenticate.
+    applies. That default is the interactive CLI endpoint on every machine: the
+    channel runs on the executor an operator selected, and the managed host is
+    reached by selecting it rather than by discovering a credential.
     """
 
     endpoint, source, _reason = _resolve_manager_endpoint(environ)
