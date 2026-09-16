@@ -46,6 +46,18 @@ This index was last audited against `main` on **2026-09-04**. Update an entry
 whenever its RFC status, promoted behavior, or meaningful delivery boundary
 changes.
 
+## Overall Product and Delivery Roadmap
+
+- [LoopX Overall Roadmap v0](loopx-overall-roadmap-v0.md)
+  ([中文版](loopx-overall-roadmap-v0.zh-CN.md))
+  - **RFC status:** Draft portfolio roadmap.
+  - **Delivery on `main`:** Planning and audit evidence, not runtime promotion.
+  - **Current boundary:** Maps all 30 pre-existing primary RFCs and important
+    non-RFC domains into 13 streams, G0–G5 product milestones and R1–R7 core
+    execution cards. Covers product, multi-LoopX-Agent collaboration/handoff,
+    kernel, hosts, memory, cost, security, operations, research, releases,
+    community and adoption. Domain contracts retain their authority gates.
+
 ## Control-Plane Kernel, State, And Migration
 
 - [Human-confirmed domain operations v0](human-confirmed-domain-operations-v0.md)
@@ -95,8 +107,10 @@ changes.
     default-off local shadow/cutover foundations are on `main`
     ([#3529](https://github.com/huangruiteng/loopx/pull/3529),
     [#3669](https://github.com/huangruiteng/loopx/pull/3669),
-    [#3798](https://github.com/huangruiteng/loopx/pull/3798)). No provider-first
-    runtime promotion or remote shared-authority service has shipped.
+    [#3798](https://github.com/huangruiteng/loopx/pull/3798)). In-process PostgreSQL
+    service admission and identity rotation also exist;
+    deployed authenticated remote service and provider promotion remain distinct
+    qualification gates.
 - [Shared Goal Alignment and Governed Amendment Protocol v0](shared-goal-alignment-and-governed-amendment-v0.md)
   ([中文版](shared-goal-alignment-and-governed-amendment-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
@@ -173,7 +187,8 @@ changes.
 - [Capable Agent Manager and Semantic Work Handoff v0](capable-manager-semantic-handoff-v0.md)
   ([中文版](capable-manager-semantic-handoff-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
-  - **Delivery on `main`:** Proposal; existing manager/inbox foundations are reused.
+  - **Delivery on `main`:** Partial; private runtime profile, executor settings,
+    team-plan confirmation and initial Todo materialization shipped.
   - **Current boundary:** Proposes ordinary host-tool autonomy, persistent scoped
     conversations, long-horizon semantic continuation and automatic result delivery.
     Includes an official Grok Bot study distinguishing availability from goal
@@ -181,7 +196,8 @@ changes.
     alignment, shared-authority and TS migration dependencies.
     Cross-session restoration, execution takeover and automatic return are specified
     separately, reusing #4094 with optional Obelisk gap recall under its own scope.
-    Runtime-profile promotion and generic handoff migration have not shipped.
+    Full runtime-profile qualification and generic handoff migration remain open.
+
 
 - [Explicit Todo Continuation — Stage A](cross-session-memory-substrate-v0.md)
   ([中文版](cross-session-memory-substrate-v0.zh-CN.md))
@@ -296,10 +312,12 @@ changes.
 - [Long-Running Agent Reliability Diagnostics and Governed Delivery v0](long-running-agent-reliability-diagnostics-governed-delivery-v0.md)
   ([中文版](long-running-agent-reliability-diagnostics-governed-delivery-v0.zh-CN.md))
   - **RFC status:** Draft, product direction and delivery contract.
-  - **Delivery on `main`:** Direction only.
-  - **Current boundary:** The observer-first adoption path, matched benchmark
-    qualification, and governed delivery package are proposed; no unified
-    product contract has been promoted.
+  - **Delivery on `main`:** Default-off L1 diagnostic prototype and first DSH
+    event-source adapter implemented.
+  - **Current boundary:** The capability-owned README records the prototype;
+    C0 adapter fidelity, C1 non-interference and measured overhead remain
+    required before P0 exit. Broader governed delivery and commercial adoption
+    remain proposals.
 
 RFCs must not contain internal conversations, private links, local filesystem
 paths, credentials, raw transcripts, or non-public organizational context.

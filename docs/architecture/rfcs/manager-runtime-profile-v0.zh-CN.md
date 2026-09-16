@@ -52,6 +52,10 @@ profile 或权限状态，但当前外部 audience 会明确降级为 `restricte
 的 M1 私有 Owner 旅程，目标验收为 A1–A3/A12。它不实现 M2 collaboration request、M3
 outbox，也不把管家 session 字段当成工作、请求或送达权威。
 
+### 实现与后继（2026-09-16）
+
+`43d362532` 已有 machine profile、controller 集成与聚焦测试；本次复跑通过不等于本机部署或完整 M1 资格。`restricted` 默认、仅 Codex 支持私人 `trusted_owner` 及外部受众降级保持。DSH 通道选择不继承该强能力 profile。按[统一路线](loopx-overall-roadmap-v0.zh-CN.md) R2 补真实工具/会话/连续执行与设置读回；不得新建第二份机器配置。
+
 ### 验收
 
 1. 默认安装启动 `restricted`，没有隐式授权。

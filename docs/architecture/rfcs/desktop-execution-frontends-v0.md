@@ -768,6 +768,12 @@ trust binding fails closed.
 - Use synthetic provider fixtures for committed tests and make live provider
   tests explicit and opt-in.
 
+### Team coordination product loop (2026-09-16)
+
+#4547/#4548/#4552 delivered team-preview confirmation UI, packaged resources and a browser fixture; the confirmation entry is no longer unimplemented. Follow [roadmap](loopx-overall-roadmap-v0.md) R1 for semantically accurate partial/gap/stale readback, R2 for actual worker execution and R3 for automatic return/restart recovery. The confirmation fixture does not prove the complete Lark loop.
+
+Frontend/Lark consume the same proposal, receipt and audience projection; confirmed plans cannot imply execution. Every implementation includes real packaged-frontend interaction and applicable Lark qualification, or explicitly names the untested surface. First-viewport/primary-CTA implementation changes still require concrete preview approval. This revision edits RFCs only, not UI.
+
 ## Delivery slices
 
 ### Slice A: Agent-scoped Lark connection

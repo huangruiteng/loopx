@@ -364,6 +364,12 @@ claim 与完成回执，以及"只有经过验证的回写才推进工作"这一
 - **恢复。** 被中断的执行器 turn 在重试前先被协调。经过验证的结果在生命周期回写之前
   先被记录。
 
+### 长程 managed 执行路线（2026-09-16）
+
+[统一路线](loopx-overall-roadmap-v0.zh-CN.md) R2 先验一个管家与 2–3 个真实 managed worker 的跨 Turn 闭环；R6 再验本地/云端同 authority，R7 才扩大活跃规模。本 RFC M1–M4 继续拥有宿主接入，不用团队计划的 `ready` 取代 binding、资格、claim/lease 或实际进程读回。
+
+目前 DSH 管家 Chat 是单段、只读、无跨 turn 宿主会话；`turn run-once` 是另一条有界执行路径。下一切片要证明 successor wake、取消/停止、崩溃恢复及旧执行器返回 fence，经 packaged frontend/CLI/Lark 回读真实状态。不能仅增加一个 executor 名称、启动一个片段或绑定若干 Agent 就声称持续 managed 模式完成。attached host 不因掉线而改为 managed，未验收宿主保持原资格边界。
+
 ## 12. 规范性交付计划
 
 | 里程碑 | 交付行为 | 进入门槛 | 退出证据 | 回滚 |

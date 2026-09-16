@@ -638,6 +638,12 @@ executor 精确版本、完成情况、延迟、动作数、人工介入、禁�
 - 不把私有部署或协作上下文复制到公共 fixtures、截图、示例或文档中。
 - 已提交测试使用合成 provider fixtures，并把真实 provider 测试设为显式可选。
 
+### 团队协调的产品闭环（2026-09-16）
+
+#4547/#4548/#4552 已交付团队预览确认 UI、打包资源及 browser fixture，不再把确认入口列为未实现。按[统一路线](loopx-overall-roadmap-v0.zh-CN.md) R1 补语义一致的 partial/gap/stale 回读，R2 验 worker 实际执行，R3 验自动回报和重启恢复。现有确认 fixture 不能证明 Lark 端完整闭环。
+
+前端/Lark 消费同一 proposal、receipt 和 audience projection；运行状态不能由计划已确认推断。每个实现批次含 packaged frontend 的实际交互和 Lark 适用路径验收，或明确说明未验收。涉及首屏/主 CTA 的实现继续先展示具体预览并获批准；本次仅更新 RFC，不修改 UI。
+
 ## 交付切片
 
 ### 切片 A：Agent 级 Lark 连接

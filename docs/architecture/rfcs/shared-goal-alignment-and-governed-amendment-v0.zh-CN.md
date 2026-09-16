@@ -526,6 +526,12 @@ proposal/admission 与提交不可用边界，无关工作继续。验收后，�
 随后验证已支持 commit 路径。本文保留 Stage 3–5 的实现与晋级责任；管家就绪不能
 悄悄把这些阶段标为完成。
 
+### 管家执行衔接（2026-09-16）
+
+[统一路线](loopx-overall-roadmap-v0.zh-CN.md) R1 修复团队计划的源基线约束，R4 拥有本 RFC Stage 3–5 的产品接续。当前 team-plan receipt 的 `intent_basis` 仅复用 `source_basis_digest`；后者是来源事实摘要，不覆盖完整 objective/non-goals/acceptance/permissions/stop envelope。该字段可缺失且不是 CAS precondition；不得声称计划已绑定完整 canonical intent revision。
+
+先把现有承诺/工作基线与 commit-time 校验接好，再在本 owner 版本化 intent 和一个保持 intent 的 work-graph amendment class，验证 policy/verifier、lease impact、冲突与 receipt recovery。普通 Todo 编辑继续走自己的 writer，不被强行升级为 amendment。管家可组织和综合 peer 工作，但不因此拥有 leader 写权威。Stage 1/2 以及本地 24 行 directory 已有实现；Stage 3 未交付、无 presence/lease epoch 和分页的部分继续显式列缺口。
+
 ## 10. 分阶段交付
 
 1. **Stage 0 — characterization 与 RFC。** 记录 own-lane、unclaimed、

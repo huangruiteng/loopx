@@ -1,7 +1,7 @@
 # RFC：强能力 Agent 管家与语义工作交接（v0）
 
 - **RFC 状态：** Draft，待维护者审阅
-- **交付成熟度：** 提案；已有基础见第 4 节
+- **交付成熟度：** Partial；私人运行 profile、团队计划确认与 Todo 物化已交付，完整 M1–M4 未验收。
 - **作者 / 责任人：** LoopX 维护者、管家工程负责人
 - **创建 / 最近规范修订：** 2026-09-13 / 2026-09-15
 - **实现基线：** `7eb4b7bb1661bd5eff63a8725a33169792d5964b`
@@ -60,6 +60,12 @@
 包含全局管家对话、本机工具调查、普通授权操作、职责发现、语义交接、接收方重规划、自动回报、跨入口可见与恢复。以管家→worker、worker→worker 为同一交接语义的两个真实消费者。
 
 不重造 Agent runtime、第二套调度器、外部 Agent 市场、新仓库 API、通用工作流 DSL 或任务数据库。明确允许对现有管家、协作和 adapter 边界大幅重构；保住现有代码体积或模块名字不是验收目标。本地交接正确性不依赖 OpenViking、在线共享数据库或 A2A。每个请求不携带私人推理轨迹和完整历史。复杂金融等垂域效果继续归各 capability 和执行 adapter。
+
+### 跨 RFC 当前路线（2026-09-16）
+
+在 `43d362532`，本 RFC 的私人 `manager_runtime` profile、管家执行器配置，以及团队计划预览→前端确认→首批 Todo 物化已有实现。#4547/#4548/#4552 提供确认 UI、打包产物及 browser fixture；它们不证明 worker 已运行。DSH Chat 仍是只读有界片段，无跨 turn 宿主会话，不能借用 Codex `trusted_owner` 的资格。
+
+[整体路线总纲](loopx-overall-roadmap-v0.zh-CN.md) 记录已复核 F1–F7 与 R1–R7 执行卡。优先修 R1 承诺保留、stale basis 和恢复，再验 R2 小团队；M2/M3 按 R3 收敛，M4 需真实用户旅程。第 4 节的旧基线保留为迁移输入，不能覆盖本检查点；不因局部切片合并将 M1–M4 标为完成。 多个长程 LoopX Agent 的并行汇合、流水线依赖、peer 求助/复核、执行责任接续和跨 host 协作，统一按路线第 5 节协作矩阵验收；R2 必须包含真实 Agent 间 handoff，M2/M3 不能退化为管家广播或单轮转发。
 
 ## 4. 当前系统：已核对的基线事实
 
@@ -501,7 +507,7 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 
 ### 11.2 执行顺序与衔接回执
 
-1. **启动 M1，在该 PR 内完成基线对齐。** 记录精确 source head、真实 runtime/入口 caller；修主人私人 profile 和已有读回/反馈；验 A1–A3/A12。不单独交付盘点框架。
+1. **按 R1/R2 补齐并验收 M1，不重建已交付 profile/入口。** 记录精确 source head、真实 runtime/入口 caller；修主人私人 profile 和已有读回/反馈；验 A1–A3/A12。不单独交付盘点框架。
 2. **替换一个完整 M2 请求事务，再接接收方。** 从 `manager_context` request/tracking/return producer 和两种真实消费者开始，提交前后 owner 图、迁移映射、migration economics 审阅工件（§5.12）。工作状态继续走已有命令；扩大 producer 上线前验提交间崩溃和 legacy/promoted source。复用 alignment source-basis 读取，不复制分类器。 显式纳入已交付 #4094 CLI 接续 adapter（§5.13）。
 3. **收口 M3 自动回传和用户可见性。** 独立正文恢复可与前两步并行；通用 producer 待回执契约稳定再接。沿真实入口/接收方/返回路径验 A8–A10、A13–A16、A17/A20；在来源 session 已消失时，通过 packaged frontend、飞书、CLI 读回核实同一已提交结果/outbox 身份、重连恢复和受众隔离。
 4. **晋级指定 M4 cohort，并删除被替换路径。** 明确 provider 默认、Goal-intent authority、capability 资格。共享 amendment commit 待上游就绪；此前 UI 只能说提案/准入或不支持提交，不能说“Goal 已修改”。provider source 迁移按 shared-authority 计划，不夹进本次发布。

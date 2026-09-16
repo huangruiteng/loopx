@@ -512,217 +512,69 @@ header chip resolved `dsh` while the picker previously reported `Codex`.
 
 ## Steward Team Intake (2026-09-16)
 
-The steward answers questions. Since `2026-09-16` its shipped guidance also
-carries one bounded procedure for a different request: one owner sentence that
-asks for a *team* rather than a task. This section records the enforced contract
-for that intake, which part of it is already shipped, and which part is still
-missing.
+Audited at `43d362532`. Team intake has shipped a bounded preview, owner
+confirmation and first-Todo materialization. It has not qualified a running,
+budget-enforced or intent-aligned team. The [overall roadmap](loopx-overall-roadmap-v0.md)
+owns cross-RFC priorities and F1–F7/R1–R7; this selection RFC owns runtime
+selection and its qualification evidence, not a separate team architecture.
 
-The intake boundary is the canonical governed-proposal owner
-(`loopx/control_plane/work_items/governed_transition_proposal.py`), not a new
-CLI command and not a new capability. That owner already dispatches proposals
-by kind, publishes a typed receipt with a proposal digest, and the Chat Turn
-already projects `response.proposals` into `proposal.ready` events. A team
-request is therefore one proposal of a new kind, not a parallel intake path
-beside the existing one. A command with no second caller, and a builder module
-with no caller at all, both stay out: this repository keeps an uncalled
-abstraction in design state until its call site exists.
+The shipped boundary is `steward_team_plan_preview_v0`, kind
+`steward_team_plan_preview`, dispatched through
+`loopx/control_plane/work_items/governed_transition_proposal.py` and Chat
+`team.plan`. It names an exact Goal, 1–8 lanes, registered Agent identities,
+first Todo text/priority/class/action, acceptance, quota envelope and stop
+condition. Validation produces `applies: false`. Preview is not execution.
 
-A proposal of kind `steward_team_plan_preview` (`steward_team_plan_preview_v0`)
-is validated before anything may be applied, and a validated preview names, and
-may not invent:
+| Boundary | Shipped behavior | Remaining limitation |
+| --- | --- | --- |
+| Validation/admission (#4519/#4522/#4532/#4533) | Exact Goal, registered Agents, supported advancement kinds and bounded public-safe fields; channel-scoped Goal lookup; unavailable facts drop the proposal while preserving answer text | `ready` checks registration/action support, not executor health, tool eligibility or budget admission |
+| Staffing gaps | Unknown Agent produces `agent_not_registered` and retains `declined_first_todo`; explicit `capability_not_granted` / `audience_not_authorized` gaps admit no work | These reason codes do not prove all capability/audience conditions are automatically detected |
+| Materialization (#4524/#4528/#4535/#4538) | Revalidates the named Goal; calls canonical Todo owner per ready lane; records proposal digest and bounded `lane_todo_ids`; existing receipt shape remains readable; no monitor key | Confirmed priority is dropped; acceptance/quota/stop are not execution constraints on this path; no atomic team commit or automatic partial-recovery proof |
+| Confirmation (#4547/#4548/#4552) | Existing frontend displays lanes/gaps and submits `team.plan`; bundle and browser fixture shipped | Lark and real worker execution were not qualified by this fixture; all-gap apply currently reports `team_plan_lanes_already_present` with no Todos |
+| Freshness | Registry byte changes make the Chat preview stale; optional `intent_basis` reads alignment source facts before materialization | No exact Goal-intent/authorization/work precondition at commit; `intent_basis` is neither the full intent revision nor a CAS fence |
 
-- the exact Goal the plan staffs, so the admission that validates its lanes and
-  the settlement that materializes them describe one Goal rather than two;
-- each lane and the Agent that runs it, resolved from the Agents Core already
-  registers for the Goal, at most 8 lanes;
-- that lane's first bounded Todo, with its declared priority (P0..P3), task
-  class and action kind;
-- the quota envelope that bounds the lanes;
-- the acceptance signal that ends each lane;
-- the stop condition that ends the team.
+Unchanged-plan retries are covered by focused tests. Do not generalize those
+tests to concurrent plans, interrupted multi-lane commits or intervening Todo
+edits. R1 qualifies those cases through the actual action and recovery paths.
 
-A requested lane that cannot be staffed is a typed gap -- `agent_not_registered`,
-`capability_not_granted` or `audience_not_authorized`, plus the host's own
-`action_kind_not_supported` -- and the gap keeps the work it did not staff under
-`declined_first_todo`, so the owner sees what was asked for and what is missing
-instead of a lane that was quietly filled in or dropped. The reasons a plan may
-declare for a lane it cannot staff itself and the reasons the host reports about
-one are two vocabularies: a plan cannot claim the host's verdict about its own
-lane, and a reader can tell a declared gap from a staffability verdict Core made.
+Latest integration checkpoint: #4569 (`f1166e81e`) keeps unsupported action kinds as lane-local gaps, distinguishes declared gaps from host verdicts, preserves admitted gaps on revalidation and projects admitted plans into local owner-channel cards. A blocked lane no longer rejects the whole plan. The Lark manager audience still has no corresponding card. These fixes do not establish plan execution or resolve the baseline F1–F4 commitment/recovery findings.
 
-Two facts about *one lane* can make it unstaffable: this Goal does not register
-its Agent, or this host does not ship the action kind the lane asked for. Both
-are lane facts, so both become the same typed gap and neither refuses the plan:
-a plan whose first lane cannot be staffed is still the owner's request, and its
-staffable lanes are exactly what the owner asked to review. Refusing the whole
-plan for one lane's kind is what made a live steward answer a one-sentence team
-request correctly and still offer the owner nothing to confirm.
+Subsequent #4572 (`0aa6179de`) appends a channel-authored confirmation-location pointer to manager answers, naming the Goal workspace. Local and remote manager audiences receive it; Goal channels are not annotated. A remote pointer does not create a Lark card or prove card persistence/team execution; model prose is preserved.
 
-A lane that declares a gap may not declare work. The plan is a preview:
-the validated payload carries `applies: false`, and an owner's confirmation of
-that exact preview is the only thing that admits an apply. Apply routes to the
-canonical owners each effect already has -- Agent registration, Todo creation,
-quota or goal policy -- reuses the identities the preview named, may not widen
-the confirmed scope, and a team plan is never settled as if the work were done.
-The confirmed payload is therefore a fixed point of the validator: validating an
-admitted preview again returns the same lanes, and a lane the preview reported as
-unstaffed is preserved as a gap rather than re-derived from the host's *current*
-facts, so an apply can never staff a lane the owner was shown as unstaffed.
+### Relationship to multi-agent and shared authority
 
-Shipped enforcement, in delivery order:
+The [alignment RFC](shared-goal-alignment-and-governed-amendment-v0.md) owns
+shared intent and governed amendments; [shared authority](shared-goal-authority-state-provider-v0.md)
+owns persistence/promotion. A team plan proposes work inside accepted intent;
+it cannot change permissions, shared acceptance or terminal conditions by
+placing prose in its envelope. Stage 3 amendment commit remains unshipped.
+The optional receipt `intent_basis` is the existing `source_basis_digest`,
+not a version of that unimplemented full intent envelope. Historical receipts
+must not acquire stronger semantics through a rename.
 
-1. **Contract and validator** (`#4519`, `3acd07697`). The kind, its schema, the
-   lane limit, the priority and gap vocabularies, public-safe text, and the
-   refusal to invent staffing.
-2. **Chat admission** (`#4522`, `3c8c832cb`). `normalize_agent_response` admits a
-   preview only when the host supplies `team_plan_context` -- this Goal's
-   registered Agents and this host's supported advancement action kinds -- and
-   drops it otherwise, exactly like any other proposal it cannot accept, while
-   the answer text still reaches the owner.
-3. **Apply** (`#4524`, `c159a15b3`). The governed transition owner dispatches the
-   kind at `PRE_SETTLEMENT`. The apply re-validates the proposal against the
-   Goal's registered Agents and the shipped advancement action kinds, creates
-   the first bounded Todo of each *ready* lane through the canonical Todo owner,
-   creates nothing for a gap lane, refuses an unknown Goal before any write, and
-   refuses a plan whose named Goal differs from its settlement, so a plan
-   admitted against one Goal's Agents cannot be retargeted into another's.
-   The receipt records the proposal digest, so a replayed settlement reuses the
-   same lane Todo instead of adding a second row, and the receipt names every
-   lane Todo the settlement ensured.
-4. **Admission facts.** The manager channel's Turn attaches a per-Goal lookup to
-   the segment that parses the answer, so a preview is validated against the
-   Agents of the Goal it names: the owner's own channel resolves any registered
-   Goal, an external manager channel resolves only the Goals it is bound to, and
-   a Goal the registry does not know - or one outside that channel's scope -
-   drops the preview instead of validating it against another Goal's Agents.
-   The shipped steward guidance requires the plan to name that Goal, because a
-   plan that does not name it is dropped rather than shown.
-5. **Confirmed apply from Chat.** The typed Chat action surface owns a
-   `team.plan` action. Its preview validates the plan against that Goal's
-   registered Agents and the host's advancement action kinds, and its apply
-   re-validates the same payload through the governed transition owner at
-   `PRE_SETTLEMENT`, so one owner confirmation creates each ready lane's first
-   bounded Todo and returns the lane readback. A registration change between
-   preview and apply makes the proposal stale rather than applying a plan whose
-   staffing has drifted.
-6. **Admitted preview to confirmable card.** The owner's own local manager
-   channel projects the preview it admitted into the typed action store, so the
-   product surface the owner already reads lists exactly one `team.plan` card
-   scoped to the Goal the plan staffs. The projection is idempotent per plan, so
-   a replayed Turn or a repeated ask reuses the card instead of stacking a
-   second one; it creates no work, and it grants nothing that confirming the card
-   would not grant. A Turn response now carries the preview beside its Todo
-   proposals, so the surfaces read one response shape instead of deciding which
-   kinds of answer may arrive.
-7. **The answer says where the confirmation is.** Every manager answer that
-   admitted a preview carries one channel-authored pointer line naming the Goal
-   whose workspace holds the card and the fact that no lane exists before that
-   confirmation. It is a receipt, not a rewrite: the steward's prose is
-   preserved, and a Goal channel is never annotated. A remote manager audience
-   receives the pointer as well, which is what makes one manager answer
-   actionable even where the audience that asked cannot itself confirm.
+`peer_v1` permits a steward to organize, delegate and synthesize, without
+unilateral write, claim, priority or preemption authority. Lanes refer to the
+same canonical graph and per-Agent frontier. Creating `claimed_by` Todos does
+not acquire task leases, launch workers or reserve distributed quota.
 
-The owner's own channel ships both the card and the sentence that explains it:
-the admitted preview reaches the typed action store, the card renders the same
-click path a single-lane `team.plan` card already had, and the answer the owner
-reads names the Goal whose workspace holds that card. That sentence is the
-channel's, not the model's, and a remote manager audience receives it too --
-one manager answer is therefore actionable for every audience that can read it,
-because the audience that asked may not be the audience that can confirm.
-What is still missing is the remote audience's *own* confirmation surface: a
-Lark manager channel has no card of its own, so nothing is written on its
-behalf, and its owner confirms in the LoopX workspace the answer named.
-Traceability is recorded rather than implied: the settlement reads
-the Goal's canonical source basis before it writes, and the receipt carries it as
-a bounded `intent_basis`, so each lane Todo can be tied to the revision it was
-meant to advance even though the Todo row itself does not carry the field. The
-readback is no longer a gap either: the apply publishes every lane Todo it ensured
-under a bounded `lane_todo_ids` field, both fields are additive exceptions to the
-closed, persisted receipt field set so a receipt written before them still
-validates, and a team-plan receipt carries no monitor key because a plan is not a
-monitor.
+The [peer directory](../../reference/protocols/peer-agent-directory-and-observation-v0.md)
+is shared by manager and peer callers. `loopx agent-directory --goal-id <goal>
+[--agent-id <caller>]` reuses the management projection, caps local rows at 24,
+reports omitted rows, has no pagination or presence provider and does not
+project lease epochs. A supplied unregistered caller gets a scope gap. Local
+CLI membership checks do not authenticate a remote caller; any future remote
+entry must derive caller identity from a verified binding.
 
-### Relationship to the multi-agent and shared-authority contracts
+Per-Agent readback uses `loopx shared-goal-alignment --goal-id <goal> --agent-id
+<agent>`, within its Stage 1/2 source-facts boundary. The plan receipt does not
+project that entire state. The [three-layer contract](../../reference/protocols/multi-agent-three-layer-minimality-v0.md)
+and [visible launcher](../../reference/protocols/multi-agent-visible-launcher-v0.md)
+remain independent owners: user intent, preset procedure and kernel declarations
+join by Goal/Agent/Todo identity, not by creating another runner, pane owner,
+vision budget or evidence loop. Selecting an executor or storing credentials
+grants none of these effects.
 
-A team request staffs work that several Agents share; it does not create a
-second planning or authority model. The governing contract is
-[Shared Goal Alignment and Governed
-Amendment](./shared-goal-alignment-and-governed-amendment-v0.md), whose authority
-and storage boundary is owned by [Shared Control-Plane Authority and Pluggable
-State Providers](./shared-goal-authority-state-provider-v0.md).
-
-- **A plan is a staffing act on the shared work graph.** Each lane's first
-  bounded Todo is work-graph work that preserves canonical intent, which is why
-  the apply routes through the canonical Todo owner instead of writing a plan of
-  its own. The lanes are per-Agent frontiers over that one graph, so the intake
-  must not introduce a second graph, a second frontier, or a leader Agent.
-- **Intent and staffing are different acts.** The plan's objective, acceptance
-  and stop condition state what its lanes will do *inside* the Goal's canonical
-  intent envelope (`shared_goal_intent_v0`); they may not change the Goal's
-  objective, non-goals, acceptance, permissions or stop conditions. A request
-  that needs the acceptance refined is a `shared_acceptance` amendment, and one
-  that needs a new permission is `protected_authority`; both belong to
-  `GoalAmendmentAuthority` with its policy check, independent verification and
-  compare-and-set receipt, not to a team preview. This is the same fail-closed
-  rule the typed gaps already express at the lane layer
-  (`capability_not_granted`, `audience_not_authorized`), stated for the intent
-  layer.
-- **`peer_v1` is equal execution rank, not commit authority.** The steward
-  proposes and delegates. Confirming a preview does not make it a leader over
-  the lanes, give it priority on shared resources, or grant unilateral commit
-  authority; the alignment contract states that rule for every registered Agent,
-  and this intake is one more caller that has to respect it.
-- **The steward's "who else is working" ability is the peer-directory contract.**
-  The steward and the lanes it staffs are two callers of
-  [`peer_agent_directory_v0`](../../reference/protocols/peer-agent-directory-and-observation-v0.md):
-  the steward is the manager-channel audience, scoped by its channel's Goal
-  binding, and each lane is a `peer_v1` audience, scoped by the Goal's registered
-  Agents. One contract answers both, at three layers -- typed state and governed
-  commands, the in-space skill a running Agent loads, and a provider surface that
-  may supply live presence and nothing else -- so this intake does not grow a
-  steward-only directory beside the peer one. Both audiences obey the same
-  limits: observation and delivery grant nothing, a bounded wait pins the
-  identity it resolved and requires the observed state to move, and a "who needs
-  a decision now" rollup orders attention without assigning work.
-  The contract's first local producer ships as `loopx agent-directory --goal-id
-  <goal> [--agent-id <caller>]`, which re-projects the existing agent management
-  projection instead of reading the registry twice, reports no presence while no
-  presence provider is registered, and returns a typed scope gap instead of rows
-  to a caller that is not a registered Agent of that Goal.
-- **The authoritative per-lane readback is the alignment projection.** Once a
-  plan lands, a lane's state is what `shared_goal_alignment_v0` reports for that
-  Agent (`loopx shared-goal-alignment --goal-id <goal> --agent-id <agent>`):
-  canonical revision, frontier basis, claims and lease facts, and eligible
-  unclaimed work. The apply's receipt names the lane Todos; it does not yet
-  project that per-Agent alignment state.
-
-Two gaps belong to this work and are named here rather than claimed as done: a
-materialized lane Todo does not yet carry the canonical intent revision it was
-intended to advance, so the edit is not traceable to an intent revision the way
-the alignment contract requires; and the intake reserves no work and takes no
-lease or fence, so a lane's first turn competes for quota through the ordinary
-path.
-
-The layering rules still hold beside that. Against
-`multi_agent_three_layer_minimality_contract_v0`
-(`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`), the
-owner's one sentence is the user layer, the steward's bounded procedure is the
-preset layer, and lanes, first bounded Todos, quota envelope, acceptance and
-stop condition are declared data the kernel mechanics consume; the intake owns
-no runner, panes, per-agent vision budgets or evidence loops. Against
-`multi_agent_visible_launcher_v0`
-(`docs/reference/protocols/multi-agent-visible-launcher-v0.md`), the launcher
-starts visible local panes from a `generic_multi_agent_launch_spec_v0` and the
-intake is the same intent entered from Chat; they join by identity (`goal_id`,
-`agent_id`, and the lane's first Todo), not by one calling the other.
-
-What this contract does not authorize: the steward still only proposes and
-delegates; selecting a steward executor or storing a credential grants none of
-these effects; and nothing here widens OS, provider, audience or work-state
-authority.
-
-## Steward Channel Readiness by Milestone (2026-09-15)
+## Steward Channel Readiness by Milestone (2026-09-16)
 
 The steward channel consumes both this document's host selection and the manager
 milestones in
@@ -732,20 +584,18 @@ on today and which stay unverified. It states product contracts, not conversatio
 content: no live channel transcript, audience identity, dated incident or
 operator-local path is recorded here.
 
-| Milestone | Steward-channel contract in scope | Evidence state on 2026-09-15 |
+| Milestone | Steward-channel contract in scope | Evidence state on 2026-09-16 |
 | --- | --- | --- |
 | Manager M1 — useful host agent | The channel resolves and reports its effective executor, model, reasoning effort and source, the executor selection does not follow a credential, and a host that cannot launch fails with a typed reason instead of a silent individual-login fallback | Shipped: selected endpoint with its source and default-rule reason, the executor's `execution_profile`, `executor_kind`, and the `channel_binding` readback (PR #4446 with the Turn-side readback in PR #4443; the unconditional default and the segment transport land with this change). The upstream **session identity** is still not projected to the channel, so a channel answer cannot yet prove which session served it |
-| Manager M2 — semantic continuation | Receiver resolution across registered running lanes; typed per-source coverage and freshness; a goal-level milestone the report can lead with instead of coverage disclaimers | Not implemented. Delegation resolves against the supplied delegation catalog, so a request whose owning lane is absent from that catalog is refused or routed to an unrelated lane; a provider read failure surfaces as raw error text instead of a typed source row; the manager context exposes deliveries and coverage but no goal-level milestone field to synthesize from |
+| Manager M2 — semantic continuation | Receiver resolution across registered running lanes; typed per-source coverage and freshness; a goal-level milestone the report can lead with instead of coverage disclaimers | Partially implemented. Typed source failures and one real source read are recorded below; the local peer directory is shipped. Cross-directory receiver resolution, complete semantic requests/return and a synthesizable Goal-level milestone remain open. Source reading does not complete M2 |
 | Manager M3 — automatic complete exchange | A persisted answer that exceeds or violates the channel's outbound text contract is split and re-sent under a stable answer identity; an ambiguous or failed send is reconciled instead of replaced by a local notice; the return path survives a transport restart; rich markdown renders as structured text | Partially mitigated. `loopx/extensions/lark/outbound.py` fails closed on an over-limit or malformed payload, and the channel reports that local failure without re-delivering the persisted answer; one answer carries no idempotency identity, so a retry can duplicate it; structured rendering is not guaranteed |
 | Host modes M0-M1 | The channel's executor selection and its bounded one-segment execution | Selection is covered by PR #4446 and the Turn-side selection by PR #4443; bounded one-segment execution is covered by the Mode B acceptance above. The channel itself now reaches the managed host through the segment transport, so the managed host's own one-segment execution is reachable from the channel; what remains open is that the segment is not a session, so cross-turn host continuity is still not offered |
 | Host modes M2-M3 | Attached-host parity, typed unavailability, and mode-aware projection with no mode inference and no second executor | Partly shipped: the channel's managed segment transport holds one executor per binding, refuses a second start with the typed `managed_host_chat_segment_in_flight`, and discards an interrupted segment's answer instead of letting it enter visible history. The channel readback also carries the mode-aware projection: it quotes the Session's own `session_mode` and `status`, reads a channel with no Session as `unbound`, and names a mode outside the closed set as `unrecognized` instead of deriving a mode from the executor it resolved. Still not implemented: attached-host parity, and an external audience still degrades to `restricted` |
 
 ### Remote-source coverage acceptance (2026-09-16)
 
-The M2 row above recorded that "a provider read failure surfaces as raw error
-text instead of a typed source row". Two shipped changes moved that, and the
-behaviour is now accepted from a live channel read rather than inferred from the
-code:
+Typed M2 source failures have shipped. The following preserves one historical
+live-channel read and its acceptance boundary; this roadmap audit did not rerun it:
 
 - a declared remote source that cannot be read reports a typed cause together
   with the repair that clears it (an authorization that lapsed, a remote client

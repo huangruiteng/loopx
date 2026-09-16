@@ -14,11 +14,17 @@
   或 authority promotion
 - PostgreSQL 基线：TypeScript Stage 2B candidate 已实现 store contract、
   transaction-local tenant context、forced row-level security 与有界 canonical
-  commit admission，且已通过真实 PostgreSQL 16 transaction matrix；shared
-  authority service、runtime caller、principal authentication/tenant authorization、
-  实测 capacity/retention profile 与 authority promotion 均尚未交付
+  commit admission，且已通过真实 PostgreSQL 16 transaction matrix。后续已交付进程内 service admission、principal/tenant 校验注入点
+  与 restore-incarnation rotation；真实认证传输部署、跨主机 runtime caller、
+  实测 capacity/retention profile 与 authority promotion 仍未由这些接缝证明
 - 语言说明：[英文版](./shared-goal-authority-state-provider-v0.md)与本中文版互为
   语义镜像；两者不一致属于缺陷
+
+## 管家规模化的持久化路线（2026-09-16）
+
+[统一路线](loopx-overall-roadmap-v0.zh-CN.md) R5 复用本 RFC 的 D1 投影、D2 真实 backend/容量/适用十日 soak、D3 fenced cutover；R6 再把所选 shared profile 接入认证的本地/云端路径。R1–R3 可在已支持 profile 上前进，不等待 PostgreSQL 或整 Goal 默认晋升。
+
+`e94759d88` 已增加 [PostgreSQL service admission](../../reference/postgresql-authority-service-v0.zh-CN.md)，包含认证/tenant 验证注入与 identity rotation；它是进程内服务边界，不是已部署网络服务。后续 P lane 复用它，补 transport、真实身份策略、pool/cancellation/failover 与运维资格，不能从零重造 admission。R7 百 Agent 资格需独立报告注册数、活跃执行器和实测容量；目录、presence、管家计划或一次 source read 不授予 shared authority。既有 source-failure fail-closed、receipt/replay 和 rollback 合同保持。
 
 ## 当前实现检查点
 

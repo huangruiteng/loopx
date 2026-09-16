@@ -401,150 +401,35 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 
 ## 管家团队入端口径（2026-09-16）
 
-管家负责回答问题。自 2026-09-16 起，它的出厂指引里还带了一段有界流程，用于另一类请求：
-业主一句话要的是**团队**而不是单个任务。本节记录这条入端口径被强制的契约、其中已经落地的
-部分，以及仍然缺失的部分。
+在 `43d362532`，团队入端已交付有界预览、业主确认与首批 Todo 物化；尚未验收正在运行、预算受约束或完整意图对齐的团队。[整体路线总纲](loopx-overall-roadmap-v0.zh-CN.md) 拥有跨 RFC 优先级及 F1–F7/R1–R7；本文保留 runtime 选型及其资格证据，不另建团队架构。
 
-入端口径是既有的受治理提案所有者
-（`loopx/control_plane/work_items/governed_transition_proposal.py`），不是新的 CLI 命令，
-也不是新的能力。该所有者本就按 kind 分派提案、产出带 proposal digest 的类型化回执，而
-Chat Turn 也早已把 `response.proposals` 投影成 `proposal.ready` 事件。因此"团队请求"是
-**一种新 kind 的提案**，而不是在既有路径旁再开一条入端口。没有第二个调用方的命令、以及
-完全没有调用方的 builder 模块都不新增：本仓库要求未获调用的抽象先留在设计态。
+已交付边界为 `steward_team_plan_preview_v0`、kind `steward_team_plan_preview`，经 `loopx/control_plane/work_items/governed_transition_proposal.py` 与 Chat `team.plan` 分派。计划点名确切 Goal、1–8 条 lane、注册 Agent、首个 Todo 的 text/priority/class/action、acceptance、quota envelope 与 stop condition。校验结果 `applies: false`；预览不等于执行。
 
-kind 为 `steward_team_plan_preview`（`steward_team_plan_preview_v0`）的提案，在任何落地
-之前先被校验；校验通过的预览必须点名、且不得编造：
+| 边界 | 已交付行为 | 剩余限制 |
+| --- | --- | --- |
+| 校验/准入（#4519/#4522/#4532/#4533） | 确切 Goal、注册 Agent、支持的 advancement kind、有界公开安全字段；按通道范围查询 Goal；缺少事实时丢弃提案并保留答案正文 | `ready` 只校验注册/action 支持，不证明执行器健康、工具资格或预算准入 |
+| Staffing gap | 未注册 Agent 产生 `agent_not_registered` 并保留 `declined_first_todo`；显式 `capability_not_granted` / `audience_not_authorized` gap 不允许工作 | 存在这些 reason code 不证明全部 capability/audience 条件已经自动检测 |
+| 物化（#4524/#4528/#4535/#4538） | 重新校验点名 Goal，逐 ready lane 调 canonical Todo owner；回执保存 proposal digest 与有界 `lane_todo_ids`，兼容旧回执且没有 monitor key | 确认的 priority 丢失；acceptance/quota/stop 未成为此路径的执行约束；没有整队原子提交或自动 partial recovery 证明 |
+| 确认（#4547/#4548/#4552） | 现有前端展示 lanes/gaps 并提交 `team.plan`，bundle 与 browser fixture 已交付 | 此 fixture 未验收 Lark 或真实 worker 执行；all-gap apply 仍以零 Todo 返回 `team_plan_lanes_already_present` |
+| 新鲜度 | registry bytes 变化会使 Chat preview stale；可选 `intent_basis` 在物化前读取 alignment source facts | commit 未绑定精确 Goal intent/授权/工作前置条件；`intent_basis` 不是完整意图修订或 CAS fence |
 
-- 这次配人的**确切 Goal**，使"验证 lanes 的准入"与"建成 lanes 的结算"描述的是同一个 Goal
-  而不是两个；
-- 每条 lane 及其运行的 Agent，且只能来自 Core 已为该 Goal 注册的 Agent，最多 8 条 lane；
-- 该 lane 的首个有界 Todo，含其声明优先级（P0..P3）、task class 与 action kind；
-- 约束这些 lane 的 quota 包络；
-- 结束每条 lane 的验收信号；
-- 结束整个团队的终止条件。
+现有测试覆盖未变化计划的重复提交，不能推广到并发计划、多 lane 中断或中途 Todo 被编辑的情况。R1 通过实际 action/recovery 路径补这些资格。
 
-配不齐的 lane 是类型化的 gap——`agent_not_registered`、`capability_not_granted`、
-`audience_not_authorized`，以及宿主自己的 `action_kind_not_supported`——并且该 gap 会把没
-配上人的那份工作留在 `declined_first_todo` 里，让业主看到"要了什么、缺了什么"，而不是一条
-被悄悄填上或被丢掉的 lane。计划可以为自己的 lane 声明 gap 理由，但不得冒用宿主对这条 lane
-的判断：声明用一套词表，宿主回报用另一套，读者因此能区分"计划自述的 gap"和"Core 做出的
-可配人性判断"。
+最新集成检查点：#4569（`f1166e81e`）将不支持的 action kind 保留为 lane 级 gap，区分计划声明的 gap 与 host 判断，复验不把已确认的 gap 静默转为工作，并将 admitted plan 投影到本地 owner channel 卡片。一条 lane 无法承接不再拒绝整份计划；Lark manager audience 仍无对应卡片。这些修复不代表团队已执行，也未闭合基线 F1–F4 的承诺与恢复问题。
 
-让**一条 lane** 配不齐的事实有两种：本 Goal 没注册它的 Agent，或者本机不 ship 它要的
-action kind。两者都是 lane 级别的事实，因此都变成同一种类型化 gap，且都不拒绝整份计划：
-第一条 lane 配不齐的计划仍然是业主的请求，而它可配齐的那些 lane 正是业主要审的东西。当初
-正是"因为一条 lane 的 kind 而拒绝整份计划"，让线上管家把一句话团队请求答对了，却什么也给不
-出确认。
-
-声明 gap 的 lane 不得再声明工作。计划是**预览**：校验通过的载荷带 `applies: false`；只有
-业主对这份确切预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——
-Agent 注册、Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩大已确认范围，也不
-得把团队计划当作工作已完成的结算。因此，这份被确认的载荷在校验器下是**不动点**：对已准入的
-预览再校验一次会得到同样的 lanes，而预览已报为 unstaffed 的 lane 会被保留成 gap，而不是
-按宿主**当前**事实重新推导，所以落地永远不会去给一条业主看到的是 gap 的 lane 配上人。
-
-按交付顺序，已经落地并受强制的部分：
-
-1. **契约与校验器**（`#4519`，`3acd07697`）：kind、schema、lane 上限、优先级与 gap 词表、
-   公开安全文本，以及"拒绝编造 staffing"的行为。
-2. **聊天准入**（`#4522`，`3c8c832cb`）：`normalize_agent_response` 只在宿主提供
-   `team_plan_context`（本 Goal 已注册 Agent + 本机支持的 advancement action kind）时才让
-   预览通过；否则与其它无法接受的提案一样被丢弃，而答案正文仍然到达业主。
-3. **落地**（`#4524`，`c159a15b3`）：受治理提案所有者在 `PRE_SETTLEMENT` 相位分派该 kind，
-   落地时重新按本 Goal 已注册 Agent 与本机 shipment 的 advancement action kind 校验，经
-   canonical Todo owner 为每条 **ready** lane 创建首个有界 Todo，gap lane 不创建任何东西，
-   未知 Goal 在任何写入前就被拒绝，且**点名 Goal 与结算 Goal 不一致的计划会被拒绝**，因此
-   按某个 Goal 的 Agent 通过准入的计划无法被改投到另一个 Goal；回执记录 proposal digest，
-   因此重放结算复用同一条 lane Todo 而不会新增第二行，并且回执点名这次确保的每一条 lane
-   Todo。
-4. **准入事实。** 管家通道的 Turn 会给"解析答案的那一段"挂上一个按 Goal 解析的查询，因此
-   预览只会用**它点名那个 Goal** 的 Agent 来校验：业主自己的通道可解析任意已注册 Goal，
-   外部管家通道只解析它被绑定的 Goal，而 registry 不认识的 Goal——或超出该通道范围的
-   Goal——会让预览被丢弃，而不是拿另一个 Goal 的 Agent 去校验它。
-   出厂的管家指引要求计划**点名**那个 Goal，因为不点名 Goal 的计划会被丢弃而不是被展示。
-5. **从 Chat 确认落地。** 类型化 Chat action 面拥有一个 `team.plan` 动作：它的预览用该 Goal
-   已注册 Agent 与本机 advancement action kind 校验计划，它的落地则把同一份载荷交给受治理
-   提案所有者在 `PRE_SETTLEMENT` 相位重新校验，因此**一次业主确认**就会为每条 ready lane
-   建出首个有界 Todo 并返回 lane 回读。预览与落地之间若发生注册变化，提案会变为 stale，而
-   不是把 staffing 已经漂移的计划落地。
-6. **从准入预览到可确认卡片。** 业主自己的本地管家通道会把它已准入的预览投影进类型化
-   action store，因此业主本就在读的产品面上会列出**恰好一张** `team.plan` 卡片，且作用域是
-   计划点名的那个 Goal。投影按计划幂等：重放的 Turn 或重复的请求复用同一张卡片，而不会叠出
-   第二张；它不创建工作，也不授予任何"确认卡片"之外的东西。Turn 响应现在把预览与 Todo 提案
-   放在同一形状里，因此产品面读一种响应形状，而不是自己判断"哪种答案可能出现"。
-7. **回答本身说明去哪确认。** 每一份准入过团队预览的管家回答，都会带上**一句由通道写入**的
-   指引：点名那张卡片所在的 Goal，并说明确认之前不存在任何 lane。它是回执，不是改写：管家的
-   正文原样保留，Goal 通道永远不会被加上这句。远端管家受众同样会收到这句指引——这正是让
-   "同一份管家回答"在"提问的受众自己无法确认"时仍然可行动的原因。
-
-业主自己那条通道已经把卡片和解释卡片的那句话一起落地：准入预览到达类型化 action store，
-卡片走的正是单 lane `team.plan` 卡片本就有的点击路径，而业主读到的回答会点名那张卡片所在的
-Goal。这句话属于**通道**而不是模型，远端管家受众同样收得到——因为提问的受众未必是能确认的
-受众，一句管家回答要对每个能读到它的受众都可行动。仍然缺的是远端受众**自己的确认面**：
-Lark 管家通道在它自己的面上还没有卡片，因此不会替它写下卡片，它的业主按回答点名的 Goal 到
-LoopX 工作区确认。可追溯性已经被记录而不是被暗示：结算在写入**之前**读取该 Goal 的规范
-source basis，回执以有界字段 `intent_basis` 携带它，因此每条 lane Todo 都能被追溯回它本应
-推进的那个修订——尽管 Todo 行本身还不携带该字段。回读也不再是缺口：落地会把这次确保的每一条
-lane Todo 以有界字段 `lane_todo_ids` 发布出去；这两个字段都是那个封闭且持久化的回执字段集的
-加性例外，因此早前写下的回执仍然通过校验，而团队计划回执不带 monitor key——计划不是 monitor。
+后续 #4572（`0aa6179de`）在 manager 回答中追加 channel-authored 的确认位置提示，指出目标 Goal 工作区；本地与远端 manager 均收到提示，Goal channel 不追加。远端提示不等于在 Lark 生成卡片，也不证明卡片写入或团队执行成功；原模型正文保留。
 
 ### 与 multi-agent / shared authority 契约的关系
 
-团队请求配的是**多个 Agent 共享的工作**，不是第二套规划或权威模型。它受
-[共享目标对齐与受治理修订](./shared-goal-alignment-and-governed-amendment-v0.zh-CN.md)
-约束，其权威与存储边界由
-[共享控制面权威与可插拔状态提供方](./shared-goal-authority-state-provider-v0.zh-CN.md)
-拥有。
+[对齐 RFC](shared-goal-alignment-and-governed-amendment-v0.zh-CN.md) 拥有共享意图及受治理修订；[共享权威 RFC](shared-goal-authority-state-provider-v0.zh-CN.md) 拥有持久化/晋升。团队计划只提议已接受 intent 内的工作，不能靠 envelope 散文修改权限、共享验收或终止条件。Stage 3 amendment commit 仍未交付。回执可选 `intent_basis` 是既有 `source_basis_digest`，不是尚未实现的完整 intent envelope 版本，不能通过改名赋予历史回执更强语义。
 
-- **计划是共享工作图上的"配人"动作。** 每条 lane 的首个有界 Todo 属于共享工作图里保持
-  规范意图不变的工作，这正是落地走 canonical Todo owner、而不是自己写一份计划的原因。
-  lane 就是同一张图上的 per-Agent frontier，因此入端口径不得引入第二张图、第二个 frontier，
-  也不得引入 leader Agent。
-- **改意图与配人是两件事。** 计划里的 objective、acceptance、stop condition 声明的是各 lane
-  在 Goal **规范意图包络**（`shared_goal_intent_v0`）之内要做什么；它们不得改动 Goal 的
-  objective、non-goals、acceptance、权限或终止条件。需要细化验收条件的请求是一次
-  `shared_acceptance` 修订，需要新权限的请求是 `protected_authority` 修订，两者都属于
-  `GoalAmendmentAuthority`（含策略校验、独立验证与 CAS 回执），而不是属于团队预览。这与
-  lane 层已有的 fail-closed 规则（`capability_not_granted`、`audience_not_authorized`）是同
-  一条规则，只是作用在意图层。
-- **`peer_v1` 是平等执行位阶，不是提交权威。** 管家只提议与委托；确认预览不会让它成为各
-  lane 之上的 leader、不会给它共享资源上的优先权，也不会给它单方提交权威。对齐契约对每个
-  已注册 Agent 都这样规定，这条入端口径只是又一个必须遵守它的调用方。
-- **管家"谁还在干活"的能力就是 peer-directory 契约。** 管家与它配出的各 lane 是
-  [`peer_agent_directory_v0`](../../reference/protocols/peer-agent-directory-and-observation-v0.md)
-  的同一批调用方里两类受众：管家是 manager-channel 受众，范围由 channel 的 Goal 绑定划定；
-  每条 lane 是 `peer_v1` 受众，范围由该 Goal 已注册的 Agent 划定。一条契约同时回答两者，
-  且可以在三个层次抵达——typed state 与受治理命令、运行中 Agent 加载的 in-space skill、
-  以及只提供实时 presence 的 provider 面——所以这条入端口径不会在 peer directory 之外再长
-  出一个管家专用 directory。两类受众遵守同样的边界：观察与投递不授予任何东西；一次有界
-  等待会 pin 它已解析的身份、并要求观察到的状态确实向前变过；"现在谁需要决策"的 rollup
-  只排序注意力，不分配任何工作。
-  该契约的首个本地 producer 已出货：`loopx agent-directory --goal-id <goal>
-  [--agent-id <caller>]`，它复用既有的 agent management projection 而不第二次读取
-  registry；在没有 presence provider 注册时不报告 presence；调用方若不是该 Goal 的已注册
-  Agent，得到的是 typed scope gap 而不是行。
-- **每条 lane 的权威回读是对齐投影。** 计划落地后，一条 lane 的状态就是该 Agent 的
-  `shared_goal_alignment_v0` 投影（`loopx shared-goal-alignment --goal-id <goal> --agent-id
-  <agent>`）：规范修订、frontier basis、claim 与租约事实、可领取的未认领工作。apply 的回执
-  点名 lane Todo，但还没有投影这份 per-Agent 对齐状态。
+`peer_v1` 允许管家组织、委托和综合，但不授予单方写入、claim、优先权或抢占权。lanes 指向同一 canonical 图与 per-Agent frontier；创建带 `claimed_by` 的 Todo 不等于取得 lease、启动 worker 或预留分布式 quota。
 
-有两处缺口属于这条工作线，这里如实点名而不当作已完成：已建出的 lane Todo 还没有携带它本应
-推进的规范意图修订，因此这次工作图编辑尚未像对齐契约要求的那样可追溯到某个意图修订；
-入端口径也不预留工作、不取租约或 fence，因此 lane 的首个 turn 仍走普通配额路径竞争。
+[Peer directory](../../reference/protocols/peer-agent-directory-and-observation-v0.md) 供 manager 与 peer 共用。`loopx agent-directory --goal-id <goal> [--agent-id <caller>]` 复用 management projection，本地最多 24 行并报告省略数；没有分页、presence provider 或 lease epoch。传入未注册 caller 得到 scope gap。本地 CLI membership 检查不认证远端 caller；未来远端入口必须从可验证 binding 派生身份。
 
-分层规则仍然并行成立。对应 `multi_agent_three_layer_minimality_contract_v0`
-（`docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`）：业主那一句话是用户层，
-管家那段有界流程是 preset 层，lanes、首个有界 Todo、quota 包络、验收与终止条件是内核机制
-消费的声明数据；入端口径不拥有 runner、pane、per-agent vision 预算或证据回路。对应
-`multi_agent_visible_launcher_v0`
-（`docs/reference/protocols/multi-agent-visible-launcher-v0.md`）：launcher 从
-`generic_multi_agent_launch_spec_v0` 启动可见本地 pane，而这条入端口径是同一意图从 Chat 进入；
-两者按身份相连（`goal_id`、`agent_id` 与该 lane 的首个 Todo），而不是互相调用。
+每 lane 通过 `loopx shared-goal-alignment --goal-id <goal> --agent-id <agent>` 回读，仍限 Stage 1/2 source-facts 语义，计划 receipt 不投影完整状态。[三层合同](../../reference/protocols/multi-agent-three-layer-minimality-v0.md) 与[可见 launcher](../../reference/protocols/multi-agent-visible-launcher-v0.md) 保留独立归属：用户意图、preset 流程、kernel 声明按 Goal/Agent/Todo 身份连接，不再建 runner、pane owner、vision budget 或 evidence loop。选择执行器和保存凭据都不授予这些效果。
 
-这条契约不授权什么：管家仍然只提议与委托；选择管家执行器或存凭据都不带来这些 effect；
-这里也不会扩大 OS、provider、受众或工作状态权限。
-
-## 按里程碑看管家通道的就绪度（2026-09-15）
+## 按里程碑看管家通道的就绪度（2026-09-16）
 
 管家通道同时消费本文的宿主选型与
 [管家语义交接](./capable-manager-semantic-handoff-v0.zh-CN.md) 中的管家里程碑。
@@ -552,18 +437,17 @@ lane Todo 以有界字段 `lane_todo_ids` 发布出去；这两个字段都是�
 契约，不写会话内容：不记录真实会话原文、受众身份、带日期的具体事故，或 operator
 本机路径。
 
-| 里程碑 | 管家通道在范围内的契约 | 2026-09-15 的证据状态 |
+| 里程碑 | 管家通道在范围内的契约 | 2026-09-16 的证据状态 |
 | --- | --- | --- |
 | 管家 M1 — 可用的宿主 agent | 通道解析并回报其生效执行器、模型、推理档位与来源，执行器选型不跟随凭据；无法启动的宿主以 typed reason 失败，而不是静默回落到个人登录 | 已交付：带来源与默认规则原因的已选端点、执行器的 `execution_profile`、`executor_kind`、`channel_binding` 读取（PR #4446 与 PR #4443 的 Turn 侧读取；无条件默认值与单段传输随本次变更落地）。上游**会话身份**尚未投影到通道，因此通道回答还无法证明是哪一次会话给出的 |
-| 管家 M2 — 语义续接 | 跨所有已注册运行中 lane 的接收者解析；按来源的 typed 覆盖与新鲜度；报告可以先用目标级里程碑开头，而不是先给覆盖免责声明 | 未实现。委托只按传入的委托目录解析，因此拥有该事项的 lane 不在目录中时会被拒绝或投给无关 lane；provider 读取失败以原始错误文本出现在回答里，而不是 typed 来源行；管家上下文只提供交付与覆盖，没有可综合的目标级里程碑字段 |
+| 管家 M2 — 语义续接 | 跨所有已注册运行中 lane 的接收者解析；按来源的 typed 覆盖与新鲜度；报告可以先用目标级里程碑开头，而不是先给覆盖免责声明 | 部分已实现。typed 来源失败与一次真实来源读取已记录在下节；本地 peer directory 已交付。跨目录的 receiver 解析、完整语义请求/回传及可综合的目标级里程碑仍未闭合，不把 source read 等同于 M2 完成 |
 | 管家 M3 — 自动完成一次交流 | 超出或违反通道出站文本契约的已保存回答，按稳定答案身份分片重发；含糊或失败的发送要协调而不是用本地提示替代；回传路径要能跨传输重启存活；富文本要渲染成结构化文本 | 部分缓解。`loopx/extensions/lark/outbound.py` 在超限或载荷不合法时 fail closed，通道只回报这个本地失败、不重新投递已保存的回答；一条回答没有幂等身份，重试可能重复发送；结构化渲染没有保证 |
 | 宿主模式 M0-M1 | 通道的执行器选型与其有界单段执行 | 选型由 PR #4446 覆盖，Turn 侧选型由 PR #4443 覆盖；有界单段执行由上面的 Mode B 验收覆盖。通道本身现在经单段传输抵达托管宿主，因此托管宿主自己的单段执行已可从通道抵达；仍未提供的是跨 turn 宿主连续性——片段不是会话 |
 | 宿主模式 M2-M3 | attached-host 对齐、typed 不可用，以及不做模式推断、不引入第二执行器的模式感知投影 | 部分已实现：通道的托管段传输为每个绑定只保留一个执行器，第二次启动以 typed `managed_host_chat_segment_in_flight` 拒绝，被中断段的回答会被丢弃而不会进入可见历史。通道读回也带上了模式感知投影：引用 Session 自己的 `session_mode` 与 `status`，没有 Session 的通道读作 `unbound`，闭集之外的模式命名为 `unrecognized`，而不是从已解析的执行器反推模式。仍未实现：attached-host 对齐；外部受众仍降级为 `restricted` |
 
 ### 远程来源覆盖的现场验收（2026-09-16）
 
-上面 M2 行记录过"provider 读取失败以原始错误文本出现在回答里，而不是 typed 来源行"。
-两项已交付改动改变了这一点，而且现在是从**一次真实通道读取**中验收，而不是从代码推断：
+M2 的 typed 来源失败已交付；以下保留一次历史真实通道读取的验收边界，本次路线审计未复跑：
 
 - 声明了却读不到的远端来源，会回报 typed 原因与清除该原因的修复动作（授权过期、
   远端客户端缺失、远端协议不可用、主机不可达），而不是一句没有类型的不可用；

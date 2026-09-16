@@ -43,13 +43,15 @@ strategic program. Their reliability work continues through the
 and the `control-plane`
 label. It is ongoing product hardening, not a competing source of direction.
 
+Cross-domain ordering, complete RFC coverage and product acceptance are maintained in the [LoopX overall roadmap](../architecture/rfcs/loopx-overall-roadmap-v0.md). This page retains contribution routing; S streams, G milestones and R cards do not replace domain contracts or actual Todos.
+
 ## Strategic Programs
 
 | Direction | Outcome | Stage | Start here |
 | --- | --- | --- | --- |
 | Long-Horizon Benchmarks and Evidence | Produce benchmark-native, reproducible evidence for long-horizon capability and use controlled tasks to study mechanisms. | Active research | [Tracker #3243](https://github.com/huangruiteng/loopx/issues/3243) · [RFC](../architecture/rfcs/long-horizon-harness-benchmark-research-program-v0.md) |
 | Reliability Diagnostics and Governed Delivery | Prove an observer-first product entry that diagnoses long-running workflows without changing agent execution, then adds authority only at accepted seams. | Draft product direction / delivery qualification | [RFC](../architecture/rfcs/long-running-agent-reliability-diagnostics-governed-delivery-v0.md) |
-| Operator Surface and IM Integration | Make goals, sessions, decisions, evidence, and bounded collaboration legible through a coherent operator workspace. | Incubating on an integration branch | [Tracker #3244](https://github.com/huangruiteng/loopx/issues/3244) · [integration branch](https://github.com/huangruiteng/loopx/tree/frontend-control-plane-im-prototype-rfc) |
+| Operator Surface and IM Integration | Make goals, sessions, decisions, evidence, and bounded collaboration legible through a coherent operator workspace. | Partial delivery / unified-journey qualification | [Tracker #3244](https://github.com/huangruiteng/loopx/issues/3244) · [integration branch](https://github.com/huangruiteng/loopx/tree/frontend-control-plane-im-prototype-rfc) |
 | Shared Goal Authority and Cross-host Coordination | Coordinate explicitly shared goals across hosts without turning a provider or host session into control-plane authority. | Draft contract / provider qualification | [Tracker #3245](https://github.com/huangruiteng/loopx/issues/3245) · [RFC](../architecture/rfcs/shared-goal-authority-state-provider-v0.md) |
 | Architecture and Research Incubator | Qualify architectural changes and research mechanisms before they expand production scope. | Mixed; see the portfolio below | [Tracker #3246](https://github.com/huangruiteng/loopx/issues/3246) · [RFC index](../architecture/rfcs/README.md) |
 
@@ -72,7 +74,7 @@ official scoring, and unpublished comparisons remain maintainer-owned.
 
 ## Reliability Diagnostics And Governed Delivery
 
-This product direction turns the broader commercialization thesis into a
+A default-off L1 prototype and DSH event adapter exist in the [capability README](../../loopx/capabilities/reliability_diagnostics/README.md); C0/C1 and overhead qualification remain open. This product direction turns the broader commercialization thesis into a
 bounded entry offer. Its first operating level is a shadow observer between a
 native harness and full LoopX adoption: it consumes one-way events, writes an
 independent diagnostic ledger, and may not inject prompts, schedule, retry,
@@ -89,13 +91,7 @@ service before the promotion gates pass.
 
 ## Operator Surface And IM Integration
 
-The current frontend and IM work is an incubation program, not shipped `main`
-behavior. The primary implementation package is
-[#3167](https://github.com/huangruiteng/loopx/pull/3167), led by
-[`@maxliux5`](https://github.com/maxliux5), on the
-[`frontend-control-plane-im-prototype-rfc`](https://github.com/huangruiteng/loopx/tree/frontend-control-plane-im-prototype-rfc)
-integration branch. [#3200](https://github.com/huangruiteng/loopx/pull/3200)
-is a separate event-driven proposal currently under requested changes.
+At `f1166e81e`, local steward chat, executor settings, team-plan confirmation, attached/managed foundations and partial Lark verticals exist on `main`. The complete cross-entry execution/recovery journey remains unqualified. [#3167](https://github.com/huangruiteng/loopx/pull/3167) and its integration branch are historical incubation inputs, not evidence that every current frontend is unshipped. Use the [Desktop RFC](../architecture/rfcs/desktop-execution-frontends-v0.md), selected release artifact and roadmap S4/S5 entrypoint qualification.
 
 Promotion to `main` follows this ledger:
 
@@ -121,12 +117,7 @@ the authority itself. Agents do not connect directly to NoKV. Run history,
 status, quota, scheduler state, host sessions, and evidence retain their
 existing owners.
 
-The next qualifying slice is provider-neutral: extract one compact
-command/precondition/receipt/outcome core, qualify a file-backed provider on
-the same `claim_work` contract, and prove target-scoped conflicts plus atomic
-original-receipt replay. Live NoKV qualification, renew/reclaim semantics,
-distributed quota, authentication, high availability, and broader state sync
-remain later explicit decisions.
+Provider-neutral stores, File/SQLite candidates, PostgreSQL conformance and in-process service admission/identity rotation already exist. Next are roadmap R5 local D1–D3 durability qualification and R6 authenticated real cross-host service, distributed budgets and recovery. Do not repeat the initial `claim_work` extraction or treat a service seam as a deployment. NoKV and other provider promotions retain their real-backend, compatibility, retention and explicit-approval gates.
 
 ## Architecture And Research Incubator
 
