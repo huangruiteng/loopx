@@ -15,7 +15,12 @@ DECISION_PROPOSAL_SCHEMA_VERSION = "decision_proposal_v0"
 DECISION_REVIEW_RECEIPT_SCHEMA_VERSION = "decision_review_receipt_v0"
 DECISION_OUTCOME_RECEIPT_SCHEMA_VERSION = "decision_outcome_receipt_v0"
 
-DECISION_CONTEXT_CAPABILITY_ID = "decision_context"
+# Packet-contract namespace. Capability packets identify the capability with
+# the underscore spelling (the sibling capability emits "material_lifecycle").
+# No consumer joins this value with the hyphenated catalog/extension id in
+# extension_provider.py: they are two slots for the same capability, both
+# consistent with their own siblings, so the spellings stay separate.
+DECISION_CONTEXT_PACKET_CAPABILITY_ID = "decision_context"
 DECISION_OUTCOME_VERIFICATION_STATUSES = {
     "pending",
     "verified",
@@ -204,7 +209,7 @@ def _packet_ref(prefix: str, packet: Mapping[str, Any]) -> str:
 
 def _capability_contract(*, packet_role: str) -> dict[str, Any]:
     return {
-        "capability_id": DECISION_CONTEXT_CAPABILITY_ID,
+        "capability_id": DECISION_CONTEXT_PACKET_CAPABILITY_ID,
         "scope": "goal",
         "default_enabled": False,
         "packet_role": packet_role,
