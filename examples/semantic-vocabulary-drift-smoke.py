@@ -150,7 +150,7 @@ BUDGET_ANCHOR = {
     "multi_value_forks_semantic": 3,
     "multi_value_fork_definitions": 10,
     "same_runtime_forks_semantic": 18,
-    "conflicting_values_semantic": 2,
+    "conflicting_values_semantic": 0,
 }
 # Budgets for the legacy should-run decision fields, anchored the same way so a
 # single diff cannot widen a retirement budget to keep a field alive.

@@ -895,7 +895,7 @@
     "multi_value_forks": 4,
     "multi_value_fork_definitions": 10,
     "same_runtime_forks_semantic": 18,
-    "conflicting_values_semantic": 2,
+    "conflicting_values_semantic": 0,
     "multi_value_meaning": "Enums, named closed sets, Literal aliases, and TypeScript as-const arrays are vocabulary exactly as a NAME = \"value\" constant is, so they get the same collision rule. One name defined in two modules with identical values is a twin; with different values it is a fork. The semantic multi-value-fork budget excludes only names declared in scope_declarations.",
     "multi_value_forks_note": "The 4 counted forks include SOURCE_SURFACES, whose four definitions are four CLI commands each listing its own data sources; that is bounded-context reuse of one name, not drift. It stays in the budget until M0.5 adds a scope field (RFC Section 5) and must not be removed by renaming.",
     "semantic_meaning": "same_runtime_forks_semantic and conflicting_values_semantic exclude module-local convention names such as SCHEMA_VERSION, COMMAND, or *_LABEL, which every module legitimately names for itself. The remaining names are shared vocabulary, where a duplicate is real drift rather than local naming; the unfiltered totals stay visible in the generated inventory summary.",
