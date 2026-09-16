@@ -2,7 +2,7 @@ from __future__ import annotations
 from .effective_action import EffectiveAction
 
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -22,6 +22,7 @@ from ..work_items.delivery_outcome import (
 )
 from .monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
 from .scheduler_ack import QUOTA_SCHEDULER_ACK_CLASSIFICATION
+from ..effect_program import SettlementBindingKind
 from .settlement import (
     SettlementFailureKind,
     SettlementIdentity,
@@ -119,6 +120,20 @@ def _todo_binding_error(
     )
 
 
+def _receipt_committed(
+    result: SettlementResult[Any] | None,
+    step_kind: SettlementStepKind,
+) -> bool:
+    """Report whether one settlement step already owns a committed receipt."""
+
+    if result is None or result.failure is not None:
+        return False
+    return any(
+        receipt.step_kind is step_kind and receipt.status == "committed"
+        for receipt in result.receipts
+    )
+
+
 def _resolve_preview_settlement(
     *,
     raw_runtime_root: Any,
@@ -171,6 +186,12 @@ def _resolve_preview_settlement(
         "delivery_run": result.value if result.failure is None else None,
         "delivery_workspace_causality": readback.workspace_causality,
         "reason": result.failure.reason if result.failure is not None else None,
+        "writeback_committed": _receipt_committed(
+            readback.writeback, SettlementStepKind.DURABLE_WRITEBACK
+        ),
+        "spend_committed": _receipt_committed(
+            readback.spend, SettlementStepKind.QUOTA_SPEND
+        ),
     }
 
 
@@ -490,6 +511,41 @@ def _missing_delivery_workspace_preview(
     }
 
 
+DELIVERY_COMPLETION_SPEND_STATES = frozenset(
+    {"waiting", "focus_wait", "operator_gate", "eligible"}
+)
+TERMINAL_NO_FOLLOWUP_DECISION_STATE = "terminal_no_followup"
+
+
+def _admits_delivery_completion_spend_state(
+    *,
+    before: Mapping[str, Any],
+    identity: SettlementIdentity | None,
+    settlement: Mapping[str, Any],
+) -> bool:
+    """Admit the decision states one delivery-completion spend may settle from.
+
+    ``terminal_no_followup`` is admitted only for the autonomous-replan
+    settlement whose own durable writeback derived that frontier and which has
+    not yet recorded its spend. The terminal guard therefore stays strict for
+    every new, unrelated, or already-accounted spend, while the remaining step
+    of the settlement that produced the terminal frontier is no longer
+    stranded. See the ``terminal_settlement_ordering_gap`` repair pattern.
+    """
+
+    state = str(before.get("state") or "")
+    if state in DELIVERY_COMPLETION_SPEND_STATES:
+        return True
+    if state != TERMINAL_NO_FOLLOWUP_DECISION_STATE:
+        return False
+    return (
+        identity is not None
+        and identity.binding_kind is SettlementBindingKind.AUTONOMOUS_REPLAN
+        and settlement.get("writeback_committed") is True
+        and settlement.get("spend_committed") is not True
+    )
+
+
 def build_quota_slot_preview_for_decision(
     status_payload: dict[str, Any],
     *,
@@ -754,7 +810,11 @@ def build_quota_slot_preview_for_decision(
         )
         and before.get("effective_action") != EffectiveAction.AUTOMATION_PROMPT_UPGRADE_REQUIRED.value
         and not safe_bypass_spend
-        and str(before.get("state") or "") in {"waiting", "focus_wait", "operator_gate", "eligible"}
+        and _admits_delivery_completion_spend_state(
+            before=before,
+            identity=settlement_identity,
+            settlement=settlement,
+        )
     )
     if delivery_completion_spend:
         capability_repair_spend = False
