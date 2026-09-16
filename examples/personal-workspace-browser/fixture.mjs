@@ -763,16 +763,23 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       schema_version: "manager_runtime_profile_v0",
       runtime_profile: "restricted",
     };
+    const stewardExecutorConfiguration = {
+      schema_version: "steward_executor_machine_defaults_v0",
+      executor_endpoint: "codex",
+      executor_model: null,
+      executor_reasoning_effort: null,
+    };
     const machineNamespaces = {
       change_quality_qualification: changeQualityConfiguration,
       manager_runtime: managerRuntimeConfiguration,
       periodic_report: periodicConfiguration,
+      steward_executor: stewardExecutorConfiguration,
       todo_replan_cadence: cadenceConfiguration,
     };
     const goalCapabilities = goalCapabilityCatalog();
     const machineConfigurationBase = {
       ok: true,
-      available_namespaces: ["change_quality_qualification", "manager_runtime", "periodic_report", "todo_replan_cadence"],
+      available_namespaces: ["change_quality_qualification", "manager_runtime", "periodic_report", "steward_executor", "todo_replan_cadence"],
       namespace_catalog: {
         schema_version: "machine_configuration_catalog_v0",
         namespaces: [
@@ -798,6 +805,14 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
             description: "Governed report defaults.",
             schema_versions: ["periodic_report_machine_defaults_v0"],
             configuration_template: periodicConfiguration,
+            template_status: "ready",
+          },
+          {
+            namespace: "steward_executor",
+            title: "Steward executor",
+            description: "Executor, model, and reasoning effort the steward channel answers on for this machine.",
+            schema_versions: ["steward_executor_machine_defaults_v0"],
+            configuration_template: stewardExecutorConfiguration,
             template_status: "ready",
           },
           {
@@ -842,6 +857,53 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
             goal_override_present: false,
             machine_default_present: true,
             effective_revision: "sha256:manager-runtime-effective",
+          },
+        }, {
+          capability_id: "steward_executor",
+          display_name: "Steward executor",
+          description: "Executor, model, and reasoning effort the steward channel answers on for this machine.",
+          available_scopes: ["machine"],
+          machine_namespace: "steward_executor",
+          configuration_editor: {
+            schema_version: "capability_configuration_editor_v0",
+            editable: true,
+            supported_scopes: ["machine"],
+            writable_scopes: ["machine"],
+            fields: [{
+              key: "executor_endpoint",
+              label: "Steward executor",
+              description: "The executor this machine's steward channel answers on. The choice outranks the Chat service environment.",
+              input_kind: "select",
+              required: true,
+              options: ["codex", "dsh"],
+            }, {
+              key: "executor_model",
+              label: "Model",
+              description: "Optional model for the selected executor. Leave blank to keep the executor's own default.",
+              input_kind: "text",
+              required: false,
+              nullable: true,
+            }, {
+              key: "executor_reasoning_effort",
+              label: "Reasoning effort",
+              description: "Optional reasoning effort for the selected executor. Leave blank to keep the executor's own default.",
+              input_kind: "select",
+              required: false,
+              nullable: true,
+              options: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+            }],
+          },
+          default: stewardExecutorConfiguration,
+          machine_current: stewardExecutorConfiguration,
+          effective_configuration: {
+            schema_version: "capability_configuration_resolution_v0",
+            capability_id: "steward_executor",
+            source: "machine_default",
+            configuration: stewardExecutorConfiguration,
+            inherited: true,
+            goal_override_present: false,
+            machine_default_present: true,
+            effective_revision: "sha256:steward-executor-effective",
           },
         }, ...goalCapabilities.map((capability) => {
           if (capability.capability_id === "periodic_report") {

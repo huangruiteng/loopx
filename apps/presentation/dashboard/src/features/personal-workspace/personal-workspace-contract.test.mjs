@@ -436,11 +436,12 @@ for (const capabilityId of [
   "periodic_report",
   "pull_request_review",
   "reward_memory",
+  "steward_executor",
 ]) {
   const matches = capabilityLocalization.match(new RegExp(`${capabilityId}:`, "g")) ?? [];
   assert.equal(matches.length, 2, `${capabilityId} has English and Simplified Chinese metadata`);
 }
-for (const fieldKey of ["allowed_domains", "coordinator_agent_id", "enabled", "max_children", "profile", "profile_preset", "review_priority", "route_ref", "safe_fix", "strict_receipt", "timezone"]) {
+for (const fieldKey of ["allowed_domains", "coordinator_agent_id", "enabled", "executor_endpoint", "executor_model", "executor_reasoning_effort", "max_children", "profile", "profile_preset", "review_priority", "route_ref", "safe_fix", "strict_receipt", "timezone"]) {
   const matches = capabilityLocalization.match(new RegExp(`${fieldKey}:`, "g")) ?? [];
   assert.equal(matches.length, 2, `${fieldKey} has English and Simplified Chinese field copy`);
 }

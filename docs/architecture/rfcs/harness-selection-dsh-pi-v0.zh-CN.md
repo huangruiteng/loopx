@@ -53,7 +53,7 @@ C1、开销、保留与 Mode B 各行。
 | 角色 | 来源 | 当前选型 | 晋级门槛 |
 | --- | --- | --- | --- |
 | 默认托管执行宿主 | LoopX Turn 加 `dsh` 宿主适配器，并绑定到运维方提供的模型端点 | 出货默认值：配置了运维方凭据时托管有界 Turn 走 `dsh`，没有凭据时走个体 `codex-cli`；显式 `LOOPX_TURN_HOST` 可改指，显式 `--host` 优先 | 保持类型化 host request/result、独立验证与凭据归属运维方的边界；没有同等或更强的契约不替换 |
-| 管家通道执行器 | 管家回答所依赖的交互式 Chat 传输 | 出货默认值：`codex`，每台机器一致；`LOOPX_MANAGER_ENDPOINT` 可改指，显式选择托管宿主（`dsh`）时执行器、模型与推理档位一起跟随；选型由 PR #4446 落地，无条件默认值与单段传输随本次变更落地 | 单段传输的类型化边界（无流式、无跨 turn 宿主会话、沙箱只读）必须持续披露并可回读；任何托管通道都不得依赖个人订阅 |
+| 管家通道执行器 | 管家回答所依赖的交互式 Chat 传输 | 三层依次决定：本机 `steward_executor` machine-config 命名空间（前端可改，`loopx machine-config describe`/`inspect` 可回读，2026-09-16 落地）、`LOOPX_MANAGER_ENDPOINT`（用于引导或指向未列出的适配器）、出货默认值 `codex`（每台机器一致）；选择托管宿主（`dsh`）时执行器、模型与推理档位一起跟随 | 单段传输的类型化边界（无流式、无跨 turn 宿主会话、沙箱只读）必须持续披露并可回读；任何托管通道都不得依赖个人订阅；该命名空间不保存凭据、不授予任何权限 |
 | 受支持的替代 Turn 宿主 | LoopX Turn 加 `codex-cli` 适配器 | 可显式选择，也是上一行托管默认值在没有 operator 凭据的机器上的解析结果；它属于 `individual` 执行器类型，账落在某个人的 CLI 登录上 | 任何托管通道都不得*静默*依赖某个人的 CLI 订阅：个体宿主只会作为那条凭据解析默认值被走到，并以 `no_operator_credential` 回读，绝不被替换成运维方已选定的宿主 |
 | L1 事件源与会话归属 runtime 候选 | DSH | opt-in，未晋级；有界 Turn 宿主角色见上一行默认值 | 本文 C0、C1、开销、保留与 Mode B 各行被真实执行并通过评审 |
 | 可选的可见宿主循环 | Pi | 不是 managed runtime | 先声明按绑定持久化且可回读的会话模式，证明重启下的单执行器行为、"对话不是回执"、宿主本地状态非权威，并提供一条真实宿主重启行 |
@@ -80,13 +80,15 @@ LoopX **选择**托管有界 Turn 的默认宿主，而从不由启动时的意�
 回读，而不是禁止这条已披露的默认值。
 
 管家通道是**另一个**面；经上文记录的两次修订后，它的默认值是一个端点而不是一条规则：
-每台机器都是 `codex`，即交互式 CLI 端点。`LOOPX_MANAGER_ENDPOINT` 可改指；显式选择
-托管宿主（`dsh`）时，执行器、模型与推理档位一起移动，通道不可能出现"operator 模型
-跑在个人 CLI 登录上"的组合。这里凭据的作用与 Turn 行**相反**：凭据为被选中的端点
-提供认证，从不会改指这个人正在对话的面——环境里冒出一个 key，不该让一段对话中途
-换手。回读仍会给出端点来自哪里（`executor_endpoint_source`），以及出货默认值对应的是
-哪一条决定（`executor_endpoint_default_reason`），因此运维方读到的是一个已决定的
-默认值，而不是从解析出的宿主名去反推。
+每台机器都是 `codex`，即交互式 CLI 端点。三层按同一顺序决定它：本机
+`steward_executor` machine-config 命名空间、`LOOPX_MANAGER_ENDPOINT`、出货默认值。
+选择托管宿主（`dsh`）时，执行器、模型与推理档位一起移动，通道不可能出现"operator
+模型跑在个人 CLI 登录上"的组合。这里凭据的作用与 Turn 行**相反**：凭据为被选中的
+端点提供认证，从不会改指这个人正在对话的面——环境里冒出一个 key，不该让一段对话中途
+换手。回读仍会给出端点来自哪里（`executor_endpoint_source`，现在包含
+`machine_configuration`），以及出货默认值对应的是哪一条决定
+（`executor_endpoint_default_reason`），因此运维方读到的是一个已决定的默认值，而不是
+从解析出的宿主名去反推。
 
 两个托管面从同一个所有者解析**执行档位**
 （`loopx/control_plane/turn_driver/execution_profile.py`）：provider
@@ -321,6 +323,47 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 `examples/loopx-steward-managed-chat-smoke.py` 用真实内置 dsh 片段对接本地 mock 模型
 端点，断言解析出的绑定、真正上线的模型与档位、已持久化的回答，以及只读沙箱确实拒绝
 一次写入。真实管家会话的人设与受众不进入本文件。
+
+## 管家执行器的 Machine Configuration（2026-09-16）
+
+此前管家执行器只能通过 Chat 服务环境变量选择，于是"本机决定"落在启动文件里，而不是
+落在产品设置上：没有任何界面能展示它，也没有任何界面能修改它，读者必须知道当时进程
+里有哪些变量。现在执行器、模型与推理档位是一个类型化的 machine-config 命名空间
+`steward_executor`（`loopx/capabilities/steward_executor/machine_defaults.py`），
+本机的管家选择因此成为一等公民。
+
+该命名空间只有三个字段，且不保存任何凭据：
+
+```json
+{
+  "schema_version": "steward_executor_machine_defaults_v0",
+  "executor_endpoint": "codex",
+  "executor_model": null,
+  "executor_reasoning_effort": null
+}
+```
+
+`executor_endpoint` 必填，且仅限 LoopX 作为通道执行器出货的端点；模型或推理档位留空
+表示本机对该字段不做决定，通道继续从更低层解析。未知字段、未知 schema 版本、未列出
+的端点、不支持的档位都会在任何生效前 fail closed。需要命名空间未列出适配器的运维方
+仍然可以使用 `LOOPX_MANAGER_ENDPOINT`。
+
+优先级只在通道所有者（`loopx/chat_manager.py`）声明一次：machine configuration、
+服务环境变量、出货默认值。机器层才是产品界面拥有的那一层，因此
+`loopx machine-config describe` 发布模板，前端通过既有的 revision 锁定事务编辑同一份
+文档；通道回读新增 `executor_endpoint_source: machine_configuration` 以及该文档的
+`status` 与 `configuration_revision`，无需读取存储即可区分"机器决定"与"服务环境值"。
+
+本次不做改变的边界：出货默认值在每台机器上仍是 `codex`；凭据仍然只做认证、不做选择；
+托管宿主仍然需要自己的凭据与 runtime；该选择不授予任何权限——它只命名一个由运维方
+计费的 runtime，`manager_runtime` 仍是另一项机器决定。管家值损坏或存储不可读时，回落
+到更低层并给出类型化原因（`configuration_invalid`、`unavailable`），而不是让人正在
+对话的界面失败；**兄弟**命名空间损坏也不会改写有效的管家选择。
+
+验证：`tests/capabilities/test_steward_executor_machine_defaults.py`、
+`tests/test_manager_channel_binding.py`、`tests/test_chat_machine_configuration_api.py`、
+`tests/capabilities/test_capability_configuration_ui.py`，以及
+`examples/loopx-steward-channel-binding-smoke.py`。
 
 ## 按里程碑看管家通道的就绪度（2026-09-15）
 

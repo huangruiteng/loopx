@@ -35,6 +35,7 @@ from .chat_manager import (
     manager_channel,
     manager_executor_endpoint_default,
     open_manager_session,
+    steward_machine_defaults,
 )
 from .extensions.lark.goal_channel_contracts import binding_for_goal, goal_from_registry
 from .extensions.lark.goal_channel_targets import goal_channel_target_for_name
@@ -486,7 +487,11 @@ class LarkChatRequestMixin:
                 body.get("executor_endpoint_id"), limit=100
             ) or stored_routing.get("executor_endpoint_id")
             if conversation_kind == "manager" and not executor_endpoint_id:
-                executor_endpoint_id = manager_executor_endpoint_default()
+                executor_endpoint_id = manager_executor_endpoint_default(
+                    machine_defaults=steward_machine_defaults(
+                        self.server.runtime_controller
+                    )
+                )
             session_id: str | None = None
             session_ids_by_agent: dict[str, str] = {}
             if conversation_kind == "manager":
