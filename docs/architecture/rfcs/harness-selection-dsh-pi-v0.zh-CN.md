@@ -373,6 +373,42 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 `tests/capabilities/test_capability_configuration_ui.py`，以及
 `examples/loopx-steward-channel-binding-smoke.py`。
 
+## 管家团队入端口径（规划中，2026-09-16）
+
+管家今天回答问题；自 2026-09-16 起，它的出厂指引里已带一段有界流程，用于另一类请求：
+业主一句话要的是**团队**而不是单个任务。那段流程是指引，不是机器强制，因此本节记录被强制
+的契约属于哪里、以及实现落地前必须校验什么。
+
+入端口径是既有的受治理提案所有者
+（`loopx/control_plane/work_items/governed_transition_proposal.py`），不是新的 CLI 命令，
+也不是新的能力。该所有者本就按 kind 分派提案、产出带 proposal digest 的类型化回执，而
+Chat Turn 也早已把 `response.proposals` 投影成 `proposal.ready` 事件。因此"团队请求"是
+**一种新 kind 的提案**，而不是在既有路径旁再开一条入端口。没有第二个调用方的命令、以及
+完全没有调用方的 builder 模块都不新增：本仓库要求未获调用的抽象先留在设计态。
+
+在允许任何落地之前先校验提案载荷，它必须点名：
+
+- 每条 lane 及其运行的 Agent，且只能来自 Core 已为该 Goal 注册的 Agent；
+- 该 lane 的首个有界 Todo，含其声明优先级、task class 与 action kind；
+- 约束这些 lane 的 quota 或节奏包络；
+- 结束每条 lane 的验收信号；
+- 结束整个团队的终止条件。
+
+配不齐的 lane 是类型化的 gap（缺哪个注册或授予），不允许靠编造 Agent、Todo 能力或本机跑不动
+的 lane 来填。计划是**预览**：不建 Todo、不注册 Agent、不设 quota、不扣额度；只有业主对这
+份确切预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——Agent 注册、
+Todo 创建、quota 或 goal policy——复用预览点名的身份，并返回一份"现在存在什么"的回读；不得
+扩大已确认范围，也不得把团队计划当作工作已完成的结算。
+
+按此顺序分两片交付：
+
+1. **预览片（下一步）**：类型化载荷契约与其校验器，配聚焦测试，且不注册 materializer，
+   使预览即使被误用也无法落地。
+2. **落地片**：该 kind 的 materializer，含其结算相位与回读，并按上文经既有 owner 路由。
+
+这条规划契约不授权什么：管家仍然只提议与委托；选择管家执行器或存凭据都不带来这些 effect；
+这里也不会扩大 OS、provider、受众或工作状态权限。
+
 ## 按里程碑看管家通道的就绪度（2026-09-15）
 
 管家通道同时消费本文的宿主选型与
