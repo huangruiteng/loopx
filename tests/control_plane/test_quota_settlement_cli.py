@@ -1283,6 +1283,69 @@ def test_recovery_does_not_bind_current_replan_and_reenters_same_turn(
     )
 
 
+def test_recovery_guard_accepts_the_todo_it_must_settle(
+    tmp_path: Path,
+) -> None:
+    """A recovery guard bound to the Todo it recovers is not a selection conflict.
+
+    The recovery decision carries no top-level ``selected_todo``: its
+    qualification names the Todo the prior unsettled Turn has to settle. Binding
+    the guard to that same Todo is the documented way to close out, so the
+    preflight must accept it instead of failing as a projection conflict.
+    """
+
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    _configure_selectable_alternative(project)
+    _append_newly_due_monitor(project)
+    prior_turn_id = "turn-unsettled-bound-prior"
+    recovery_turn_id = "turn-unsettled-bound-recovery"
+
+    prior_rc, prior = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        prior_turn_id,
+        "--todo-id",
+        TODO_ID,
+        "--scan-path",
+        str(project),
+    )
+    assert prior_rc == 0, prior
+    assert prior["heartbeat_receipt"]["closeout_required"] is True
+
+    recovery_rc, recovery = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        recovery_turn_id,
+        "--todo-id",
+        TODO_ID,
+        "--scan-path",
+        str(project),
+    )
+
+    assert recovery_rc == 0, recovery
+    assert recovery["effective_action"] == "unsettled_host_turn_recovery"
+    packet = recovery["unsettled_host_turn_recovery"]
+    assert packet["prior_turn_instance_id"] == prior_turn_id
+    assert packet["binding_id"] == TODO_ID
+    assert recovery.get("error_code") != "quota_unexpected_collection_error"
+
+
 @pytest.mark.parametrize("provider", ["legacy", "file", "sqlite"])
 @pytest.mark.parametrize("hidden_count", [0, 6])
 def test_prior_host_closeout_survives_hidden_todo_lifecycle(
