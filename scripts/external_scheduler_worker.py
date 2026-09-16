@@ -42,7 +42,7 @@ from loopx.extensions.process_runtime import (  # noqa: E402
 )
 
 SCHEDULER_DETAIL_KEY = "local_scheduler"
-TERMINAL_ACTIONS = frozenset({"stop_until_explicit_resume"})
+LOCAL_SCHEDULER_STOP_DIRECTIVE = "stop"
 PROCESS_OUTPUT_LIMIT_BYTES = 1_000_000
 
 
@@ -89,15 +89,22 @@ def _extract_reset_token(payload: dict[str, Any]) -> str:
     return str(reset_policy.get("reset_token") or "").strip()
 
 
+def _local_scheduler_directive(hint: dict[str, Any]) -> str:
+    unchanged_poll = _mapping(hint.get("unchanged_poll"))
+    return str(unchanged_poll.get(SCHEDULER_DETAIL_KEY) or "").strip()
+
+
 def parse_tick(payload: dict[str, Any]) -> TickDecision:
     hint = _mapping(payload.get("scheduler_hint"))
     action = str(hint.get("action") or "").strip()
     cadence_class = str(hint.get("cadence_class") or "").strip()
     reason = str(hint.get("reason") or payload.get("state") or "").strip()
     should_run = bool(payload.get("should_run"))
-    if action in TERMINAL_ACTIONS:
+    if _local_scheduler_directive(hint) == LOCAL_SCHEDULER_STOP_DIRECTIVE:
         # Terminal packets intentionally omit cold-path cadence detail: no
         # further wake is legal, so an interval cannot affect the decision.
+        # The producer-owned directive covers every stop action without a
+        # second consumer-side action vocabulary.
         return TickDecision(
             should_run=should_run,
             action=action,

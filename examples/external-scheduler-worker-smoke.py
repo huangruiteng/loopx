@@ -39,32 +39,38 @@ def _hint_payload(
     should_run: bool = False,
     cadence_class: str = "quiet_wait",
     reason: str = "synthetic",
+    local_scheduler_directive: str | None = None,
 ) -> dict:
+    scheduler_hint = {
+        "action": action,
+        "cadence_class": cadence_class,
+        "reason": reason,
+        "reset_policy": {"reset_token": reset_token},
+        "cold_path_detail": {
+            "local_scheduler": {
+                "recommended_interval_minutes": initial,
+                "example_progression_minutes": progression,
+                "unchanged_poll_limit": limit,
+                "after_limit": after_limit,
+                "final_quota_replan_check": {
+                    "enabled": limit is not None,
+                    "trigger": "before_unchanged_poll_after_limit",
+                    "action": "rerun_quota_should_run_once",
+                    "if_changed": "follow_new_scheduler_hint",
+                    "if_run_now": "execute_new_quota_contract",
+                    "if_unchanged": "apply_after_limit_without_spend",
+                },
+            }
+        },
+    }
+    if local_scheduler_directive is not None:
+        scheduler_hint["unchanged_poll"] = {
+            "local_scheduler": local_scheduler_directive
+        }
     return {
         "should_run": should_run,
         "effective_action": action,
-        "scheduler_hint": {
-            "action": action,
-            "cadence_class": cadence_class,
-            "reason": reason,
-            "reset_policy": {"reset_token": reset_token},
-            "cold_path_detail": {
-                "local_scheduler": {
-                    "recommended_interval_minutes": initial,
-                    "example_progression_minutes": progression,
-                    "unchanged_poll_limit": limit,
-                    "after_limit": after_limit,
-                    "final_quota_replan_check": {
-                        "enabled": limit is not None,
-                        "trigger": "before_unchanged_poll_after_limit",
-                        "action": "rerun_quota_should_run_once",
-                        "if_changed": "follow_new_scheduler_hint",
-                        "if_run_now": "execute_new_quota_contract",
-                        "if_unchanged": "apply_after_limit_without_spend",
-                    },
-                }
-            },
-        },
+        "scheduler_hint": scheduler_hint,
     }
 
 
@@ -114,15 +120,24 @@ def test_new_reset_token_resets_progression() -> None:
 
 
 def test_terminal_action_is_terminal() -> None:
-    payload = _hint_payload(
-        action="stop_until_explicit_resume",
-        initial=0,
-        progression=[0],
-        limit=None,
-        cadence_class="terminal_no_followup",
-    )
-    decision = parse_tick(payload)
-    assert decision.terminal is True
+    for action in (
+        "stop_until_explicit_resume",
+        "return_to_owner_until_material_change",
+    ):
+        payload = _hint_payload(
+            action=action,
+            initial=0,
+            progression=[0],
+            limit=None,
+            cadence_class="terminal_no_followup",
+            local_scheduler_directive="stop",
+        )
+        del payload["scheduler_hint"]["cold_path_detail"]
+        decision = parse_tick(payload)
+        assert decision.terminal is True
+        assert decision.action == action
+        assert decision.after_limit == "stop_tick_loop"
+        assert decision.unchanged_limit is None
 
 
 def test_missing_detail_fails_closed() -> None:
@@ -185,7 +200,9 @@ def test_launchd_program_arguments_match_worker_entrypoint(tmp_path: Path) -> No
         progression=[0],
         limit=None,
         cadence_class="terminal_no_followup",
+        local_scheduler_directive="stop",
     )
+    del terminal["scheduler_hint"]["cold_path_detail"]
     fake_cli = tmp_path / "launchd" / "fake-loopx"
     _write_fake_cli(fake_cli, [terminal])
 
@@ -313,37 +330,44 @@ def test_end_to_end_token_change_resets_count(tmp_path: Path) -> None:
 
 
 def test_end_to_end_terminal_stops_immediately(tmp_path: Path) -> None:
-    terminal = _hint_payload(
-        action="stop_until_explicit_resume",
-        initial=0,
-        progression=[0],
-        limit=None,
-        cadence_class="terminal_no_followup",
-    )
-    registry = tmp_path / "terminal" / "registry"
-    state_file = tmp_path / "terminal" / "worker-state.json"
-    fake_cli = tmp_path / "terminal" / "fake-loopx"
-    _write_fake_cli(fake_cli, [terminal])
+    for action in (
+        "stop_until_explicit_resume",
+        "return_to_owner_until_material_change",
+    ):
+        terminal = _hint_payload(
+            action=action,
+            initial=0,
+            progression=[0],
+            limit=None,
+            cadence_class="terminal_no_followup",
+            local_scheduler_directive="stop",
+        )
+        del terminal["scheduler_hint"]["cold_path_detail"]
+        root = tmp_path / action
+        registry = root / "registry"
+        state_file = root / "worker-state.json"
+        fake_cli = root / "fake-loopx"
+        _write_fake_cli(fake_cli, [terminal])
 
-    slept: list[float] = []
-    args = argparse.Namespace(
-        cli_bin=str(fake_cli),
-        registry=str(registry),
-        runtime_root=None,
-        runtime_profile="generic_cli",
-        goal_id="g",
-        agent_id="a",
-        state_file=str(state_file),
-        wake_cmd=None,
-        once=False,
-        error_backoff_seconds=5.0,
-    )
-    rc = run_worker(args, sleep=slept.append)
+        slept: list[float] = []
+        args = argparse.Namespace(
+            cli_bin=str(fake_cli),
+            registry=str(registry),
+            runtime_root=None,
+            runtime_profile="generic_cli",
+            goal_id="g",
+            agent_id="a",
+            state_file=str(state_file),
+            wake_cmd=None,
+            once=False,
+            error_backoff_seconds=5.0,
+        )
+        rc = run_worker(args, sleep=slept.append)
 
-    assert rc == 0
-    assert slept == []
-    persisted = json.loads(state_file.read_text())
-    assert persisted["unchanged_count"] == 0
+        assert rc == 0
+        assert slept == []
+        persisted = json.loads(state_file.read_text())
+        assert persisted["unchanged_count"] == 0
 
 
 def test_end_to_end_should_run_invokes_wake_cmd(tmp_path: Path) -> None:
