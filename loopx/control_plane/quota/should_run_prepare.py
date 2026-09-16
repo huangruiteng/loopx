@@ -67,6 +67,7 @@ from ..scheduler.execution_context import (
     SchedulerExecutionContextResolution,
 )
 from ..todos.contract import (
+    TODO_STATUS_BLOCKED,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
@@ -227,6 +228,7 @@ def _blocked_priority_fallback(
         return None
 
     blocked_items: list[dict[str, Any]] = []
+    owner_visible_blocker = False
     for item in first_open:
         if not isinstance(item, dict):
             continue
@@ -258,6 +260,15 @@ def _blocked_priority_fallback(
         if not text:
             continue
         blocked_items.append(compact_todo_summary_item(item, text=text))
+        # A scheduled future monitor window is a deferral, not a blocker, so it
+        # never earns an owner notice. An advancement item that is blocked, or
+        # that waits on an unsatisfied resume condition, does: the owner is
+        # told why the higher-priority work is not moving while fallback
+        # delivery continues, without being asked to act.
+        if not future_monitor and (
+            status == TODO_STATUS_BLOCKED or resume_condition_pending
+        ):
+            owner_visible_blocker = True
 
     if not blocked_items:
         return None
@@ -267,12 +278,19 @@ def _blocked_priority_fallback(
         "schema_version": "blocked_priority_fallback_v0",
         "kind": "blocked_priority_fallback",
         "severity": "warning",
-        "notify_user": False,
+        "notify_user": owner_visible_blocker,
         "requires_user_action": False,
         "reason": (
-            "a higher-priority agent todo is blocked, deferred, or scheduled "
-            "for a future monitor window before the "
-            "selected executable fallback"
+            (
+                "a higher-priority agent todo is blocked before the selected "
+                "executable fallback; the fallback continues and no owner "
+                "action is required"
+            )
+            if owner_visible_blocker
+            else (
+                "a higher-priority agent todo is deferred or scheduled for a "
+                "future monitor window before the selected executable fallback"
+            )
         ),
         "blocked_items": blocked_items[:3],
         "selected_executable": selected_item,
