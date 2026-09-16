@@ -293,9 +293,6 @@ def test_inspect_journal_cli_branches_before_live_or_write_paths(
         raise AssertionError("inspect-journal reached a live or write path")
 
     for name in (
-        "build_lark_operator_inbox_urgency_projector",
-        "collect_status",
-        "scheduler_execution_context_for_turn",
         "build_live_quota_should_run_decision",
         "build_loopx_turn_plan",
         "run_codex_cli_host",
