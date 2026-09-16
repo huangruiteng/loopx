@@ -271,6 +271,28 @@ delivering. Three of those rules carry the weight here:
   degenerates to registered identity plus durable work state, which is the
   normal case for a prompt-only transport.
 
+Three rules generalize the same contract beyond one provider and beyond the
+steward, and they are what make it reusable instead of host-specific:
+
+- **One space, three layers, two audiences.** The space is this Goal's execution
+  space, and a host surface is a transport inside it. The contract is reachable
+  as typed state and governed commands, as the in-space skill a running Agent
+  loads, and as a provider surface that supplies presence only; a layer may
+  narrow authority, never widen it. The steward (manager channel) and a peer
+  Agent (`peer_v1`) are two callers of the one contract, scoped by the channel's
+  Goal binding and by the Goal's registered Agents respectively, so a caller
+  resolves itself from the binding it arrived on and its targets from the
+  directory.
+- **Bounded waits pin identity and require forward movement.** A wait, or the
+  readback that a delivery produced a turn, pins the resolved Agent, work
+  identity and provider location, so a replacement occupant of the same location
+  cannot satisfy it, and it requires that the observed state moved after the
+  request began, so a stale re-read proves nothing. This is the binding shape
+  this document already requires of a governed write's settlement.
+- **An attention rollup is typed, and assigns nothing.** A "who needs a decision
+  now" view may order and annotate rows from typed state. It creates no claim, no
+  lease and no priority, and it is not an input to automatic assignment.
+
 ## 4. Authority matrix
 
 ### 4.1 What `GoalAmendmentAuthority` means

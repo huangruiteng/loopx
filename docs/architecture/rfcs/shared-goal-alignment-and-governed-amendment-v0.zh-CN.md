@@ -241,6 +241,21 @@ per-Agent frontier 告诉一个 Agent 自己的路线。peer 之间也需要彼�
   之后什么会保留、以及它无法恢复什么。没有这类 provider 时，directory 退化为"已注册
   身份 + 持久工作状态"——这正是 prompt-only transport 的常态。
 
+有三条规则把同一契约从单一 provider、单一管家场景推广为可复用契约：
+
+- **一个空间、三个层次、两类调用方。** 空间是这个 Goal 的执行空间，宿主面只是空间内
+  的 transport。同一契约可以在三个层次抵达：typed state 与受治理命令、运行中的 Agent
+  加载的 in-space skill、以及只提供 presence 的 provider 面；层次只能收窄权限，不能
+  放大权限。管家（manager channel）与 peer Agent（`peer_v1`）是同一契约的两类调用方，
+  前者由 channel 的 Goal 绑定划定范围、后者由该 Goal 已注册的 Agent 划定范围；调用方
+  只从自己抵达时所用的绑定解析自身，目标则来自 directory。
+- **有界等待要 pin 身份，并要求状态向前推进。** 一次等待、或"投递是否真的产生了 turn"
+  的读回，都要 pin 已解析的 Agent、工作身份（`todo_id`）与 provider 位置，使同一位置的
+  替代者无法满足它；同时要求观察到的状态在请求开始之后确实变过，否则一次陈旧重读什么
+  也证明不了。这与本文对受治理写入结算所要求的绑定形状一致。
+- **attention rollup 是 typed 的，且不分配任何东西。** "现在谁需要决策"的视图可以按
+  typed state 排序和标注行；它不创造 claim、lease 或优先级，也不是自动分配的输入。
+
 ## 4. Authority matrix
 
 ### 4.1 `GoalAmendmentAuthority` 到底是什么

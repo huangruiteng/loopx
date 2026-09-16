@@ -596,6 +596,18 @@ State Providers](./shared-goal-authority-state-provider-v0.md).
   the lanes, give it priority on shared resources, or grant unilateral commit
   authority; the alignment contract states that rule for every registered Agent,
   and this intake is one more caller that has to respect it.
+- **The steward's "who else is working" ability is the peer-directory contract.**
+  The steward and the lanes it staffs are two callers of
+  [`peer_agent_directory_v0`](../../reference/protocols/peer-agent-directory-and-observation-v0.md):
+  the steward is the manager-channel audience, scoped by its channel's Goal
+  binding, and each lane is a `peer_v1` audience, scoped by the Goal's registered
+  Agents. One contract answers both, at three layers -- typed state and governed
+  commands, the in-space skill a running Agent loads, and a provider surface that
+  may supply live presence and nothing else -- so this intake does not grow a
+  steward-only directory beside the peer one. Both audiences obey the same
+  limits: observation and delivery grant nothing, a bounded wait pins the
+  identity it resolved and requires the observed state to move, and a "who needs
+  a decision now" rollup orders attention without assigning work.
 - **The authoritative per-lane readback is the alignment projection.** Once a
   plan lands, a lane's state is what `shared_goal_alignment_v0` reports for that
   Agent (`loopx shared-goal-alignment --goal-id <goal> --agent-id <agent>`):

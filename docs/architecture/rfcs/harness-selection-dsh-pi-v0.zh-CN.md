@@ -459,6 +459,15 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
 - **`peer_v1` 是平等执行位阶，不是提交权威。** 管家只提议与委托；确认预览不会让它成为各
   lane 之上的 leader、不会给它共享资源上的优先权，也不会给它单方提交权威。对齐契约对每个
   已注册 Agent 都这样规定，这条入端口径只是又一个必须遵守它的调用方。
+- **管家"谁还在干活"的能力就是 peer-directory 契约。** 管家与它配出的各 lane 是
+  [`peer_agent_directory_v0`](../../reference/protocols/peer-agent-directory-and-observation-v0.md)
+  的同一批调用方里两类受众：管家是 manager-channel 受众，范围由 channel 的 Goal 绑定划定；
+  每条 lane 是 `peer_v1` 受众，范围由该 Goal 已注册的 Agent 划定。一条契约同时回答两者，
+  且可以在三个层次抵达——typed state 与受治理命令、运行中 Agent 加载的 in-space skill、
+  以及只提供实时 presence 的 provider 面——所以这条入端口径不会在 peer directory 之外再长
+  出一个管家专用 directory。两类受众遵守同样的边界：观察与投递不授予任何东西；一次有界
+  等待会 pin 它已解析的身份、并要求观察到的状态确实向前变过；"现在谁需要决策"的 rollup
+  只排序注意力，不分配任何工作。
 - **每条 lane 的权威回读是对齐投影。** 计划落地后，一条 lane 的状态就是该 Agent 的
   `shared_goal_alignment_v0` 投影（`loopx shared-goal-alignment --goal-id <goal> --agent-id
   <agent>`）：规范修订、frontier basis、claim 与租约事实、可领取的未认领工作。apply 的回执
