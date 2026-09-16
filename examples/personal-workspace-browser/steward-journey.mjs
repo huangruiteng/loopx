@@ -13,7 +13,7 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { outputDir } from "./fixture.mjs";
+import { outputDir, packaged } from "./fixture.mjs";
 import { openWorkspacePage } from "./scenario-context.mjs";
 
 const GOAL_ID = "product-release";
@@ -111,6 +111,16 @@ export const stewardJourneyScenario = {
     const failures = [];
     const beats = [];
     const gaps = [];
+    // The lane's acceptance is that this journey is reproducible from the
+    // *packaged* frontend, not only from the development server. Recording the
+    // mode keeps that claim checkable instead of implied by whoever ran it, and
+    // the bundle assertion catches a packaged run that silently served source.
+    const servedMode = packaged ? "packaged" : "development";
+    if (packaged) {
+      if (!url.includes("/chat/")) {
+        failures.push(`packaged run did not serve the built bundle (${url})`);
+      }
+    }
     const record = (beat, detail) => beats.push({ beat, detail });
     const check = (condition, message) => {
       if (!condition) failures.push(message);
@@ -272,12 +282,23 @@ export const stewardJourneyScenario = {
 
       await writeFile(
         resolve(outputDir, "steward-journey-report.json"),
-        `${JSON.stringify({ beats, gaps, scenario: "steward-journey" }, null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            beats,
+            gaps,
+            mode: servedMode,
+            served_root: packaged ? "loopx/web/chat" : "vite-development-server",
+            url,
+            scenario: "steward-journey",
+          },
+          null,
+          2,
+        )}\n`,
         "utf8",
       );
       const gapBeats = gaps.filter((entry) => entry.status === "gap").map((entry) => entry.beat);
       console.log(
-        `steward-journey beats=${beats.length} gaps=${gapBeats.join(",") || "none"}`,
+        `steward-journey mode=${servedMode} beats=${beats.length} gaps=${gapBeats.join(",") || "none"}`,
       );
     } finally {
       await context.close();
