@@ -363,28 +363,29 @@ whose listed symbol is a journal or receipt writer marks the vocabulary
 ### Formal model and proof boundary
 
 The registry is a finite specification of a larger program semantics. Let
-`V` be the set of registered vocabularies, `Val(v)` the admitted values of a
-vocabulary `v`, and `S` the set of source sites. The model records relations,
-not just names:
+`V` be the set of registered vocabularies, `L` the source sites, `U(v)` the
+ambient runtime values, and `S(v)` the registered admitted values of vocabulary
+`v`. Production and consumption range over `U(v)` before validation. The model
+records relations, not just names:
 
 ```text
-D ⊆ S × V                         defines
-P ⊆ S × V × Val(v)                produces
-C ⊆ S × V × Val(v)                consumes or branches on
-I ⊆ S × V × V                     interprets one vocabulary as another
-T ⊆ S × V                         passes through without changing meaning
-G ⊆ V × V × (Val ⇀ Val ∪ {reject}) projects
-R ⊆ S × V × Version               persists a value durably
+D ⊆ L × V                         defines
+P ⊆ L × V × U(v)                  produces
+C ⊆ L × V × U(v)                  consumes or branches on
+I ⊆ L × V × V                     interprets one vocabulary as another
+T ⊆ L × V                         passes through without changing meaning
+G ⊆ V × V × (S(v_source) ⇀ S(v_target) ∪ {reject}) projects
+R ⊆ L × V × Version               persists a value durably
 ```
 
 The minimum semantic obligations are:
 
-1. **Producer closedness:** `Produced(v) ⊆ Val(v)`. A recognised producer
+1. **Producer closedness:** `Produced(v) ⊆ S(v) ⊆ U(v)`. A recognised producer
    cannot write a value outside the registered set.
 2. **Canonical liveness:** `Canonical(v) ⊆ Produced(v) ∪ CompatibilityOnly(v)`.
    A value that is only compared is dead or compatibility-only, never
    canonical.
-3. **Consumer domain closedness:** `Accepted(c) ⊆ Val(v)`, unless the consumer
+3. **Consumer domain closedness:** `Accepted(c) ⊆ S(v)`, unless the consumer
    explicitly declares an external or partial domain.
 4. **Scope separation:** a name collision is a semantic conflict only when the
    declared scopes overlap. Spelling alone cannot establish equivalence.
@@ -432,7 +433,7 @@ TypeScript. A value flowing through an alias, configuration, reflection,
 external input, or unrecognised syntax belongs to `unknown` until a bounded
 analysis accounts for it. Unknown is an evidence result, not proof of absence.
 
-Every candidate change must receive exactly one finite disposition:
+Advisory candidate triage uses one finite disposition:
 
 ```text
 reuse_existing | extend_vocabulary | create_vocabulary | local_only
@@ -440,8 +441,11 @@ external_input | compatibility_only | unknown
 ```
 
 This makes the *workflow classification* exhaustive even though the program
-analysis is not. `reuse_existing` requires the same slot, compatible scope,
-and an equivalent contract. `extend_vocabulary` requires a witness that
+analysis is not. The registry stores the allowed labels and default, not
+per-candidate decisions; this metadata does not enforce candidate handling in
+product code. The drift smoke validates the label contract only.
+`reuse_existing` requires the same slot, compatible scope, and an equivalent
+contract. `extend_vocabulary` requires a witness that
 reusing an existing value would collapse two states with different required
 behaviour. `create_vocabulary` requires a new semantic domain or independently
 owned lifecycle. If the evidence cannot decide among these cases, the default
@@ -454,56 +458,6 @@ blocking property only for a restricted contract with explicit inputs,
 outputs, transitions, persistence version and finite test domain. This is the
 boundary between a useful proof skeleton and an uncheckable claim of
 whole-program semantic convergence.
-
-
-### Soundness, relative completeness, and candidate decisions
-
-The word *complete* is scoped here. Let `U(v)` be the ambient runtime value
-space for vocabulary `v`, `S(v)` its registered admitted set, `P(v)` the values
-actually produced, and `O(v)` the values observed by the scanner. The producer
-obligation is meaningful only when production is defined over `U(v)`:
-
-```text
-P(v) ⊆ S(v) ⊆ U(v)
-```
-
-Defining `P(v)` as a subset of `S(v)` in advance would make the first
-inclusion tautological. M0 establishes bounded claims about recognised source
-forms and registered structural carriers.
-
-For a recognised language fragment `L0` and an exact analyser `A0`, define:
-
-```text
-Sound(A0, property, L0)    := A0 accepts c ⇒ property(c)
-Complete(A0, property, L0) := property(c) ⇒ A0 accepts c
-```
-
-The M0 guard may aim at both properties for its fixed carrier and dispatch
-forms. It cannot claim either property for arbitrary dynamic Python or
-TypeScript. Values flowing through aliases, configuration, reflection, external
-input, or unrecognised syntax are `unknown` until a bounded analysis accounts
-for them. Unknown is an evidence result, not proof of absence.
-
-Every vocabulary candidate has exactly one finite disposition:
-
-```text
-reuse_existing | extend_vocabulary | create_vocabulary | local_only
-external_input | compatibility_only | unknown
-```
-
-`reuse_existing` requires the same slot, compatible scope, and an equivalent
-contract. `extend_vocabulary` requires a witness that reusing an existing value
-would collapse two states with different required behaviour. `create_vocabulary`
-requires a new semantic domain or independently owned lifecycle. If evidence
-cannot decide among these cases, the disposition is `unknown`; an unresolved
-candidate must not silently become a reuse.
-
-General behavioural equivalence is undecidable for arbitrary programs, so
-`same_concept` is not promoted to a theorem by this schema. It can become a
-blocking property only for a restricted contract with explicit inputs, outputs,
-transitions, persistence version, and a finite test domain. This is the boundary
-between a useful proof skeleton and a claim of whole-program semantic
-convergence.
 
 
 ### State model and schema
@@ -869,6 +823,15 @@ introduce a competing target state.
    Owner: kernel maintainers.
 
 ## Appendix A: Execution ledger (non-normative)
+
+### 2026-09-16 — Review consistency repair
+
+- Keep one candidate-decision section per language.
+- Use `L` for source sites, `U(v)` for ambient values and `S(v)` for admitted
+  values throughout the registry and narrative. Production is not admitted by definition.
+- Clarify candidate dispositions as advisory metadata; no per-candidate runtime
+  store or enforcement is delivered by this schema.
+
 
 ### 2026-09-15 — M0 opened with the RFC
 
