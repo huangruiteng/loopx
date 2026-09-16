@@ -47,7 +47,7 @@ Do not pipe the only copy through `jq`. When an exhaustive request has
 `result_completeness.complete=false`, rerun with its `recommended_limit` before
 reviewing.
 
-Require execution `policy_revision == 5`; a schema name alone is insufficient.
+Require execution `policy_revision == 6`; a schema name alone is insufficient.
 If missing or unequal, do not publish APPROVE; a conservative REQUEST_CHANGES is
 allowed only when it names the incompatible-policy evidence gap. Do not retain
 expired temporary worktree overrides. Honor explicit runtime pins, but report
@@ -67,8 +67,8 @@ names the contract the change is judged against.
 Follow `scheduling_policy` and its ranked actionable `review_sequence`; explicit current-request PR selection may override ordering only, never `pull_requests[].review_action_kind` or exact-head idempotency. Generic `re-review`, `重新review`, and `复审` wording selects the named PR; it is not a force-refresh token. Todo/monitor prose may not select work.
 When `review_action_kind` is null, the row stays in `pull_requests` inventory but must not appear in `review_sequence`; its `review_plan` and `review_template` are null and `evidence_commands` is empty. Do one compact exact-head conclusion readback and report the existing verdict or bounded invalid/missing reason. Run a fresh audit only when the user explicitly requests fresh evidence despite that no-action result, or supplies a concrete new concern/evidence invalidation; regenerate with `--fresh-audit-exact-head NUMBER@HEAD_OID`, then execute the complete current plan and never inherit the earlier approval. For every actionable PR:
 
-1. Record the packet's exact head. Start with the capability's
-   `review_execution_contract.decision_procedure`, including on re-review;
+1. Record the packet's exact head. Follow `review_execution_contract.decision_procedure`, starting with the current goal
+   and its delivery judgment in `problem_context`, including on re-review;
    then run `evidence_commands` and relevant repository-native validation.
 2. Fill `review_plan.result_template` from the shared execution contract;
    preserve missing evidence as `unverified`. Execute its repository-reuse,

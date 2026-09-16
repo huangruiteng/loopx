@@ -14,11 +14,11 @@ from loopx.capabilities.pr_review_queue.review_contract import (
 from loopx.cli import main
 
 
-def _review():
+def _review(*, area="product_runtime"):
     item = {
         "number": 42,
         "head_oid": "a" * 40,
-        "areas": {"product_runtime": 1},
+        "areas": {area: 1},
         "review_action_kind": "review_pull_request_exact_head",
     }
     result = build_review_plan(item)["result_template"]
@@ -228,7 +228,7 @@ def test_nonblocking_suggestion_does_not_force_rejection():
     assert check_review_result(packet, result)["approval_consistent"]
 
 
-@pytest.mark.parametrize("revision", [None, 0, True, "1", 999])
+@pytest.mark.parametrize("revision", [None, 0, True, "1", 5, 999])
 def test_old_or_invalid_policy_cannot_certify_current_approval(revision):
     packet, result = _review()
     result["review_policy_revision"] = revision
@@ -410,3 +410,102 @@ def test_unreadable_check_input_does_not_expose_local_path(tmp_path, capsys):
     output = capsys.readouterr().out
     assert str(tmp_path) not in output
     assert "unreadable" in json.loads(output)["error"]
+
+
+def _delivery_review(*, area="product_runtime", verdict="goal_achieved"):
+    packet, result = _review(area=area)
+    result["evidence"]["problem_context"].update(
+        goal_basis="Public issue #42: interrupted exports must resume without duplicate rows.",
+        author_claim="Repair export retry on the existing command.",
+        before_after_scenario="After a lost response, retry returns the original export receipt.",
+        observable_outcome="The real command reuses the committed receipt; regression fails on base.",
+        verdict=verdict,
+    )
+    return packet, result
+
+
+@pytest.mark.parametrize("area", ["product_runtime", "public_docs", "test_or_example"])
+@pytest.mark.parametrize("verdict", ["off_goal", "fragmented", "not_yet_proven"])
+def test_green_review_cannot_approve_unjustified_delivery(area, verdict):
+    packet, result = _delivery_review(area=area, verdict=verdict)
+    result["evidence"]["problem_context"].update(
+        reason="The change adds a receipt field but does not repair export retry.",
+        minimum_repair="Wire and validate the existing retry path in this slice.",
+    )
+    checked = check_review_result(packet, result)
+    assert not checked["approval_consistent"]
+    assert "problem_context:blocking_verdict" in checked["approval_blockers"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
+
+
+@pytest.mark.parametrize("verdict", [None, "looks_useful", "not_applicable"])
+def test_delivery_judgment_cannot_be_omitted_or_invented(verdict):
+    packet, result = _delivery_review(verdict=verdict)
+    checked = check_review_result(packet, result)
+    assert not checked["approval_consistent"]
+    assert "problem_context:missing_or_invalid_verdict" in checked["approval_blockers"]
+
+
+def test_goal_basis_is_required_even_for_small_docs_changes():
+    packet, result = _delivery_review(area="public_docs")
+    del result["evidence"]["problem_context"]["goal_basis"]
+    checked = check_review_result(packet, result)
+    assert "problem_context:missing_field:goal_basis" in checked["approval_blockers"]
+
+
+@pytest.mark.parametrize("area", ["product_runtime", "public_docs", "test_or_example"])
+def test_qualified_increment_does_not_have_to_finish_the_parent_goal(area):
+    packet, result = _delivery_review(area=area, verdict="justified_increment")
+    result["evidence"]["problem_context"].update(
+        goal_basis="Accepted export-recovery contract; no LoopX roadmap id required.",
+        observable_outcome="The real writer now preserves the operation id across restart.",
+        remaining_gap="Automatic retries still need the scheduler integration.",
+        next_step="Existing recovery task #43 consumes this writer; its owner retains scheduling.",
+        boundary_reason="Durability is independently testable and revertible; coupling scheduler behavior would obscure this contract.",
+    )
+    assert check_review_result(packet, result)["approval_consistent"]
+    for field in ("remaining_gap", "next_step", "boundary_reason"):
+        incomplete = copy.deepcopy(result)
+        del incomplete["evidence"]["problem_context"][field]
+        checked = check_review_result(packet, incomplete)
+        assert f"problem_context:missing_field:{field}" in checked["approval_blockers"]
+
+
+def test_completed_scoped_task_does_not_require_invented_followup():
+    packet, result = _delivery_review(area="public_docs")
+    result["evidence"]["problem_context"].update(
+        goal_basis="Maintainer request to correct a broken installation command.",
+        observable_outcome="The documented command succeeds on the supported release.",
+        non_goals="No claim of implementing the broader product roadmap.",
+    )
+    assert check_review_result(packet, result)["approval_consistent"]
+    assert not check_review_result(packet, result)["evidence_truth_verified"]
+
+
+def test_cli_rejects_goal_incomplete_approval_without_mutating_packet(tmp_path, capsys):
+    packet, result = _delivery_review(verdict="fragmented")
+    result["evidence"]["problem_context"].update(
+        reason="The new serializer has no production consumer and leaves retry broken.",
+        minimum_repair="Complete the owning retry transaction or remove the unused serializer.",
+    )
+    packet_path, result_path = tmp_path / "packet.json", tmp_path / "review.json"
+    packet_path.write_text(json.dumps(packet))
+    result_path.write_text(json.dumps(result))
+    before = result_path.read_bytes()
+    main(
+        [
+            "--format",
+            "json",
+            "pr-review",
+            "--check-result",
+            str(result_path),
+            "--packet",
+            str(packet_path),
+        ]
+    )
+    checked = json.loads(capsys.readouterr().out)
+    assert not checked["approval_consistent"]
+    assert "problem_context:blocking_verdict" in checked["approval_blockers"]
+    assert not checked["external_writes_performed"]
+    assert result_path.read_bytes() == before

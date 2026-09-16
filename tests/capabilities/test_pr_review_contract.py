@@ -160,6 +160,7 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
     assert contract["completion_gate"]["metadata_only_verdict_allowed"] is False
     assert contract["completion_gate"]["stale_head_verdict_allowed"] is False
     assert contract["completion_gate"]["blocking_evidence_verdicts"] == {
+        "problem_context": ["off_goal", "fragmented", "not_yet_proven"],
         "repository_reuse": ["unjustified_duplication", "not_yet_proven"],
         "observable_semantics": ["unintended_drift", "not_yet_proven"],
         "change_proportionality": ["disproportionate", "not_yet_proven"],
