@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { ArrowLeft, Check, Languages, Palette, ServerCog, Settings2, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Check, KeyRound, Languages, Palette, ServerCog, Settings2, SlidersHorizontal } from "lucide-react";
 
 import type { WorkspaceLocale } from "./i18n";
 import { useWorkspaceI18n } from "./i18n";
 import { LarkSettingsPage } from "./lark-settings-page";
 import { GoalCapabilitySettings } from "./goal-capability-settings";
 import { MachineConfigurationSettings } from "./machine-configuration-settings";
+import { OperatorCredentialSettings } from "./operator-credential-settings";
 import type { PersonalWorkspaceCallbacks, WorkspaceGoal, WorkspaceGoalNotification } from "./personal-workspace-model";
 import type { WorkspaceTheme } from "./workspace-theme";
 
-type WorkspaceSettingsTab = "machine" | "capabilities" | "lark" | "appearance" | "language";
+type WorkspaceSettingsTab = "provider" | "machine" | "capabilities" | "lark" | "appearance" | "language";
 
 const tabIcons: Record<WorkspaceSettingsTab, typeof Settings2> = {
   appearance: Palette,
@@ -17,6 +18,7 @@ const tabIcons: Record<WorkspaceSettingsTab, typeof Settings2> = {
   language: Languages,
   lark: Settings2,
   machine: ServerCog,
+  provider: KeyRound,
 };
 
 export function WorkspaceSettingsPage({
@@ -46,7 +48,12 @@ export function WorkspaceSettingsPage({
   const [tab, setTab] = useState<WorkspaceSettingsTab>(initialTab);
   const tabs: Array<{ key: WorkspaceSettingsTab; label: string }> = [
     ...(initialGoalId ? [{ key: "capabilities" as const, label: t("capabilities.title") }] : []),
-    { key: "machine", label: t("machine.title") },
+    // The model provider is one machine decision (which endpoint and key the
+    // operator credential holds); the capability catalog is another (which
+    // machine defaults every Goal inherits). They answer different questions
+    // and are edited on different surfaces, so they are separate categories.
+    { key: "provider", label: t("settings.modelProvider") },
+    { key: "machine", label: t("settings.globalCapabilities") },
     { key: "lark", label: "Lark" },
     { key: "appearance", label: t("settings.appearance") },
     { key: "language", label: t("settings.language") },
@@ -75,7 +82,10 @@ export function WorkspaceSettingsPage({
       title: "Lark",
     },
     machine: {
-      title: t("machine.title"),
+      title: t("settings.globalCapabilities"),
+    },
+    provider: {
+      title: t("settings.modelProvider"),
     },
   };
   const heading = headings[tab];
@@ -121,6 +131,12 @@ export function WorkspaceSettingsPage({
             onChanged={onChanged}
             onClose={onClose}
           />
+        ) : null}
+
+        {tab === "provider" ? (
+          <div className="personal-provider-settings">
+            <OperatorCredentialSettings />
+          </div>
         ) : null}
 
         {tab === "machine" ? <MachineConfigurationSettings /> : null}

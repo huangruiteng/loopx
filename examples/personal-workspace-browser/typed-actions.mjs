@@ -1018,8 +1018,71 @@ export const typedActionsScenario = {
       if (await page.locator("[data-context-drawer]").count()) throw new Error("Workspace Settings left the context drawer visible");
       await page.screenshot({ path: resolve(outputDir, "workspace-settings.png"), fullPage: false, animations: "disabled" });
 
-      await page.getByRole("button", { name: /机器配置/ }).click();
-      await page.getByRole("heading", { level: 1, name: "机器配置", exact: true }).waitFor({ state: "visible" });
+      // Two categories, two questions: the model provider holds the operator
+      // credential, the global capabilities hold the machine defaults. Sharing
+      // one surface is what let the credential panel overlap the workbench.
+      // Two invariants per stacking container: its blocks must not overlap, and
+      // a block that does not scroll must not spill its own content outside its
+      // box. The second one is what a squeezed grid row actually produced: the
+      // credential panel kept a 32px box while its content ran over the catalog
+      // workbench below it.
+      const stackedBlocks = () => page.evaluate(() => {
+        for (const selector of [".personal-settings-body", ".personal-capability-settings", ".personal-capability-body"]) {
+          const container = document.querySelector(selector);
+          if (!container) continue;
+          const children = [...container.children].filter((node) => node.getBoundingClientRect().height > 4);
+          const blocks = children.map((node) => node.getBoundingClientRect());
+          for (let index = 1; index < blocks.length; index += 1) {
+            if (blocks[index].top < blocks[index - 1].bottom - 1) {
+              return `${selector} blocks overlap`;
+            }
+          }
+          for (const child of children) {
+            const overflow = getComputedStyle(child).overflowY;
+            if (overflow !== "visible") continue;
+            if (child.scrollHeight > child.clientHeight + 2) {
+              return `${selector} clips ${child.className.toString().split(/\s+/)[0]} (${child.clientHeight} < ${child.scrollHeight})`;
+            }
+          }
+        }
+        return "";
+      });
+      await page.getByRole("button", { name: /模型 Provider 配置/ }).click();
+      await page.getByRole("heading", { level: 1, name: "模型 Provider 配置", exact: true }).waitFor({ state: "visible" });
+      await page.locator(".personal-operator-credential").waitFor({ state: "visible" });
+      if (await page.locator(".personal-operator-credential").count() !== 1) {
+        throw new Error("The model provider category did not host exactly one credential panel");
+      }
+      await page.locator(".personal-operator-credential-readback").waitFor({ state: "visible" });
+      for (const label of [/^API key$/u, /^指纹$/u, /^Endpoint base URL$/u]) {
+        await page.getByText(label).first().waitFor({ state: "visible" });
+      }
+      // The readback is redacted by construction: the key shows its fingerprint
+      // and the fixture's own value never appears.
+      const providerReadback = await page.locator(".personal-operator-credential-readback").innerText();
+      if (!providerReadback.includes("已配置") || !providerReadback.includes("3efe046b2b3d")) {
+        throw new Error(`Model provider readback lost its redacted projection: ${providerReadback}`);
+      }
+      if (providerReadback.includes("api-key-fixture")) {
+        throw new Error("Model provider readback exposed a credential value");
+      }
+      if (api.operatorCredentialWrites.length) {
+        throw new Error("Opening the model provider category wrote a credential");
+      }
+      const providerOverlap = await stackedBlocks();
+      if (providerOverlap) throw new Error(`Model provider category ${providerOverlap}`);
+      await page.screenshot({ path: resolve(outputDir, "model-provider-settings-zh-cn.png"), fullPage: false, animations: "disabled" });
+
+      await page.getByRole("button", { name: /全局能力配置/ }).click();
+      await page.getByRole("heading", { level: 1, name: "全局能力配置", exact: true }).waitFor({ state: "visible" });
+      // The catalog workbench mounts after its inspection resolves, so the
+      // category's contents are asserted only once the workbench itself exists.
+      await page.locator(".personal-capability-layout").waitFor({ state: "visible" });
+      if (await page.locator(".personal-operator-credential").count()) {
+        throw new Error("The global capability category still hosted the operator credential panel");
+      }
+      const capabilityOverlap = await stackedBlocks();
+      if (capabilityOverlap) throw new Error(`Global capability category ${capabilityOverlap}`);
       const machineCatalog = page.getByRole("navigation", { name: "机器能力目录" });
       const firstMachineCapability = machineCatalog.getByRole("button").filter({ hasText: "机器" }).first();
       await firstMachineCapability.waitFor({ state: "visible" });
@@ -1098,7 +1161,7 @@ export const typedActionsScenario = {
 
       await page.getByRole("button", { name: /语言/ }).click();
       await page.getByRole("radio", { name: /English/ }).click();
-      await page.getByRole("button", { name: /Machine configuration/ }).click();
+      await page.getByRole("button", { name: /Global capabilities/ }).click();
       await page.getByRole("heading", { level: 2, name: "Periodic reports", exact: true }).waitFor({ state: "visible" });
       const rawValues = page.locator(".personal-capability-raw-values");
       if (await rawValues.getAttribute("open") !== null) throw new Error("Raw JSON must be collapsed by default");
@@ -1124,7 +1187,7 @@ export const typedActionsScenario = {
       await page.screenshot({ path: resolve(outputDir, "goal-subagent-capability-en.png"), fullPage: false, animations: "disabled" });
       await page.getByRole("button", { name: /Language/ }).click();
       await page.getByRole("radio", { name: /Simplified Chinese/ }).click();
-      await page.getByRole("button", { name: /机器配置/ }).click();
+      await page.getByRole("button", { name: /全局能力配置/ }).click();
       await page.locator(".personal-settings-body").evaluate((element) => element.scrollTo({ top: 0 }));
       await page.screenshot({ path: resolve(outputDir, "machine-capability-zh-cn.png"), fullPage: false, animations: "disabled" });
       // The steward's own executor is a machine setting like any other: the
@@ -1169,7 +1232,7 @@ export const typedActionsScenario = {
 
       api.machineInspectionStatus = "invalid";
       api.invalidMachineNamespaces = ["manager_runtime"];
-      await page.getByRole("button", { name: /机器配置/ }).click();
+      await page.getByRole("button", { name: /全局能力配置/ }).click();
       const invalidRepair = page.getByTestId("machine-invalid-repair");
       await invalidRepair.waitFor({ state: "visible" });
       await page.getByRole("heading", { level: 2, name: "管家 Runtime", exact: true }).waitFor({ state: "visible" });
@@ -1192,7 +1255,7 @@ export const typedActionsScenario = {
       await page.getByRole("button", { name: /Lark/ }).click();
       api.machineInspectionStatus = "invalid";
       api.invalidMachineNamespaces = ["periodic_report"];
-      await page.getByRole("button", { name: /机器配置/ }).click();
+      await page.getByRole("button", { name: /全局能力配置/ }).click();
       await invalidRepair.waitFor({ state: "visible" });
       await page.getByRole("heading", { level: 2, name: "周期报告", exact: true }).waitFor({ state: "visible" });
       await page.getByRole("button", { name: "预览变更", exact: true }).click();

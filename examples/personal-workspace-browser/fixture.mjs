@@ -382,6 +382,14 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
     // Goals a single action sent back through the loader.
     goalStatusRequests: [],
     workspaceDirectoryRequests: 0,
+    operatorCredential: {
+      providerKeyConfigured: true,
+      providerKeySource: "service_environment",
+      providerKeyFingerprint: "3efe046b2b3d",
+      baseUrl: null,
+      baseUrlSource: "unset",
+    },
+    operatorCredentialWrites: [],
     turnRequests: [],
     get larkConnections() { return runtime.larkConnections; },
     get goalSubagentConfigurations() { return runtime.goalSubagentConfigurations; },
@@ -991,6 +999,45 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         machine_configuration: state.machineInspectionStatus === "invalid"
           ? null
           : machineConfigurationBase.machine_configuration,
+      }, status: 200 });
+      return;
+    }
+    if (url.pathname === "/api/chat/operator-credential") {
+      const body = request.method() === "POST" ? request.postDataJSON() : null;
+      if (body) {
+        state.operatorCredentialWrites.push(body);
+        if (body.clear_provider_key) {
+          state.operatorCredential = { ...state.operatorCredential, providerKeyConfigured: false, providerKeySource: "unset", providerKeyFingerprint: null };
+        }
+        if (typeof body.provider_key === "string" && body.provider_key.trim()) {
+          // The fixture never stores the key itself: the readback only ever
+          // carries the fingerprint the real projection returns.
+          state.operatorCredential = { ...state.operatorCredential, providerKeyConfigured: true, providerKeySource: "machine_store", providerKeyFingerprint: "fixture-fingerprint" };
+        }
+        if (typeof body.base_url === "string" && body.base_url.trim()) {
+          state.operatorCredential = { ...state.operatorCredential, baseUrl: body.base_url.trim(), baseUrlSource: "machine_store" };
+        }
+        if (body.clear_base_url) {
+          state.operatorCredential = { ...state.operatorCredential, baseUrl: null, baseUrlSource: "unset" };
+        }
+      }
+      const credential = state.operatorCredential;
+      await route.fulfill({ contentType: "application/json", json: {
+        ok: true,
+        schema_version: "operator_provider_credential_projection_v0",
+        action: body ? "readback" : undefined,
+        store_ref: "fixture-operator-store",
+        store_revision: "sha256:fixture-operator-store",
+        record_present: credential.providerKeyConfigured || Boolean(credential.baseUrl),
+        status: credential.providerKeyConfigured ? "configured" : "absent",
+        repair: "",
+        provider_key: {
+          configured: credential.providerKeyConfigured,
+          env_var: credential.providerKeySource === "service_environment" ? "DEEPSEEK_API_KEY" : undefined,
+          fingerprint: credential.providerKeyFingerprint,
+          source: credential.providerKeySource,
+        },
+        base_url: { configured: Boolean(credential.baseUrl), source: credential.baseUrlSource, value: credential.baseUrl },
       }, status: 200 });
       return;
     }

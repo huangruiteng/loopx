@@ -693,6 +693,14 @@
 /* Kanban layout for the goal Tasks tab: columns are task states. */
 .personal-task-lane-filter { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 50px; padding: 8px 12px; border: 1px solid var(--pw-line); border-radius: 10px; background: #fff; }
 .personal-capability-settings { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 16px; width: 100%; max-width: 1050px; min-width: 0; min-height: 0; overflow: hidden; }
+/* The surface is a two-row grid: the scope note, then the body that owns the
+   rest of the height. The body is a column so the workbench takes the leftover
+   space whether or not a notice precedes it; a taller sibling must never be
+   squeezed into a fixed row and spill over the block below it. */
+.personal-capability-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; overflow: hidden; }
+.personal-capability-body > .personal-capability-layout { flex: 1 1 auto; }
+.personal-provider-settings { width: 100%; max-width: 1050px; min-width: 0; }
+.personal-provider-settings > .personal-operator-credential { margin-top: 0; }
 .personal-capability-scope-note { max-height: 120px; overflow: auto; overscroll-behavior: contain; padding: 12px 0; color: var(--pw-muted); }
 .personal-capability-scope-note summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
 .personal-capability-scope-note p { padding: 10px 0 0 25px; }
