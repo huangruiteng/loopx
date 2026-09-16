@@ -41,3 +41,55 @@ test('installer failure is actionable and clipboard denial leaves selectable tex
   await elements.get('#copy-diagnostics').onclick();
   assert.equal(elements.get('#diagnostics').selected, true);
 });
+test('a different installed runtime asks before anything is replaced', () => {
+  const {context, elements} = page();
+  const decision = {
+    phase: 'runtime_pairing_required',
+    details: {
+      code: 'runtime_pairing_required',
+      installed_revision: 'a'.repeat(40),
+      bundled_revision: 'b'.repeat(40),
+      installed_identity_available: true,
+      revision_matches: false,
+    },
+  };
+  runInNewContext('render(packet)', Object.assign(context, {packet: decision}));
+  assert.equal(elements.get('#pairing').hidden, false);
+  assert.equal(elements.get('#pairing-installed').textContent, 'a'.repeat(12));
+  assert.equal(elements.get('#pairing-bundled').textContent, 'b'.repeat(12));
+  assert.match(elements.get('#pairing-status').textContent, /本地服务需要两者一致/);
+  // Neither choice is a background install: both stay available and neither
+  // runs before the operator picks one.
+  assert.equal(elements.get('#pairing-update').disabled, false);
+  assert.equal(elements.get('#pairing-align').disabled, false);
+  // The chooser stays up while the chosen action runs, and retires only when
+  // services connect.
+  runInNewContext('render({phase:"installing_runtime",details:{}})', context);
+  assert.equal(elements.get('#pairing').hidden, false);
+  runInNewContext('render({phase:"connecting",details:{service:"chat"}})', context);
+  assert.equal(elements.get('#pairing').hidden, true);
+});
+test('the pairing decision reaches diagnostics without private detail', () => {
+  const {context, elements} = page();
+  context.packet = {
+    app_version: '1.0.5',
+    state: {phase: 'runtime_pairing_required', details: {code: 'runtime_pairing_required'}},
+    last_failure: {
+      phase: 'runtime_pairing_required',
+      details: {
+        code: 'runtime_pairing_required',
+        installed_revision: 'a'.repeat(40),
+        bundled_revision: 'b'.repeat(40),
+        installed_identity_available: true,
+        revision_matches: false,
+        path: 'PRIVATE',
+      },
+    },
+  };
+  runInNewContext('renderDiagnostics(packet)', context);
+  const value = JSON.parse(elements.get('#diagnostics').value);
+  assert.equal(value.error_code, 'runtime_pairing_required');
+  assert.equal(value.failure_phase, 'runtime_pairing_required');
+  assert.equal(value.revision_matches, false);
+  assert.ok(!JSON.stringify(value).includes('PRIVATE'));
+});
