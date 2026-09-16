@@ -87,7 +87,7 @@ Map P0/P1 catalog rows to canary archetypes before picking commands:
 | Family | P0/P1 Pattern Coverage | Default Canary Archetypes | Trigger Surfaces | Minimum Useful Fixture | Failure Meaning |
 | --- | --- | --- | --- | --- | --- |
 | Work Routing | IP-001, IP-002, IP-003, IP-007, IP-008, IP-021, IP-029 | Hot-path route canary; Planning governance canary when cadence or repair is involved | `quota should-run`, `interaction_contract`, `work_lane_contract`, scheduler hint, handoff todo state | one eligible delivery fixture, one blocked/fallback fixture, one quiet or monitor fixture | agent turn routing is unsafe: it may spend, wait, notify, or choose fallback incorrectly |
-| Human Decision | IP-004, IP-014, IP-017, IP-027, IP-030 | Scoped decision canary; Product/readiness canary when first-screen human copy changes | user todos, decision scope, operator-gate/reward preview, deferred resume candidates | one concrete user ask, one scoped non-blocking gate, one preview-or-append dry run | humans may be asked the wrong question, or an agent may continue without the needed decision |
+| Human Decision | IP-004, IP-014, IP-017, IP-027, IP-030, IP-033 | Scoped decision canary; Product/readiness canary when first-screen human copy changes | user todos, decision scope, operator-gate/reward preview, deferred resume candidates | one concrete user ask, one scoped non-blocking gate, one preview-or-append dry run | humans may be asked the wrong question, or an agent may continue without the needed decision |
 | State And Boundary | IP-005, IP-006, IP-011, IP-016, IP-019, IP-020, IP-022, IP-023, IP-025, IP-026, IP-028, IP-031, IP-032 | Projection and boundary canary; Hot-path route canary when the projection feeds quota/status | active state, todo metadata, task graph, authority source, claim lease, completed-work archive, connector runtime policy, public/private scan | fixture state plus structured projection check; boundary scan for touched public files | compact state and executable truth diverge, so dashboards and agents may trust stale or unsafe authority |
 | Evidence Lifecycle | IP-012, IP-015 | Evidence lifecycle canary; Product/readiness canary when evidence is rendered | external handle observation, benchmark lifecycle reducer, compact result projection | compact public-safe evidence fixture with raw-material exclusion assertions | progress evidence may be missing, double-counted, or represented with unsafe raw material |
 | Planning Governance | IP-010, IP-013, IP-018, IP-024 | Planning governance canary; Hot-path route canary when cadence changes affect execution | stalled run history, autonomous replan obligation, repair delta, cadence hint, plan-to-todo writeback | two-turn stalled fixture plus repair/writeback delta assertion | the agent may keep planning in prose while the machine-visible frontier stays unchanged |
@@ -321,6 +321,7 @@ Human asks, approvals, interventions, and reward-derived lessons.
 | P0 | IP-014 | Decision Write Preview And Append | User/operator | explicit preview/apply decision | append only exact run-bound reward or gate decision event |
 | P1 | IP-017 | User Reward Lesson Promotion | User plus LoopX | acknowledge only when lesson changes route/priority/boundary | promote correction into durable lesson, todo, or projection before continuing |
 | P1 | IP-030 | Machine Configuration Preview And Revision-Guarded Apply | User plus agent | require explicit approval of the exact plan revision | preview the exact change, then apply, remove, or roll back only the matching revision |
+| P1 | IP-033 | Recorded Rejection Is Not Absent Authority | User plus LoopX | no interruption; the refusal is already recorded | read the recorded outcome; do not re-ask a settled scope or infer approval from a missing rejection |
 | P2 | IP-009 | Active User Assistance | User simulator / operator | bounded intervention | inject audited user help without leaking reward/oracle signals |
 
 ### State And Boundary
@@ -1293,6 +1294,84 @@ reward signals, oracle information, or unbounded human hints.
 - `examples/worker-bridge-active-user-after-start-observation-smoke.py`
 - `examples/worker-bridge-install-contract-smoke.py`
 - benchmark active-user protocol docs.
+
+#### IP-033 Recorded Rejection Is Not Absent Authority
+
+**Trigger**
+
+- a user gate carries a typed `decision_scope` together with an explicit
+  `decision_outcome` of `reject` or `cancel`;
+- the gate is broad (`granularity` of `goal`, `project`, or `global`) and is
+  either `global_gate=true` or `blocks_agent`-scoped, so the same record would
+  qualify as standing authority if its outcome were `approve`; and
+- a later turn, projection, archive pass, or operator surface has to answer
+  "has this scope already been decided?".
+
+**Expected behavior**
+
+A recorded rejection is a decision, not the absence of one. Three rules keep
+the two apart.
+
+1. **Record it.** The todo stays a standing decision receipt
+   (`standing_decision_receipt_v0`) whose scope, owner, and chronology are
+   preserved exactly like an approval's. Archive retains it for the same reason
+   it retains an approval, and `retained_standing_decision_count` counts it.
+2. **Do not activate it.** Activation is `decision_outcome === "approve"` and
+   nothing else. `reject` and `cancel` raise `inactive_count` and never
+   `active_count`. "No active approval" must not be rendered as "no decision was
+   made", and a mixed or undated chronology must resolve to a recorded conflict
+   rather than silently choosing approval.
+3. **Read the outcome; do not infer it.** A consumer that needs to know whether
+   a scope was settled reads the recorded receipt. It may not treat a missing
+   rejection as an approval, and it may not treat a retained, done, global todo
+   as authority when the recorded outcome says otherwise.
+
+IP-014 owns how a decision is written and previewed, and IP-032 owns what
+happens to a durable decision when its todo leaves the active window. Neither
+owns the meaning of an explicitly refused decision, which is the gap this
+pattern fills.
+
+**Visual Model**
+
+```mermaid
+flowchart TD
+  A["user gate with typed decision_scope<br/>and explicit decision_outcome"] --> B{"outcome"}
+  B -->|"approve"| C["standing receipt, active=true<br/>active_count += 1"]
+  B -->|"reject / cancel"| D["standing receipt, active=false<br/>inactive_count += 1"]
+  B -->|"missing or mixed chronology"| E["conflict, no silent approval"]
+  C --> F["later turns read settled approval"]
+  D --> G["later turns read settled refusal<br/>do not re-ask as undecided"]
+  E --> H["standing_decision_order_unresolved"]
+```
+
+**Bad smell**
+
+An operator refuses a broad write scope. The surface only renders active
+authority, so the refusal disappears from view and two turns later the agent
+re-proposes the same write scope as though it had never been considered. The
+operator experience is "I already said no" followed by "why is this being asked
+again".
+
+The mirror-image smell is over-reading a retained record: because the todo is
+done, global, and retained by archive, a consumer treats the refusal as the
+approval it structurally resembles. A third smell is a fixture or projection
+that only ever generates approvals, so no test can tell a refused scope from an
+unasked one.
+
+**Validation**
+
+- `tests/control_plane_ts/production_scale_rejected_decision.test.ts` owns the
+  mutation and negative cases: a rejection is a receipt, only an explicit
+  approval activates a scope, and dropping the typed scope leaves no entry.
+  It arrives with the GH-C102 fixture slice (#4540).
+- `tests/control_plane_ts/authority_store_conformance.ts` asserts
+  `inactive_count` and per-entry `active` on every provider conformance arm.
+- `tests/fixtures/control_plane/coordination_production_scale_v0.json` and
+  `tests/control_plane_ts/production_scale_coordination_fixture.ts` carry the
+  shared rejection band.
+- `loopx/control_plane/todos/standing_decision.ts` owns the predicate and the
+  projection.
+- `examples/interaction-pattern-catalog-smoke.py` protects this entry.
 
 ### State And Boundary
 
