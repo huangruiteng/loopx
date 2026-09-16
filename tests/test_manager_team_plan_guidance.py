@@ -1,0 +1,30 @@
+"""The steward's shipped guidance owns the one-sentence team plan contract."""
+
+from __future__ import annotations
+
+from loopx.chat_manager import manager_skill_text
+
+
+def test_manager_guidance_orders_one_team_preview_before_any_effect() -> None:
+    """A team request is answered with one preview, never with silent creates."""
+
+    text = manager_skill_text()
+
+    ordered = [
+        "the lanes and the Agent each one runs on",
+        "the first bounded Todo per lane",
+        "quota or cadence envelope",
+        "acceptance signal",
+        "stop condition",
+    ]
+    positions = [text.index(marker) for marker in ordered]
+    assert positions == sorted(positions), ordered
+
+    # The preview gates every effect, and the effects keep their canonical owners.
+    assert "proposal, never an effect" in text
+    assert "until the owner confirms that exact preview" in text
+    assert "Agent\nregistration, Todo creation, quota or goal policy" in text
+    assert "charge quota for the preview itself" in text
+    # An unstaffable lane is named as a gap rather than invented.
+    assert "as a gap, with the missing registration or grant" in text
+    assert "inventing a lane, an Agent, or a capability" in text
