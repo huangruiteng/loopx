@@ -100,12 +100,21 @@ adapters, smoke tests, public docs, or commit/push workflows, use the
 For small, low-risk PRs, maintainers may self-merge after validation when all
 of the following are true:
 
-Here, "自合并" means: 自己 review/refine, then admin-bypass merge after the
-required validation and authorization.
+Here, "自合并" means: 自己 review/refine, publish that review on the exact head,
+then admin-bypass merge after the required validation and authorization. A
+self-merge whose head carries no published review is a process gap, not a
+smaller form of review: repair it by publishing the exact-head review for the
+merged commit and correcting the rule that let it through.
 
 - the PR only touches public docs, contributor metadata, or narrow cleanup;
 - the change is single-purpose and easy to review from the diff;
 - required checks or focused smokes have passed;
+- the exact head carries a published self-review, and
+  `loopx pr-review --check-merge-readiness NUMBER@HEAD_OID` returned ready for
+  that unchanged head. GitHub blocks formal self-approval, so on an
+  author-owned PR the record is a `COMMENTED` review on the exact head that
+  states the approval conclusion and an English verdict; a green CI run, a diff
+  read, or the merge itself is not that record;
 - private state, raw benchmark evidence, credentials, local paths, and
   generated logs are excluded;
 - there is no runtime behavior, benchmark adapter, permission, destructive git,
