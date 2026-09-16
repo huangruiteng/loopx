@@ -212,6 +212,22 @@ def test_real_chat_http_catalog_and_machine_write_boundary(tmp_path: Path) -> No
             _namespace(enabled=False),
             "Private/Invalid-Timezone",
         ),
+        (
+            "steward_executor",
+            {
+                "schema_version": "steward_executor_machine_defaults_v0",
+                "executor_endpoint": "private-invalid-endpoint",
+                "executor_model": None,
+                "executor_reasoning_effort": None,
+            },
+            {
+                "schema_version": "steward_executor_machine_defaults_v0",
+                "executor_endpoint": "codex",
+                "executor_model": None,
+                "executor_reasoning_effort": None,
+            },
+            "private-invalid-endpoint",
+        ),
     ],
 )
 def test_real_chat_http_invalid_namespace_has_safe_repair_path(
@@ -320,6 +336,7 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
         "manager_runtime",
         "periodic_report",
         "pull_request_review",
+        "steward_executor",
         "todo_replan_cadence",
     ]
     namespace_catalog = {
@@ -413,7 +430,9 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
         default_multi_subagent_max_children=2,
         explore_harness_profiles=(),
     )
-    assert set(machine) - {"manager_runtime"} == {
+    # Machine-only capabilities are the ones a Goal cannot override: the
+    # manager's runtime profile and the steward channel's executor.
+    assert set(machine) - {"manager_runtime", "steward_executor"} == {
         feature["feature_id"] for feature in goal["features"]
     }
     assert machine["pull_request_review"]["available_scopes"] == ["machine", "goal"]
@@ -429,7 +448,7 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
     for capability_id, item in machine.items():
         assert "current" not in item
         assert "commands" not in item
-        if capability_id == "manager_runtime":
+        if capability_id in {"manager_runtime", "steward_executor"}:
             assert item["available_scopes"] == ["machine"]
             assert item["machine_namespace"] == capability_id
             assert item["configuration_editor"]["writable_scopes"] == ["machine"]
@@ -520,6 +539,78 @@ def test_preview_apply_inspect_and_rollback_are_revision_locked(tmp_path: Path) 
     final_handler = _Handler(tmp_path)
     final_handler._machine_configuration_inspect()
     assert final_handler.responses[0]["status"] == "absent"
+
+
+def test_the_steward_executor_namespace_is_editable_and_read_back(
+    tmp_path: Path,
+) -> None:
+    """The steward's machine default is a first-class product setting.
+
+    One operator surface edits it and every other surface reads the same
+    document back: the Dashboard capability catalog offers the fields, the
+    revision-locked transaction stores the exact choice, and inspection returns
+    it without any local path.
+    """
+
+    configuration = {
+        "schema_version": "steward_executor_machine_defaults_v0",
+        "executor_endpoint": "dsh",
+        "executor_model": "deepseek-v4-flash",
+        "executor_reasoning_effort": "high",
+    }
+    preview_handler = _Handler(
+        tmp_path,
+        {
+            "namespace": "steward_executor",
+            "namespace_configuration": configuration,
+        },
+    )
+
+    preview_handler._machine_configuration_update(execute=False)
+
+    preview = preview_handler.responses[0]
+    assert preview["status"] == "preview"
+    assert preview["changed_namespaces"] == ["steward_executor"]
+    capability = {
+        item["capability_id"]: item
+        for item in preview["capability_catalog"]["capabilities"]
+    }["steward_executor"]
+    assert capability["available_scopes"] == ["machine"]
+    # A machine-only capability has no Goal override, so it never claims the
+    # Goal-over-machine inheritance rule.
+    assert "effective_value_policy" not in capability
+    assert [
+        field["key"] for field in capability["configuration_editor"]["fields"]
+    ] == [
+        "executor_endpoint",
+        "executor_model",
+        "executor_reasoning_effort",
+    ]
+    assert capability["configuration_editor"]["fields"][0]["options"] == [
+        "codex",
+        "dsh",
+    ]
+    apply_handler = _Handler(
+        tmp_path,
+        {
+            "namespace": "steward_executor",
+            "namespace_configuration": configuration,
+            "expected_plan_revision": preview["plan_revision"],
+        },
+    )
+
+    apply_handler._machine_configuration_update(execute=True)
+
+    assert apply_handler.responses[0]["status"] == "applied"
+    inspection = _Handler(tmp_path)
+    inspection._machine_configuration_inspect()
+    readback = inspection.responses[0]
+    assert readback["status"] == "configured"
+    assert readback["machine_configuration"]["namespaces"]["steward_executor"] == (
+        configuration
+    )
+    assert "steward_executor" in readback["available_namespaces"]
+    assert str(tmp_path) not in json.dumps(readback)
 
 
 def test_invalid_manager_namespace_can_be_repaired_through_its_public_update(

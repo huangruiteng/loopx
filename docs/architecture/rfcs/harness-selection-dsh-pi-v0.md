@@ -65,7 +65,7 @@ dated 2026-09-15 and is written to land with the managed stack:
 | Role | Source | Selection today | Promotion gate |
 | --- | --- | --- | --- |
 | Default managed execution host | LoopX Turn plus the `dsh` host adapter, bound to an operator-supplied model endpoint | shipped product default, credential-resolved: the managed `dsh` host when the operator credential is configured, the individual `codex-cli` host when it is not; `LOOPX_TURN_HOST` re-points whichever resolved and an explicit `--host` wins (PR #4443, default resolution with this change) | keep the typed host request/result, independent validation, and the operator-owned credential boundary; do not replace it without an equal or stronger contract |
-| Steward channel executor | the interactive Chat transport the steward answers on | shipped product default: `codex`, the same endpoint on every machine; `LOOPX_MANAGER_ENDPOINT` re-points it, and an explicit selection of the managed host (`dsh`) moves the endpoint, model and reasoning effort together; selection landed in PR #4446, the unconditional default and the segment transport land with this change | the segment transport's typed limits (no streaming, no cross-turn host session, read-only sandbox) stay disclosed and read back, and no managed lane may depend on an individual subscription |
+| Steward channel executor | the interactive Chat transport the steward answers on | one machine setting, then one service-environment value, then the shipped product default: this machine's `steward_executor` machine configuration (edited from the Dashboard, read back by `loopx machine-config describe`/`inspect`, landed 2026-09-16) selects the executor for that machine, `LOOPX_MANAGER_ENDPOINT` bootstraps or names an unlisted adapter, and the shipped default stays `codex` on every machine; a selection of the managed host (`dsh`) moves the model and the reasoning effort with it | the segment transport's typed limits (no streaming, no cross-turn host session, read-only sandbox) stay disclosed and read back, no managed lane may depend on an individual subscription, and the namespace stores no credential and grants no authority |
 | Supported alternative Turn host | LoopX Turn plus the `codex-cli` adapter | explicitly selectable, and the credential-resolved default of the managed row above on a machine with no operator credential; it is the `individual` executor kind, so it is billed to one person's CLI login | no managed lane may *silently* depend on an individual's personal CLI subscription: the individual host is reached only as that credential-resolved default and is read back as `no_operator_credential`, never substituted for a host the operator selected |
 | L1 event source and session-owning runtime candidate | DSH | opt-in, not promoted; the bounded Turn host role is the default row above | the C0, C1, overhead, retention and Mode B rows in this document being run and reviewed |
 | Optional visible host loop | Pi | not a managed runtime | declare a per-binding session mode with readback, prove single-executor behavior under restart, "conversation is not a receipt", non-authoritative host-local state, and one real-host restart row |
@@ -101,15 +101,17 @@ the dependency visible instead of forbidding the disclosed default.
 
 The steward channel is a **different** surface, and after the revisions recorded
 above its default is one endpoint rather than one rule: `codex`, the interactive
-CLI endpoint, on every machine. `LOOPX_MANAGER_ENDPOINT` re-points it, and
-selecting the managed host (`dsh`) moves the endpoint, the model and the
-reasoning effort together, so the channel can never end up with an operator
-model driven through an individual CLI login. The rule that decides a credential
-here is the opposite of the Turn row's: a credential authenticates the endpoint
-that was selected and never re-points the surface a person talks to, because a
-conversation must not change hands mid-thread when a key appears in the
-environment. The readback still names where the endpoint came from
-(`executor_endpoint_source`) and, for a shipped default, which decision it was
+CLI endpoint, on every machine. Three layers select it, in one order: the
+machine's `steward_executor` machine configuration, then
+`LOOPX_MANAGER_ENDPOINT`, then the shipped default. Selecting the managed host
+(`dsh`) moves the endpoint, the model and the reasoning effort together, so the
+channel can never end up with an operator model driven through an individual
+CLI login. The rule that decides a credential here is the opposite of the Turn
+row's: a credential authenticates the endpoint that was selected and never
+re-points the surface a person talks to, because a conversation must not change
+hands mid-thread when a key appears in the environment. The readback still names
+where the endpoint came from (`executor_endpoint_source`, now including
+`machine_configuration`) and, for a shipped default, which decision it was
 (`executor_endpoint_default_reason`), so an operator reads a decided default
 instead of inferring it from the resolved host name.
 
@@ -404,6 +406,60 @@ runs the real bundled dsh segment against a local mock model endpoint and assert
 the resolved binding, the model and effort that reach the wire, the persisted
 answer, and that the read-only sandbox refuses a write. The persona and audience
 of a real steward conversation stay out of this document.
+
+## Steward Executor Machine Configuration (2026-09-16)
+
+The steward executor used to be selectable only through the Chat service
+environment, which made a machine-local decision live in a launch file rather
+than in a product setting: no surface could show it, no surface could change it,
+and a reader had to know which process variables were in effect. The executor,
+the model, and the reasoning effort are now a typed machine-configuration
+namespace, `steward_executor`
+(`loopx/capabilities/steward_executor/machine_defaults.py`), so a machine's
+steward choice is a first-class operator setting.
+
+The namespace holds exactly three fields and no credential:
+
+```json
+{
+  "schema_version": "steward_executor_machine_defaults_v0",
+  "executor_endpoint": "codex",
+  "executor_model": null,
+  "executor_reasoning_effort": null
+}
+```
+
+`executor_endpoint` is required and restricted to the endpoints LoopX ships as
+channel executors; a blank model or reasoning effort means this machine decides
+nothing about that field, so the channel keeps resolving it from the lower
+layers. Unknown fields, an unknown schema version, an unlisted endpoint, and an
+unsupported reasoning effort all fail closed before any effect. An operator who
+needs an adapter the namespace does not list still has
+`LOOPX_MANAGER_ENDPOINT`.
+
+Precedence is stated once, in the channel owner
+(`loopx/chat_manager.py`): machine configuration, then the service environment,
+then the shipped default. The machine layer is the one a product surface owns,
+so `loopx machine-config describe` publishes the template and the Dashboard
+edits the same document through the existing revision-locked transaction; the
+channel readback adds `executor_endpoint_source: machine_configuration` plus the
+document's `status` and `configuration_revision`, so a machine decision can be
+told from a service-environment value without reading the store.
+
+What this increment does *not* change: the shipped default stays `codex` on
+every machine, a credential still never selects an endpoint, the managed host
+still requires its own credential and runtime, and the selection grants no
+authority -- it names a provider-billed runtime, and `manager_runtime` remains a
+separate machine decision. A malformed steward value or an unreadable store
+falls back to the lower layers with a typed reason
+(`configuration_invalid`, `unavailable`) instead of failing the surface a person
+talks to, and a malformed *sibling* namespace cannot rewrite a valid steward
+selection.
+
+Validation: `tests/capabilities/test_steward_executor_machine_defaults.py`,
+`tests/test_manager_channel_binding.py`, `tests/test_chat_machine_configuration_api.py`,
+`tests/capabilities/test_capability_configuration_ui.py`, and
+`examples/loopx-steward-channel-binding-smoke.py`.
 
 ## Steward Channel Readiness by Milestone (2026-09-15)
 
