@@ -16,6 +16,10 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
       displayName: "Manager runtime",
       description: "Selects the persistent host-tool profile used by owner manager conversations.",
     },
+    steward_executor: {
+      displayName: "Steward executor",
+      description: "Selects the executor, model, and reasoning effort the steward channel answers on for this machine, ahead of the Chat service environment.",
+    },
     todo_replan_cadence: { displayName: "Goal review cadence", description: "Configures the Goal review cadence." },
     change_quality_qualification: {
       displayName: "Change quality qualification",
@@ -67,6 +71,10 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
     manager_runtime: {
       displayName: "管家 Runtime",
       description: "选择管家会话持续生效的宿主工具模式。",
+    },
+    steward_executor: {
+      displayName: "管家执行器",
+      description: "选择本机管家通道使用的执行器、模型与推理档位，优先级高于服务环境变量。",
     },
     todo_replan_cadence: { displayName: "Goal 复核周期", description: "配置 Goal 的复核周期。" },
     change_quality_qualification: {
@@ -120,6 +128,9 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
 const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
   en: {
     runtime_profile: { label: "Runtime profile", description: "Restricted keeps scoped LoopX reads only. Trusted owner enables normal host tools while protected operations retain separate checks." },
+    executor_endpoint: { label: "Steward executor", description: "The executor this machine's steward channel answers on. The choice outranks the Chat service environment and the shipped default." },
+    executor_model: { label: "Model", description: "Optional model for the selected executor. Leave blank to keep the executor's own default." },
+    executor_reasoning_effort: { label: "Reasoning effort", description: "Optional reasoning effort for the selected executor. Leave blank to keep the executor's own default." },
     completed_todos: { label: "Completed Todos between Goal reviews", description: "Machine default or explicit Goal override, from 1 to 5." },
     allowed_domains: { label: "Allowed responsibility domains", description: "Enter one bounded, public-safe domain per line." },
     coordinator_agent_id: { label: "Coordinator Agent", description: "Use an already registered Agent id; leave blank to disable coordination." },
@@ -141,6 +152,9 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
   },
   "zh-CN": {
     runtime_profile: { label: "运行模式", description: "restricted 仅使用受限 LoopX 读取；trusted_owner 开放常规宿主工具，但受保护操作仍单独校验。" },
+    executor_endpoint: { label: "管家执行器", description: "本机管家通道使用的执行器；优先级高于 Chat 服务环境变量与出货默认值。" },
+    executor_model: { label: "模型", description: "所选执行器使用的模型，可留空；留空表示沿用执行器自身的默认模型。" },
+    executor_reasoning_effort: { label: "推理档位", description: "所选执行器使用的推理档位，可留空；留空表示沿用执行器自身的默认档位。" },
     completed_todos: { label: "两次 Goal 复核间的已完成 Todo 数", description: "可设置 1–5；机器默认值可被 Goal 显式覆盖。" },
     allowed_domains: { label: "允许的职责域", description: "每行填写一个有边界、可公开的职责域。" },
     coordinator_agent_id: { label: "协调 Agent", description: "填写一个已经注册的 Agent ID；留空表示关闭协调。" },

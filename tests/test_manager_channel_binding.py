@@ -5,18 +5,27 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
+from pathlib import Path
 
 import pytest
 
+from loopx.capabilities.machine_configuration.builtins import (
+    build_builtin_machine_configuration_registry,
+)
+from loopx.capabilities.machine_configuration.store import (
+    configure_machine_configuration,
+)
 from loopx.chat_agent import CodexChatAgentError
 from loopx.capabilities.manager_runtime import manager_runtime_capability_projection
 from loopx.chat_manager import (
     MANAGER_ENDPOINT_MANAGED,
     MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT,
     MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
+    MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION,
     MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT,
     MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
     MANAGER_MODEL_SOURCE_ENV_OVERRIDE,
+    MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION,
     MANAGER_MODEL_SOURCE_VENDOR_DEFAULT,
     MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK,
     MANAGER_CHANNEL_SESSION_MODE_SOURCE_UNBOUND,
@@ -29,12 +38,58 @@ from loopx.chat_manager import (
     manager_model_config,
     open_manager_session,
     selected_manager_executor_endpoint,
+    steward_machine_defaults,
 )
 from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_server import ChatHTTPServer, ChatRequestHandler
 from loopx.chat_store import ChatSessionStore
 from loopx.control_plane.turn_driver import host_binding
 from loopx.extensions.lark.cli_resolution import LarkCliResolution
+
+
+def _apply_steward_executor_default(runtime_root: Path) -> None:
+    """Store one machine-level steward selection, as a machine surface would."""
+
+    registry = build_builtin_machine_configuration_registry()
+    configuration = {
+        "schema_version": "loopx_machine_configuration_v0",
+        "namespaces": {
+            "steward_executor": {
+                "schema_version": "steward_executor_machine_defaults_v0",
+                "executor_endpoint": "dsh",
+                "executor_model": None,
+                "executor_reasoning_effort": None,
+            }
+        },
+    }
+    preview = configure_machine_configuration(
+        runtime_root=runtime_root,
+        configuration=configuration,
+        registry=registry,
+        execute=False,
+    )
+    configure_machine_configuration(
+        runtime_root=runtime_root,
+        configuration=configuration,
+        registry=registry,
+        execute=True,
+        expected_plan_revision=str(preview["plan_revision"]),
+    )
+
+
+class _RecordingController:
+    """A channel entry point that reads the machine default and records the pick."""
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+        self.calls: list[dict[str, object]] = []
+
+    def steward_executor_defaults(self):
+        return self.inner.steward_executor_defaults()
+
+    def open_session(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"session_id": "fixture"}, False
 
 
 def test_the_shipped_default_is_the_cli_endpoint_on_every_machine():
@@ -152,6 +207,123 @@ def test_an_explicit_endpoint_selection_wins_over_the_shipped_default():
         MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
     )
     assert manager_executor_endpoint_default({"LOOPX_MANAGER_ENDPOINT": " "}) == "codex"
+
+
+def test_the_machine_selection_outranks_the_service_environment():
+    """The machine default is the product surface; the environment bootstraps it."""
+
+    selected = manager_channel_binding(
+        {
+            "LOOPX_MANAGER_ENDPOINT": "codex",
+            "LOOPX_MANAGER_MODEL": "env-model",
+            "LOOPX_MANAGER_REASONING_EFFORT": "low",
+            "DEEPSEEK_API_KEY": "fixture",
+        },
+        machine_defaults={
+            "schema_version": "steward_executor_effective_defaults_v0",
+            "status": "ready",
+            "source": "machine_configuration",
+            "configuration_revision": "sha256:fixture",
+            "executor_endpoint": "dsh",
+            "executor_model": "deepseek-v4-flash",
+            "executor_reasoning_effort": "high",
+        },
+    )
+
+    assert selected["executor_endpoint"] == "dsh"
+    assert (
+        selected["executor_endpoint_source"] == MANAGER_ENDPOINT_SOURCE_MACHINE_CONFIGURATION
+    )
+    # A machine decision is not a shipped default, so it carries no default reason.
+    assert selected["executor_endpoint_default_reason"] == ""
+    assert selected["executor_kind"] == "managed"
+    assert selected["model"] == "deepseek-v4-flash"
+    assert selected["model_source"] == MANAGER_MODEL_SOURCE_MACHINE_CONFIGURATION
+    # The readback names the document it read, so a machine decision can be told
+    # from a service environment value without reading the store.
+    assert selected["machine_defaults_status"] == "ready"
+    assert selected["machine_defaults_revision"] == "sha256:fixture"
+    assert manager_model_config(
+        {
+            "LOOPX_MANAGER_MODEL": "env-model",
+            "LOOPX_MANAGER_REASONING_EFFORT": "low",
+        },
+        machine_defaults={
+            "status": "ready",
+            "executor_endpoint": "dsh",
+            "executor_model": "deepseek-v4-flash",
+            "executor_reasoning_effort": "high",
+        },
+    ) == {"model": "deepseek-v4-flash", "reasoning_effort": "high"}
+
+
+def test_a_machine_that_selects_only_an_executor_keeps_the_lower_layers(monkeypatch):
+    """Each field is decided on its own, so one choice cannot drag the others."""
+
+    monkeypatch.setattr(
+        host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+    )
+
+    binding = manager_channel_binding(
+        {"DEEPSEEK_API_KEY": "fixture"},
+        machine_defaults={
+            "status": "ready",
+            "executor_endpoint": "dsh",
+            "executor_model": None,
+            "executor_reasoning_effort": None,
+        },
+    )
+
+    assert binding["executor_endpoint"] == "dsh"
+    # The model and the effort still resolve from the managed execution profile
+    # the selected host runs, not from the last value some other reader saw.
+    assert binding["model"] == "deepseek-v4-flash"
+    assert binding["model_source"] == MANAGER_MODEL_SOURCE_MANAGED_PROFILE
+    assert manager_model_config(
+        {"LOOPX_MANAGER_REASONING_EFFORT": "low"},
+        machine_defaults={
+            "status": "ready",
+            "executor_endpoint": "codex",
+            "executor_model": None,
+            "executor_reasoning_effort": None,
+        },
+    ) == {"model": "gpt-6-astra", "reasoning_effort": "low"}
+    # An unconfigured machine keeps resolving exactly as it did before the
+    # namespace existed, and an unread machine is named as such.
+    assert manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})[
+        "executor_endpoint"
+    ] == "codex"
+    assert manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})[
+        "machine_defaults_status"
+    ] == "not_read"
+
+
+def test_the_runtime_controller_reads_this_machine_live(tmp_path, monkeypatch):
+    """The channel reads the same document the Dashboard edits."""
+
+    monkeypatch.setattr(
+        host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+    )
+    runtime_root = tmp_path / "runtime"
+    store = ChatSessionStore(runtime_root)
+    _apply_steward_executor_default(runtime_root)
+    controller = ChatRuntimeController(
+        store=store, codex_bin="codex", registry_path=tmp_path / "registry.json"
+    )
+    try:
+        defaults = controller.steward_executor_defaults()
+        assert defaults["status"] == "ready"
+        assert defaults["executor_endpoint"] == "dsh"
+        assert steward_machine_defaults(controller) == defaults
+        assert manager_channel_binding(
+            {"DEEPSEEK_API_KEY": "fixture"}, machine_defaults=defaults
+        )["executor_endpoint"] == "dsh"
+        calling = _RecordingController(controller)
+        open_manager_session(controller=calling, goal_id="g", work_dir=tmp_path)
+        # One entry point, one answer: the session opens on the machine selection.
+        assert calling.calls[-1]["agent_id"] == "dsh"
+    finally:
+        controller.close()
 
 
 def test_selecting_the_managed_host_quotes_the_turn_executor_verdict():
@@ -313,7 +485,7 @@ def test_chat_entry_point_never_lets_a_client_default_pick_the_steward_executor(
     server.runtime_controller = Controller()
     monkeypatch.setattr(
         "loopx.chat_manager.manager_executor_endpoint_default",
-        lambda environ=None: MANAGER_ENDPOINT_MANAGED,
+        lambda environ=None, *, machine_defaults=None: MANAGER_ENDPOINT_MANAGED,
     )
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()

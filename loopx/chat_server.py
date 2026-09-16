@@ -33,7 +33,7 @@ from .chat_runtime import ChatRuntimeController, TERMINAL_TURN_STATES
 from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, is_manager_channel,
     manager_channel_binding, manager_channel_session, manager_workspace,
-    manager_model_config,
+    manager_model_config, steward_machine_defaults,
 )
 from .chat_session_open import open_chat_session
 from .chat_ssh_source_api import SshSourceRequestMixin
@@ -1256,12 +1256,20 @@ class ChatRequestHandler(
             self._send_json({"ok": True})
             return
         if path == CHAT_CAPABILITIES_PATH:
+            # Read the machine's steward choice once and quote the same value to
+            # the model arguments and to the channel readback, so the two cannot
+            # report different executors.
+            _steward_defaults = steward_machine_defaults(
+                self.server.runtime_controller
+            )
             capabilities = {
                 "ok": True,
                 "schema_version": "loopx_chat_capabilities_v1",
                 "manager": manager_runtime_capability_projection(
-                    self.server.runtime_controller, manager_model_config(),
+                    self.server.runtime_controller,
+                    manager_model_config(machine_defaults=_steward_defaults),
                     channel_binding=manager_channel_binding(
+                        machine_defaults=_steward_defaults,
                         session=manager_channel_session(self.server.chat_store)
                     )),
                 "runtime_identity": release_runtime_identity(),

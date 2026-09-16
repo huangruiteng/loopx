@@ -84,11 +84,15 @@ frontend projection; explicitly choosing status-only still uses that projection.
 The manager channel's model and reasoning effort follow its executor. On the
 interactive CLI endpoint the defaults are `gpt-6-astra` with `high` reasoning; on
 the managed host they are the managed execution profile
-(`deepseek-official` / `deepseek-v4-flash` / `high`). Set `LOOPX_MANAGER_MODEL`
-and `LOOPX_MANAGER_REASONING_EFFORT` on the Chat service to override either one;
-an explicit override always wins. Thread start, resume and turn start explicitly
-carry the settings; worker configuration is unchanged. Capabilities expose the
-manager defaults and their source.
+(`deepseek-official` / `deepseek-v4-flash` / `high`). The machine's
+`steward_executor` machine configuration decides the executor, the model and the
+effort first; set `LOOPX_MANAGER_MODEL` and `LOOPX_MANAGER_REASONING_EFFORT` on
+the Chat service when a machine has no such configuration, and the shipped
+default applies when neither exists. A blank model or effort in the machine
+configuration means that field keeps resolving from the layers below it. Thread
+start, resume and turn start explicitly carry the settings; worker configuration
+is unchanged. Capabilities expose the manager defaults, their source, and the
+status and revision of the machine document they were read from.
 
 The managed profile reaches the channel as the same one-line readback the
 governed Turn publishes (`deepseek-v4-flash@high`), so the channel and the
@@ -97,13 +101,20 @@ provider is prepended when it is not the shipped one.
 
 ### Steward channel host selection
 
-The steward channel resolves one shipped default and one explicit override.
-`LOOPX_MANAGER_ENDPOINT` re-points the executor; without it the channel runs the
-interactive CLI endpoint (`codex`) on every machine, and the managed host (`dsh`)
-is reached by selecting it. The channel reports where the endpoint came from
-(`executor_endpoint_source`) and, when it is the shipped default, which decision
-that was (`executor_endpoint_default_reason`, `steward_channel_default`), so the
-default is disclosed rather than silent or inferred from the resolved host name.
+The steward channel resolves one machine configuration, then one service
+environment value, then one shipped default. The `steward_executor` machine
+configuration (`loopx/capabilities/steward_executor/machine_defaults.py`) selects
+the executor for its machine and is the setting the Dashboard edits and
+`loopx machine-config describe`/`inspect` read back; it accepts only the
+endpoints LoopX ships as channel executors and stores no credential.
+`LOOPX_MANAGER_ENDPOINT` bootstraps a machine or names an unlisted adapter;
+without either the channel runs the interactive CLI endpoint (`codex`) on every
+machine, and the managed host (`dsh`) is reached by selecting it. The channel
+reports where the endpoint came from (`executor_endpoint_source`, including
+`machine_configuration`), the status and revision of the machine document it
+read, and, when it is the shipped default, which decision that was
+(`executor_endpoint_default_reason`, `steward_channel_default`), so the default is
+disclosed rather than silent or inferred from the resolved host name.
 
 The channel must stay reachable, which is why its default does not move: the
 steward is the surface a person talks to, a managed host without its credential

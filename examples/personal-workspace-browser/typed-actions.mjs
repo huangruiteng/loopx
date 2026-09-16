@@ -1029,7 +1029,9 @@ export const typedActionsScenario = {
         throw new Error("Initial machine selection must follow the visible catalog order, not the API source order");
       }
       if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable machine settings must not show internal editor-contract notices");
-      if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length + 1) {
+      // Two capabilities are machine-only: the manager runtime profile and the
+      // steward channel's executor. Every other catalog entry is Goal-scoped.
+      if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length + 2) {
         throw new Error("Machine settings did not combine machine-only and Goal capabilities in the shared catalog");
       }
       await machineCatalog.getByRole("button", { name: /^管家 Runtime/ }).click();
@@ -1125,6 +1127,36 @@ export const typedActionsScenario = {
       await page.getByRole("button", { name: /机器配置/ }).click();
       await page.locator(".personal-settings-body").evaluate((element) => element.scrollTo({ top: 0 }));
       await page.screenshot({ path: resolve(outputDir, "machine-capability-zh-cn.png"), fullPage: false, animations: "disabled" });
+      // The steward's own executor is a machine setting like any other: the
+      // operator picks it in the form, and the exact reviewed revision carries
+      // the choice into the same namespaced store.
+      await page.getByRole("button", { name: /管家执行器/ }).click();
+      await page.getByRole("heading", { level: 2, name: "管家执行器", exact: true }).waitFor({ state: "visible" });
+      const stewardFields = page.locator(".personal-capability-fields");
+      // The selects carry their option text inside the same label, so they are
+      // matched by prefix rather than by an exact label string.
+      await stewardFields.getByLabel(/^模型/u).waitFor({ state: "visible" });
+      await stewardFields.getByLabel(/^推理档位/u).waitFor({ state: "visible" });
+      await stewardFields.getByLabel(/^管家执行器/u).selectOption("dsh");
+      await stewardFields.getByLabel(/^模型/u).fill("deepseek-v4-flash");
+      await stewardFields.getByLabel(/^推理档位/u).selectOption("high");
+      await page.screenshot({ path: resolve(outputDir, "machine-steward-executor-zh-cn.png"), fullPage: false, animations: "disabled" });
+      await page.getByRole("button", { name: "预览变更", exact: true }).click();
+      const stewardPreview = api.machineConfigurationRequests.findLast(
+        (item) => item.phase === "preview" && item.namespace === "steward_executor",
+      );
+      if (stewardPreview?.namespace_configuration?.executor_endpoint !== "dsh"
+        || stewardPreview?.namespace_configuration?.executor_model !== "deepseek-v4-flash"
+        || stewardPreview?.namespace_configuration?.executor_reasoning_effort !== "high") {
+        throw new Error(`The steward executor form did not preview the selected executor: ${JSON.stringify(stewardPreview)}`);
+      }
+      await page.getByRole("button", { name: "应用已审阅预览", exact: true }).click();
+      const stewardApply = api.machineConfigurationRequests.findLast(
+        (item) => item.phase === "apply" && item.namespace === "steward_executor",
+      );
+      if (stewardApply?.expected_plan_revision !== "sha256:machine-plan") {
+        throw new Error("The steward executor apply lost its reviewed plan revision");
+      }
       const settingsViewport = page.viewportSize();
       await page.setViewportSize({ width: 390, height: 844 });
       await page.waitForTimeout(200);
