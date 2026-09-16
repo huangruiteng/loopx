@@ -788,4 +788,24 @@ def render_control_plane_maintainability_report(payload: Mapping[str, Any]) -> s
             )
     for exception_id in payload.get("invalid_exceptions") or []:
         lines.append(f"- invalid exception metadata: {exception_id}")
+    # A module metric budget is settled in the checked-in ledger rather than by
+    # a reviewed exception, so name that file next to the finding: it is the
+    # reviewer-visible edit that decides whether the growth is accepted.
+    if any(
+        str(finding.get("category") or "") == "module_metric_budget"
+        for finding in payload.get("findings") or []
+    ):
+        lines.append(
+            "- module metric debt: refresh the reviewed ceiling in "
+            f"{_module_metric_baseline_name(payload)} for the growth this review accepts"
+        )
     return "\n".join(lines) + "\n"
+
+
+def _module_metric_baseline_name(payload: Mapping[str, Any]) -> str:
+    policy = payload.get("policy")
+    if isinstance(policy, Mapping):
+        declared = str(policy.get("module_metric_baseline_path") or "").strip()
+        if declared:
+            return declared
+    return MODULE_METRIC_BASELINE_PATH.name
