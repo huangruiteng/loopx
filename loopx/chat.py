@@ -229,7 +229,13 @@ def _normalize_proposals(
 def _validated_team_plan_preview(
     raw: Mapping[str, Any], context: Mapping[str, Any] | None
 ) -> dict[str, Any] | None:
-    """Return the validated preview, or ``None`` when it may not be surfaced."""
+    """Return the validated preview, or ``None`` when it may not be surfaced.
+
+    A preview names its Goal, so the host facts are per Goal rather than for
+    "the" Goal: the manager channel is not bound to one, and a plan for a Goal
+    the host was not given facts for is dropped instead of being validated
+    against another Goal's Agents.
+    """
 
     if not isinstance(context, Mapping):
         return None
@@ -237,10 +243,30 @@ def _validated_team_plan_preview(
         validate_steward_team_plan_preview,
     )
 
+    goal_id = str(raw.get("goal_id") or "")
+    agents: list[str] | None = None
+    by_goal = context.get("registered_agents_by_goal")
+    if isinstance(by_goal, Mapping):
+        declared = by_goal.get(goal_id)
+        if isinstance(declared, (list, tuple)):
+            agents = [str(value) for value in declared]
+    if agents is None:
+        # A host with a large Goal set resolves on demand, and only for the
+        # Goal the plan named, so admission stays bounded by one lookup.
+        resolve = context.get("resolve_registered_agents")
+        if callable(resolve):
+            try:
+                resolved = resolve(goal_id)
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+                resolved = None
+            if isinstance(resolved, (list, tuple)):
+                agents = [str(value) for value in resolved]
+    if agents is None:
+        return None
     try:
         return validate_steward_team_plan_preview(
             raw,
-            registered_agent_ids=list(context.get("registered_agent_ids") or []),
+            registered_agent_ids=agents,
             supported_action_kinds=list(context.get("supported_action_kinds") or []),
         )
     except ValueError:
@@ -347,6 +373,7 @@ def parse_agent_response(
     raw_text: str,
     *,
     protected_paths: Iterable[Path | str] = (),
+    team_plan_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     protected = tuple(protected_paths)
     start = raw_text.rfind(CHAT_REVIEW_OPEN_TAG)
@@ -358,7 +385,11 @@ def parse_agent_response(
         except json.JSONDecodeError:
             payload = None
         if isinstance(payload, dict):
-            return normalize_agent_response(payload, protected_paths=protected)
+            return normalize_agent_response(
+                payload,
+                protected_paths=protected,
+                team_plan_context=team_plan_context,
+            )
         key = re.search(r'"message"\s*:\s*', body)
         if key:
             try:

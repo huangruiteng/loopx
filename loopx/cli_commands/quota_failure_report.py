@@ -20,6 +20,7 @@ from ..control_plane.coordination.local_authority import (
 )
 from ..control_plane.quota.error_codes import (
     HeartbeatReceiptIdentityConflictError,
+    QuotaActionSelectionConflictError,
     QuotaCommandValidationError,
     QuotaIdentityPreconditionError,
     quota_error_code,
@@ -127,6 +128,23 @@ def quota_failure_payload(
         **verbose_debug,
         **lock_timeout_fields,
     }
+    if isinstance(error, QuotaActionSelectionConflictError):
+        # The requested Todo could not be reconciled with the projection. Report
+        # the real conflict and the next read to make, rather than the generic
+        # "quota collection failed" and a pointer at receipt writeback.
+        payload.update(
+            {
+                "reason": str(error),
+                "status": "quota_action_selection_conflict",
+                "recommended_action": error.recommended_action,
+                "action_selection_conflict": {
+                    "kind": error.kind.value,
+                    "requested_todo_id": error.requested_todo_id,
+                    "selected_todo_id": error.selected_todo_id,
+                    "qualification_state": error.qualification_state,
+                },
+            }
+        )
     if isinstance(error, QuotaIdentityPreconditionError):
         payload.update(
             {

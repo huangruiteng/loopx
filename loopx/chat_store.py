@@ -11,6 +11,7 @@ import re
 import threading
 from typing import Any
 import uuid
+from weakref import WeakValueDictionary
 
 from .chat import require_matching_replay, resolve_attached_completion_replay
 from .file_lock import exclusive_file_lock
@@ -26,6 +27,8 @@ CHAT_SESSION_MODE_MANAGED = "managed_runtime"
 CHAT_SESSION_MODE_ATTACHED = "attached_host"
 RESUMABLE_SESSION_STATES = {"ready", "busy", "stale", "resuming"}
 TERMINAL_TURN_STATES = {"completed", "interrupted", "timed_out", "failed"}
+TERMINAL_EVENT_KINDS = {"turn.completed", "turn.failed", "turn.interrupted"}
+REPLAY_ONLY_EVENT_KINDS = {"answer.delta", "assistant.delta", "agent.phase", "turn.activity"}
 SESSION_QUEUE_MAX_PENDING = 20
 SESSION_QUEUE_TTL_SECONDS = 3600
 
@@ -138,12 +141,12 @@ class ChatSessionStore:
         self.root = runtime_root.expanduser().resolve() / "chat"
         self.sessions_root = self.root / "sessions"
         self._session_lock_guard = threading.Lock()
-        self._session_locks: dict[str, threading.Lock] = {}
+        self._session_locks: WeakValueDictionary[str, threading.Lock] = WeakValueDictionary()
         self._event_lock = threading.RLock()
         self._event_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._event_cache_revision: dict[tuple[str, str], tuple[int, int, int] | None] = {}
         self._event_pending: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        self._event_flush_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._event_flush_locks: WeakValueDictionary[tuple[str, str], threading.Lock] = WeakValueDictionary()
         self.sessions_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.root, 0o700)
         os.chmod(self.sessions_root, 0o700)
@@ -1312,6 +1315,12 @@ class ChatSessionStore:
         with self._event_lock:
             return self._event_flush_locks.setdefault(key, threading.Lock())
 
+    def _drop_event_cache(self, key: tuple[str, str], expected: list[dict[str, Any]] | None = None) -> None:
+        with self._event_lock:
+            if expected is None or self._event_cache.get(key) is expected:
+                self._event_cache.pop(key, None)
+                self._event_cache_revision.pop(key, None)
+
     def append_event(
         self,
         session_id: str,
@@ -1358,9 +1367,12 @@ class ChatSessionStore:
                             event["event_id"] = str(sequence)
                             event["sequence"] = sequence
                         _append_jsonl_rows(path, pending)
-                        with self._event_lock:
-                            self._event_cache[key] = [*rows, *pending]
-                            self._event_cache_revision[key] = self._event_revision(path)
+                        if any(row["kind"] in TERMINAL_EVENT_KINDS for row in pending):
+                            self._drop_event_cache(key)
+                        else:
+                            with self._event_lock:
+                                self._event_cache[key] = [*rows, *pending]
+                                self._event_cache_revision[key] = self._event_revision(path)
                 except Exception:
                     with self._event_lock:
                         later = self._event_pending.get(key, [])
@@ -1379,22 +1391,17 @@ class ChatSessionStore:
         revision = self._event_revision(path)
         with self._event_lock:
             cached = self._event_cache.get(key)
-            rows = (
-                cached
-                if cached is not None and self._event_cache_revision.get(key) == revision
-                else None
-            )
+            rows = cached if cached is not None and self._event_cache_revision.get(key) == revision else None
         if rows is None:
             with exclusive_file_lock(path, agent_id="loopx-chat", operation="read_chat_events"):
                 rows = self._event_rows_locked(session_id, turn_id)
         # Relies on the sequence ordering maintained by flush_events and compaction;
         # gaps are valid, but inserting or rewriting rows must preserve that order.
-        start = bisect_right(
-            rows,
-            after,
-            key=lambda row: int(row.get("sequence") or 0),
-        )
-        return rows[start:]
+        start = bisect_right(rows, after, key=lambda row: int(row.get("sequence") or 0))
+        result = rows[start:]
+        if rows and rows[-1].get("kind") in TERMINAL_EVENT_KINDS:
+            self._drop_event_cache(key, rows)
+        return result
 
     def compact_completed_events(self, *, older_than_hours: float = 24.0) -> int:
         """Drop replay-only deltas after the durable final message is old enough."""
@@ -1415,25 +1422,22 @@ class ChatSessionStore:
             turn_id = turn_path.stem
             self.flush_events(session_id, turn_id)
             event_path = turn_path.with_name(f"{turn_path.stem}.events.jsonl")
+            revision = self._event_revision(event_path)
+            if turn.get("event_compaction_revision") == list(revision or ()):
+                continue
             with exclusive_file_lock(event_path, agent_id="loopx-chat", operation="compact_chat_events"):
                 rows = self._event_rows_locked(session_id, turn_id)
-                retained = [
-                    row for row in rows
-                    if row.get("kind") not in {
-                        "answer.delta",
-                        "assistant.delta",
-                        "agent.phase",
-                        "turn.activity",
-                    }
-                ]
-                if len(retained) == len(rows):
-                    continue
-                _replace_jsonl(event_path, retained)
-                with self._event_lock:
-                    key = (session_id, turn_id)
-                    self._event_cache[key] = retained
-                    self._event_cache_revision[key] = self._event_revision(event_path)
-            compacted += 1
+                retained = [row for row in rows if row.get("kind") not in REPLAY_ONLY_EVENT_KINDS]
+                if len(retained) != len(rows):
+                    _replace_jsonl(event_path, retained)
+                    compacted += 1
+                revision = self._event_revision(event_path)
+                self._drop_event_cache((session_id, turn_id))
+            with exclusive_file_lock(turn_path, agent_id="loopx-chat", operation="mark_chat_events_compacted"):
+                current = _read_json(turn_path)
+                if current.get("status") in TERMINAL_TURN_STATES:
+                    current["event_compaction_revision"] = list(revision or ())
+                    _atomic_write_json(turn_path, current, preserve_mode=True)
         return compacted
 
     def public_session(self, payload: dict[str, Any]) -> dict[str, Any]:

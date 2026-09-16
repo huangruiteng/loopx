@@ -6,7 +6,9 @@ import pytest
 
 from loopx.control_plane.goals.goal_vision import normalize_goal_vision_packet
 from loopx.control_plane.work_items.autonomous_replan_ack import (
+    AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW,
     compact_autonomous_replan_ack,
+    latest_autonomous_replan_ack_for_projection,
 )
 from loopx.control_plane.work_items.progress_observation import (
     semantic_delta_from_writeback,
@@ -17,6 +19,83 @@ from loopx.status import compact_run
 FRESH_VISION_PATH_OUTCOME = "fresh_vision_path_outcome"
 GOAL_ID = "goal-replan-3338"
 AGENT_ID = "codex-replan-agent"
+NEUTRAL_CLASSIFICATIONS = {"quota_slot_spent"}
+LONG_CHAIN_REVISION = "todo_frontier_revision_v0:0123456789abcdef01234567"
+LONG_CHAIN_OBLIGATION_ID = "replan-0123456789abcdef"
+
+
+def _material_run(index: int) -> dict[str, Any]:
+    return {
+        "classification": f"bounded_progress_{index}",
+        "generated_at": f"2026-08-19T12:{index:02d}:00+08:00",
+        "agent_id": AGENT_ID,
+    }
+
+
+def _long_chain_ack_run(*, checkpoints: bool) -> dict[str, Any]:
+    semantic_delta: dict[str, Any] = {
+        "schema_version": "replan_semantic_delta_v0",
+        "accepted": True,
+        "outcomes": ["new_surface"],
+        "satisfying_outcomes": ["new_surface"],
+        "required_any_of": ["new_surface"],
+        "trigger_kinds": ["long_todo_chain"],
+        "obligation_id": LONG_CHAIN_OBLIGATION_ID,
+    }
+    if checkpoints:
+        semantic_delta["trigger_checkpoints"] = [
+            {"kind": "long_todo_chain", "frontier_revision": LONG_CHAIN_REVISION}
+        ]
+    return {
+        "classification": "bounded_replan_progress",
+        "generated_at": "2026-08-19T13:00:00+08:00",
+        "agent_id": AGENT_ID,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "refresh_state_semantic_delta",
+            "semantic_delta": semantic_delta,
+        },
+    }
+
+
+def _projection_ack(*, checkpoints: bool, newer_material_runs: int) -> dict[str, Any] | None:
+    """Newest-first history: fresh material runs, then the ACK, then older runs."""
+
+    latest_runs = [_material_run(index) for index in range(newer_material_runs)]
+    latest_runs.append(_long_chain_ack_run(checkpoints=checkpoints))
+    latest_runs.extend(_material_run(index) for index in range(100, 103))
+    return latest_autonomous_replan_ack_for_projection(
+        latest_runs,
+        neutral_classifications=NEUTRAL_CLASSIFICATIONS,
+    )
+
+
+def test_checkpoint_ack_stays_visible_beyond_the_material_run_window() -> None:
+    # The frontier rules compare the exact revision, so an old checkpoint ACK
+    # cannot suppress a changed frontier; it must not expire on run count alone.
+    ack = _projection_ack(
+        checkpoints=True,
+        newer_material_runs=AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW * 2,
+    )
+
+    assert ack is not None
+    assert ack["semantic_delta"]["obligation_id"] == LONG_CHAIN_OBLIGATION_ID
+    assert ack["semantic_delta"]["trigger_checkpoints"] == [
+        {"kind": "long_todo_chain", "frontier_revision": LONG_CHAIN_REVISION}
+    ]
+
+
+def test_legacy_ack_still_expires_with_the_material_run_window() -> None:
+    expired = _projection_ack(
+        checkpoints=False,
+        newer_material_runs=AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW,
+    )
+    visible = _projection_ack(checkpoints=False, newer_material_runs=2)
+
+    assert expired is None
+    assert visible is not None
+    assert visible["semantic_delta"]["obligation_id"] == LONG_CHAIN_OBLIGATION_ID
 
 
 def _validated_agent_vision(path_outcome: str) -> dict[str, Any]:

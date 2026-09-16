@@ -2,6 +2,10 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import {
+  ROLLOUT_EVENT_SCHEMA_VERSION,
+  goalRolloutEventLogPath,
+} from "../rollout_receipt_log.ts";
+import {
   effectIdsMatch,
   settlementBindReduce,
   settlementFailed,
@@ -35,6 +39,15 @@ import {
   refreshRecovery,
   type RefreshRetryRequest,
 } from "./refresh_recovery.ts";
+import {
+  heartbeatReceiptDetails as details,
+  heartbeatReceiptFactFromEvent,
+  normalizeHeartbeatReplanObligationId as normalizeReplanObligationId,
+  normalizeHeartbeatTodoId as normalizeTodoId,
+  optionalHeartbeatString as optionalString,
+  selectEffectiveHeartbeatReceipt,
+  type HeartbeatReceiptFact,
+} from "./heartbeat_receipt_identity.ts";
 
 import { refreshExternalDelivery } from "./refresh_external_delivery.ts";
 
@@ -44,11 +57,8 @@ export const QUOTA_SETTLEMENT_READBACK_RESULT_SCHEMA =
   "loopx_quota_settlement_readback_result_v0";
 export const SEMANTIC_REPLAN_GUARD_SCHEMA = "semantic_replan_guard_v0";
 
-const ROLLOUT_EVENT_SCHEMA_VERSION = "loopx_rollout_event_v0";
 const TURN_INSTANCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const TODO_ID_PATTERN = /^todo_[a-z0-9_-]{3,64}$/;
 const AGENT_ID_PATTERN = /^[a-z][a-z0-9_.:@-]{0,79}$/;
-const REPLAN_OBLIGATION_ID_PATTERN = /^replan-[a-f0-9]{16}$/;
 
 interface ReadbackRequest {
   runtime_root: string;
@@ -67,11 +77,6 @@ interface ResultBundle extends JsonObject {
   payload: JsonObject;
 }
 
-function optionalString(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  return String(value).trim() || null;
-}
-
 function optionalRequestString(value: unknown, label: string): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") {
@@ -83,18 +88,6 @@ function optionalRequestString(value: unknown, label: string): string | null {
 function normalizeAgentId(value: unknown): string | null {
   const candidate = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "-");
   return candidate && AGENT_ID_PATTERN.test(candidate) ? candidate : null;
-}
-
-function normalizeTodoId(value: unknown): string | null {
-  const candidate = String(value ?? "").trim().toLowerCase();
-  return candidate && TODO_ID_PATTERN.test(candidate) ? candidate : null;
-}
-
-function normalizeReplanObligationId(value: unknown): string | null {
-  const candidate = String(value ?? "").trim();
-  return candidate && REPLAN_OBLIGATION_ID_PATTERN.test(candidate)
-    ? candidate
-    : null;
 }
 
 function decodeRequest(value: unknown): ReadbackRequest {
@@ -209,10 +202,6 @@ function runEffectMatches(
       quotaSpendMetadataMatches(run.quota_spend_commit, effectRef, expectedEffectRef));
 }
 
-function details(event: JsonObject | null): JsonObject {
-  return jsonObject(event?.details) ?? {};
-}
-
 export function projectSemanticReplanGuard(
   receiptDetails: JsonObject,
 ): JsonObject {
@@ -243,63 +232,6 @@ export function projectSemanticReplanGuard(
     scope: "turn_guard",
     selected_obligation_id: selectedObligationId,
   };
-}
-
-function receiptIdentity(
-  event: JsonObject,
-): { key: string; event: JsonObject } | null {
-  const eventDetails = details(event);
-  const todoId = normalizeTodoId(eventDetails.todo_id);
-  const replanObligationId = normalizeReplanObligationId(
-    eventDetails.replan_obligation_id,
-  );
-  const effectId = optionalString(eventDetails.settlement_effect_id);
-  if (todoId && replanObligationId) {
-    throw new EffectRuntimeRequestError(
-      "heartbeat receipt has conflicting Todo and autonomous replan bindings",
-    );
-  }
-  if (effectId && !todoId && !replanObligationId) {
-    throw new EffectRuntimeRequestError(
-      "heartbeat receipt has an effect identity without a Todo or autonomous replan binding; refuse to infer or upgrade it",
-    );
-  }
-  if (!todoId && !replanObligationId) return null;
-  const identity = settlementIdentity({
-    goal_id: optionalString(event.goal_id) ?? "",
-    agent_id: optionalString(event.agent_id) ?? "",
-    todo_id: todoId,
-    turn_instance_id: optionalString(event.run_id) ?? "",
-    replan_obligation_id: replanObligationId,
-  });
-  return {
-    key: `${identity.binding_kind}\u0000${identity.binding_id}\u0000${effectId ?? identity.effect_id}`,
-    event,
-  };
-}
-
-function effectiveHeartbeatReceipt(
-  events: readonly JsonObject[],
-  identity: Pick<SettlementIdentity, "goal_id" | "agent_id" | "turn_instance_id">,
-): JsonObject | null {
-  const matching = events.filter((event) =>
-    event.event_kind === "quota_should_run" &&
-    optionalString(event.goal_id) === identity.goal_id &&
-    optionalString(event.agent_id) === identity.agent_id &&
-    optionalString(event.run_id) === identity.turn_instance_id
-  );
-  if (matching.length === 0) return null;
-  const identities = new Map<string, JsonObject>();
-  for (const event of matching) {
-    const resolved = receiptIdentity(event);
-    if (resolved) identities.set(resolved.key, resolved.event);
-  }
-  if (identities.size > 1) {
-    throw new EffectRuntimeRequestError(
-      "heartbeat receipt has conflicting settlement identities for the same goal, agent, and turn",
-    );
-  }
-  return identities.size === 1 ? [...identities.values()][0] : matching.at(-1)!;
 }
 
 function runMatchesBinding(run: JsonObject, identity: SettlementIdentity): boolean {
@@ -358,6 +290,29 @@ function findStepEvent(
     optionalString(event.run_id) === identity.turn_instance_id &&
     optionalString(details(event).settlement_effect_id) === identity.effect_id
   ) ?? null;
+}
+
+/**
+ * Resolve the Turn's effective receipt, or null when it persisted no guard.
+ *
+ * The identity rule lives in one module, so the readback resolves the effective
+ * receipt through the same reduction the closeout selector uses.
+ */
+function effectiveHeartbeatReceipt(
+  events: readonly JsonObject[],
+  identity: Pick<SettlementIdentity, "goal_id" | "agent_id" | "turn_instance_id">,
+): JsonObject | null {
+  const entries: { fact: HeartbeatReceiptFact; value: JsonObject }[] = [];
+  for (const event of events) {
+    if (event.event_kind !== "quota_should_run") continue;
+    if (optionalString(event.goal_id) !== identity.goal_id) continue;
+    if (optionalString(event.agent_id) !== identity.agent_id) continue;
+    if (optionalString(event.run_id) !== identity.turn_instance_id) continue;
+    entries.push({ fact: heartbeatReceiptFactFromEvent(event), value: event });
+  }
+  return entries.length === 0
+    ? null
+    : selectEffectiveHeartbeatReceipt(identity.goal_id, identity.agent_id, entries);
 }
 
 function writebackResult(
@@ -699,7 +654,10 @@ export async function readQuotaSettlement(value: unknown): Promise<JsonObject> {
   const request = decodeRequest(value);
   const goalRoot = join(request.runtime_root, "goals", request.goal_id);
   const [events, runs] = await Promise.all([
-    readJsonLines(join(goalRoot, "rollout-event-log.jsonl"), ROLLOUT_EVENT_SCHEMA_VERSION),
+    readJsonLines(
+      goalRolloutEventLogPath(request.runtime_root, request.goal_id),
+      ROLLOUT_EVENT_SCHEMA_VERSION,
+    ),
     readJsonLines(join(goalRoot, "runs", "index.jsonl")),
   ]);
   const identityResult = resolveIdentity(request, events, runs);

@@ -23,6 +23,7 @@ const envelope = JSON.parse(readFileSync(new URL(
   current_lease_count: number;
   retired_lease_count: number;
   standing_user_decision_count: number;
+  rejected_standing_decision_count: number;
   scoped_without_outcome_count: number;
   linked_decision_count: number;
   completion_target_index: number;
@@ -104,6 +105,13 @@ export interface ProductionScaleCoordinationFixture {
   readonly expected_agent_archive_count_after_terminals: number;
   readonly expected_user_archive_count: number;
   readonly expected_standing_user_decision_count: number;
+  /**
+   * Standing receipts whose recorded outcome is not `approve`.
+   *
+   * Authority collapses per decision identity, so every rejection sharing one
+   * scope produces a single inactive entry rather than one per Todo.
+   */
+  readonly expected_inactive_standing_decision_count: number;
   readonly semantic_cases: Readonly<Record<string, Record<string, unknown>>>;
   readonly presentation_cases: Readonly<Record<string, Record<string, unknown>>>;
   readonly update_cases: Readonly<Record<string, Record<string, unknown>>>;
@@ -210,6 +218,19 @@ function todoRecords(
         record.unblocks_todo_id = todoId("agent", envelope.completion_target_index);
       }
     }
+    // An explicit rejection is a recorded decision, not absent authority: the
+    // same broad goal is refused under a second decision kind. It stays a
+    // standing receipt while its outcome keeps it inactive, so a provider
+    // cannot present "no active approval" as "no decision was made".
+    const rejectedStart = partialEnd + envelope.linked_decision_count;
+    if (role === "user" && index >= rejectedStart &&
+        index < rejectedStart + envelope.rejected_standing_decision_count) {
+      record.task_class = "user_gate";
+      record.decision_scope = {kind: "write_scope", granularity: "goal", scope_key: goalId};
+      record.decision_outcome = "reject";
+      record.global_gate = true;
+      record.goal_bound = true;
+    }
     return record;
   });
 }
@@ -278,6 +299,14 @@ export function productionScaleCoordinationFixture(
     todo.task_class === "user_gate" && todo.decision_outcome === "approve" &&
     todo.global_gate === true && todo.goal_bound === true,
   ).length;
+  const rejectedStanding = users.filter(todo =>
+    todo.task_class === "user_gate" && todo.decision_outcome === "reject" &&
+    todo.global_gate === true && todo.goal_bound === true,
+  );
+  const expectedInactiveStanding = new Set(rejectedStanding.map(todo => {
+    const scope = todo.decision_scope as {kind: string; granularity: string; scope_key: string};
+    return JSON.stringify([scope.kind, scope.granularity, scope.scope_key, "global"]);
+  })).size;
   return {
     projection: schema === "legacy"
       ? legacyProjection
@@ -292,8 +321,14 @@ export function productionScaleCoordinationFixture(
     expected_initial_todo_count: todos.length,
     expected_current_lease_count: leases.length,
     expected_agent_archive_count_after_terminals: expectedAgentDone + 2 - 5,
-    expected_user_archive_count: expectedUserDone - 5,
-    expected_standing_user_decision_count: expectedStanding,
+    // Archive keeps every standing receipt, approved or rejected, so each
+    // rejection leaves one fewer movable completed row behind.
+    expected_user_archive_count: Math.min(
+      expectedUserDone - expectedStanding - rejectedStanding.length,
+      expectedUserDone - 5,
+    ),
+    expected_standing_user_decision_count: expectedStanding + rejectedStanding.length,
+    expected_inactive_standing_decision_count: expectedInactiveStanding,
     semantic_cases: envelope.semantic_cases,
     presentation_cases: envelope.presentation_cases,
     update_cases: envelope.update_cases,
@@ -307,6 +342,7 @@ export function productionScaleCoordinationFixture(
 }
 
 export const PRODUCTION_SCALE_RETIRED_LEASE_COUNT = envelope.retired_lease_count;
+export const PRODUCTION_SCALE_REJECTED_DECISION_COUNT = envelope.rejected_standing_decision_count;
 
 function requireSafeCount(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value < 1) {

@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from .cli_commands.agent_capabilities import register_agent_capabilities, handle_agent_capabilities
+from .cli_commands.agent_directory import register_agent_directory, handle_agent_directory
 from .cli_commands.agent_context import register_agent_context, handle_agent_context
 from .cli_commands.todo_continuation import register_todo_continuation, handle_todo_continuation
 from .cli_commands.manager_inbox import register_manager_inbox, handle_manager_inbox
@@ -329,6 +330,7 @@ def build_parser() -> LoopXArgumentParser:
     register_manager_inbox(sub, add_subcommand_format)
     register_agent_capabilities(sub, add_subcommand_format)
     register_agent_context(sub, add_subcommand_format)
+    register_agent_directory(sub, add_subcommand_format)
     register_lark_inbox_commands(sub, add_subcommand_format)
     register_lark_kanban_commands(sub, add_subcommand_format)
 
@@ -767,6 +769,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "agent-context":
         return handle_agent_context(args, registry_path, print_payload, output_format)
+
+    if args.command == "agent-directory":
+        return handle_agent_directory(
+            args, registry_path, effective_runtime_root(registry_path, args.runtime_root),
+            print_payload, output_format,
+        )
 
     if args.command == "manager-inbox":
         return handle_manager_inbox(args, registry_path, effective_runtime_root(registry_path, args.runtime_root))

@@ -416,6 +416,7 @@ class ACPStdioAdapter:
         response = parse_agent_response(
             raw_response,
             protected_paths=[self.work_dir, self.agent_work_dir],
+            team_plan_context=getattr(self, "team_plan_context", None),
         )
         if CHAT_REVIEW_OPEN_TAG not in raw_response or CHAT_REVIEW_CLOSE_TAG not in raw_response:
             event_sink("protocol.warning", {"error_code": "missing_review_envelope"})

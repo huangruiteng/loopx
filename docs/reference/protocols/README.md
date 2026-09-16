@@ -41,6 +41,7 @@ scanning a chronological list.
 - [`material_lifecycle_architecture_v0`](material-lifecycle-architecture-v0.zh-CN.md): Material lifecycle architecture v0 (中文)
 - [`multi_agent_three_layer_minimality_contract_v0`](multi-agent-three-layer-minimality-v0.md): Multi-agent three-layer minimality v0
 - [`multi_agent_visible_launcher_v0`](multi-agent-visible-launcher-v0.md): Multi-agent visible launcher v0
+- [`peer_agent_directory_v0`](peer-agent-directory-and-observation-v0.md): Peer agent directory, bounded observation and delivery v0
 - [`peer_agent_runtime_v1`](peer-agent-runtime-v1.md): Peer agent runtime v1
 - [`peer_supervisor_v0`](peer-supervisor-v0.md): Peer supervisor v0
 - [`periodic_report_v0`](periodic-report-v0.md): Periodic report v0

@@ -14,14 +14,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ...chat_manager import (
-    MANAGER_AGENT_OBJECTIVE,
-    manager_executor_endpoint_default,
-    steward_machine_defaults,
-)
+from ...chat_manager import MANAGER_AGENT_OBJECTIVE
 from .manager_routing import (
     has_manager_binding,
     invalid_manager_authority_result,
+    manager_session_requires_executor_rebind,
+    manager_turn_executor,
     parse_manager_authority_mode,
     unavailable_manager_context_result,
     ManagerAuthorityMode,
@@ -791,20 +789,12 @@ def answer_lark_goal_topic(
     runtime_controller: Any,
 ) -> str:
     """Deliver one Topic message using its exact Agent ingress contract."""
-
     goal_id = str(route.get("goal_id") or "")
     ingress_mode = str(route.get("ingress_mode") or "direct_session")
     session_id = str(route.get("session_id") or "")
     manager = route.get("conversation_kind") == "manager"
-    # The machine owns its manager channel's executor, so a manager Turn runs on
-    # the machine's current selection even when the connection record still
-    # carries the endpoint that was the default on the day it was created.
-    agent_id = (
-        manager_executor_endpoint_default(
-            machine_defaults=steward_machine_defaults(runtime_controller)
-        )
-        if manager
-        else str(route.get("agent_id") or "codex")
+    agent_id = manager_turn_executor(runtime_controller) if manager else str(
+        route.get("agent_id") or "codex"
     )
     expected_channel = (
         str(route.get("manager_channel_id") or "") if manager else f"goal.{goal_id}"
@@ -833,18 +823,11 @@ def answer_lark_goal_topic(
             or session.get("channel_id") != expected_channel
             or session.get("status") == "closed"
         ):
-            if (
-                manager
-                and session is not None
-                and session.get("channel_id") == expected_channel
-                and session.get("agent_id") != agent_id
-                and session.get("status") != "closed"
+            if manager and manager_session_requires_executor_rebind(
+                session,
+                expected_channel=expected_channel,
+                agent_id=agent_id,
             ):
-                # A machine that changes its steward executor leaves the older
-                # bound Session behind on the same audience. Name that state
-                # instead of failing the Turn under the opaque "manager failed"
-                # label, because one connection re-apply repairs it. Every other
-                # mismatch keeps the outcome it had.
                 raise LarkGoalTopicTurnFailed(
                     "manager_channel_executor_rebind_required",
                     _session_turn_effect(route),

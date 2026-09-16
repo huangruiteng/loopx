@@ -44,6 +44,15 @@ export const chatRecoveryScenario = {
       await page.getByLabel("向 LoopX 发送消息").fill("我现在该做什么？只读回答，不要创建或修改任何状态。");
       await page.getByRole("button", { name: "发送", exact: true }).click();
       await page.getByText("管家已读取当前授权范围的 Goal 证据。", { exact: true }).waitFor({ state: "visible" });
+      // The steward answers as the LoopX Manager. The executor that served the
+      // turn belongs to the machine-capability chip, so an answer must never be
+      // labelled with the CLI brand the agent picker happens to hold.
+      const answerIdentity = (
+        await page.locator(".personal-manager-conversation-tray article.is-assistant strong").last().innerText()
+      ).trim();
+      if (answerIdentity !== "LoopX 管家") {
+        throw new Error(`Manager answer was labelled as its executor instead of the steward: ${answerIdentity}`);
+      }
       if (!api.turnRequests.some((turn) => turn.message.startsWith("我现在该做什么？"))) throw new Error("Manager question bypassed the global runtime");
       await page.getByText("查看完整对话", { exact: true }).waitFor({ state: "visible" });
       if (page.url() !== managerUrlBefore) throw new Error(`Manager send navigated away from the overview: ${managerUrlBefore} -> ${page.url()}`);

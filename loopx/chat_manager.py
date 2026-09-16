@@ -187,7 +187,7 @@ MANAGER_REASONING_EFFORTS = REASONING_EFFORTS
 def steward_machine_defaults(controller: Any) -> Mapping[str, Any] | None:
     """Return the machine-configured steward defaults this channel reads.
 
-    The runtime controller owns the runtime root and therefore the
+    The runtime controller holds the runtime root and therefore the
     machine-configuration store, so the resolution below never re-derives which
     document is authoritative. A caller that has no such owner -- a transport
     that does not serve the Dashboard, or a test double -- resolves through its
@@ -213,8 +213,8 @@ def controller_runtime_root(controller: Any) -> Path | None:
 def operator_credential_resolution(controller: Any) -> dict[str, Any]:
     """Return the credential-resolved environment and source for one owner.
 
-    A key stored from a product surface lives under the runtime root the
-    controller owns, so the same owner that resolves the machine's steward
+    A key stored from a product surface lives under the runtime root this
+    controller resolves, so the same owner that resolves the machine's steward
     defaults resolves where the credential came from and what it resolved to. A
     controller without that owner -- a transport outside the Dashboard, or a
     test double -- resolves to an unread environment, which lets the channel

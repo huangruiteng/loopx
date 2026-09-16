@@ -23,6 +23,7 @@ An operator who needs an unlisted adapter still has the environment variable.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -50,17 +51,15 @@ def steward_executor_endpoints() -> frozenset[str]:
     namespace, and a module-level import would close that loop.
     """
 
-    from ...chat_manager import MANAGER_ENDPOINT_KINDS
-
-    return frozenset(MANAGER_ENDPOINT_KINDS)
+    manager = importlib.import_module("loopx.chat_manager")
+    return frozenset(manager.MANAGER_ENDPOINT_KINDS)
 
 
 def steward_reasoning_efforts() -> tuple[str, ...]:
     """Return the reasoning-effort vocabulary a selected executor accepts."""
 
-    from ...chat_manager import MANAGER_REASONING_EFFORTS
-
-    return tuple(MANAGER_REASONING_EFFORTS)
+    manager = importlib.import_module("loopx.chat_manager")
+    return tuple(manager.MANAGER_REASONING_EFFORTS)
 
 
 def _optional_text(value: Any, *, field: str) -> str | None:
@@ -238,10 +237,10 @@ def load_effective_steward_executor_defaults(runtime_root: Path) -> dict[str, An
     a typed reason instead of failing the channel a person is talking to.
     """
 
-    from ..machine_configuration.store import read_stored_machine_configuration
+    store = importlib.import_module("loopx.capabilities.machine_configuration.store")
 
     try:
-        configuration = read_stored_machine_configuration(runtime_root)
+        configuration = store.read_stored_machine_configuration(runtime_root)
     except (OSError, TypeError, ValueError):
         return _projection(
             status="unavailable",

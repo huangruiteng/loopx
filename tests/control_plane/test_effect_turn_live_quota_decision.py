@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from loopx.control_plane.effect_program import (
     interpret_quota_should_run_packet,
 )
@@ -14,6 +16,9 @@ from loopx.control_plane.capability_hooks import (
 from loopx.control_plane.quota.live_decision import (
     bind_action_selection_cli_routes,
     build_live_quota_should_run_decision,
+)
+from loopx.control_plane.quota.error_codes import (
+    HeartbeatReceiptIdentityConflictError,
 )
 from loopx.control_plane.testing.quota_fixtures import quota_status_payload
 from loopx.rollout_event_log import build_rollout_event
@@ -818,3 +823,104 @@ def test_duplicate_required_inbox_routes_project_one_public_safe_read(
 
     assert len(packet["required_reads"]) == 1
     assert packet["required_reads"][0]["command"] == command
+
+
+def test_prior_closeout_identity_conflict_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """A conflicting prior receipt cannot be resolved into a recovery verdict."""
+
+    runtime_root = tmp_path / "runtime"
+    registry_path = tmp_path / "registry.json"
+    state_path = tmp_path / "ACTIVE_GOAL_STATE.md"
+    agent_id = "codex-fixture"
+    prior_turn_id = "managed-prior-turn"
+    state_path.write_text(
+        "# Goal\n\n## Agent Todo\n\n"
+        "- [ ] [P1] Keep advancing the selected task.\n"
+        "  <!-- loopx:todo todo_id=todo_ordinary_work status=open "
+        "task_class=advancement_task -->\n",
+        encoding="utf-8",
+    )
+    registry_path.write_text(
+        json.dumps(
+            {
+                "common_runtime_root": str(runtime_root),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "repo": str(tmp_path),
+                        "state_file": str(state_path),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    goal_runtime = runtime_root / "goals" / GOAL_ID
+    goal_runtime.mkdir(parents=True)
+    conflicting = [
+        {"todo_id": "todo_ordinary_work"},
+        {"todo_id": "todo_other_work"},
+    ]
+    (goal_runtime / "rollout-event-log.jsonl").write_text(
+        "".join(
+            json.dumps(
+                build_rollout_event(
+                    goal_id=GOAL_ID,
+                    event_kind="quota_should_run",
+                    agent_id=agent_id,
+                    todo_id=str(details["todo_id"]),
+                    run_id=prior_turn_id,
+                    status="normal_run",
+                    summary="managed heartbeat guard requires closeout",
+                    details={**details, "closeout_required": True},
+                )
+            )
+            + "\n"
+            for details in conflicting
+        ),
+        encoding="utf-8",
+    )
+
+    todo_text = "[P1] Keep advancing the selected task."
+    status = quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        agent_todo_items=[
+            {
+                "todo_id": "todo_ordinary_work",
+                "index": 1,
+                "text": todo_text,
+                "role": "agent",
+                "status": "open",
+                "priority": "P1",
+                "task_class": "advancement_task",
+            }
+        ],
+        recommended_action=todo_text,
+        next_action=todo_text,
+        coordination={
+            "registered_agents": [agent_id],
+            "agent_model": "peer_v1",
+        },
+        claim_scope_agent_id=agent_id,
+    )
+    with pytest.raises(HeartbeatReceiptIdentityConflictError):
+        build_live_quota_should_run_decision(
+            status,
+            goal_id=GOAL_ID,
+            agent_id=agent_id,
+            available_capabilities=["shell"],
+            include_scheduler_detail=False,
+            codex_app_current_rrule=None,
+            registry_path=registry_path,
+            runtime_root=runtime_root,
+            route_source="loopx_turn_plan",
+            turn_instance_id="managed-current-turn",
+            scheduler_execution_context={
+                "host_surface": "generic_cli",
+                "scheduler_owner": "agent_cli_loop",
+                "execution_mode": "interactive",
+            },
+        )

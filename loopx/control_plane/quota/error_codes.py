@@ -59,12 +59,66 @@ class QuotaIdentityPreconditionError(ValueError):
         super().__init__(reason)
 
 
+class QuotaActionSelectionConflictKind(StrEnum):
+    """Why a requested ``--todo-id`` could not be reconciled with the projection."""
+
+    UNQUALIFIED = "unqualified"
+    CONFLICT = "conflict"
+
+
+class QuotaActionSelectionConflictError(RuntimeError):
+    """Public-safe diagnostic for an unreconcilable requested action selection.
+
+    A guard bound to a ``--todo-id`` has to agree with the current projection.
+    When it cannot, this error names what was requested, what the projection
+    currently selects, and what the caller should do next, so the failure is not
+    reported as an opaque quota collection failure.
+    """
+
+    error_code = "quota_action_selection_conflict"
+
+    def __init__(
+        self,
+        kind: QuotaActionSelectionConflictKind,
+        *,
+        requested_todo_id: str | None,
+        selected_todo_id: str | None = None,
+        qualification_state: str | None = None,
+    ) -> None:
+        self.kind = kind
+        self.requested_todo_id = requested_todo_id
+        self.selected_todo_id = selected_todo_id
+        self.qualification_state = qualification_state
+        if kind is QuotaActionSelectionConflictKind.UNQUALIFIED:
+            reason = (
+                "the current projection carries no typed action-selection "
+                "qualification, so the requested Todo "
+                f"{requested_todo_id or '(none)'} cannot be reconciled with the "
+                "delivery frontier"
+            )
+        else:
+            reason = (
+                f"requested Todo {requested_todo_id or '(none)'} is neither the "
+                "projection's current selection "
+                f"({selected_todo_id or 'none'}) nor deferred or rejected by it "
+                f"(qualification state: {qualification_state or 'absent'})"
+            )
+        self.recommended_action = (
+            "rerun `loopx quota should-run` without --todo-id to read the current "
+            "selection, then bind that Todo, a deferred Todo, or the Todo the "
+            "recovery obligation must settle"
+        )
+        super().__init__(reason)
+
+
 def quota_error_code(exc: BaseException) -> str:
     if isinstance(exc, json.JSONDecodeError):
         return "quota_state_invalid_json"
     if isinstance(exc, QuotaCommandValidationError):
         return "quota_invalid_arguments"
     if isinstance(exc, QuotaIdentityPreconditionError):
+        return exc.error_code
+    if isinstance(exc, QuotaActionSelectionConflictError):
         return exc.error_code
     if isinstance(exc, HeartbeatReceiptIdentityConflictError):
         return "heartbeat_receipt_identity_conflict"

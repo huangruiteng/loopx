@@ -32,6 +32,7 @@ ACTION_KINDS = {
     "gate.resolve",
     "run.correct",
     "operation.execute",
+    "team.plan",
 }
 PROPOSAL_STATES = {
     "preview_ready",

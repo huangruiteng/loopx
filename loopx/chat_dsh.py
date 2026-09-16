@@ -246,7 +246,11 @@ class DshChatAdapter:
                 gate=None,
                 error_code=MANAGED_HOST_CHAT_FAILED,
             )
-        response = parse_agent_response(raw, protected_paths=[self.work_dir])
+        response = parse_agent_response(
+            raw,
+            protected_paths=[self.work_dir],
+            team_plan_context=getattr(self, "team_plan_context", None),
+        )
         if slot.interrupted:
             # The channel discarded this turn, so its answer never happened: the
             # segment still exits as the binding's executor, but folding its

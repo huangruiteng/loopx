@@ -196,6 +196,62 @@ export const executionChipScenario = {
       coverageEntries.push(...await managed.close());
     }
 
+    // The chat-runtime picker has to report the same resolution as the chip: a
+    // managed host declared for this machine is what will answer, so neither
+    // the header trigger nor the composer may keep advertising the CLI the
+    // machine merely happens to have installed.
+    const managedHostAdapters = [{
+      adapter_kind: "deepseek_harness_segment",
+      agent_id: "dsh",
+      available: true,
+      display_name: "DeepSeek Harness (managed)",
+      interrupt: false,
+      resume: true,
+      streaming: false,
+    }];
+    const stewardPicker = await openWorkspacePage(browser, url, {
+      apiOptions: { managerChannelBinding: selectedManagedBinding, runtimeAgents: managedHostAdapters },
+      collectCoverage,
+    });
+    try {
+      const pickerLabel = (await stewardPicker.page
+        .locator("div.personal-agent-select button.personal-select-trigger")
+        .innerText()).replace(/\s+/g, " ").trim();
+      if (!pickerLabel.includes("DeepSeek Harness (managed)")) {
+        throw new Error(`Chat runtime picker ignored the declared steward executor: ${pickerLabel}`);
+      }
+      if (pickerLabel.includes("Codex")) {
+        throw new Error(`Chat runtime picker advertised a discovered CLI as the steward: ${pickerLabel}`);
+      }
+      const composerLabel = (await stewardPicker.page
+        .locator(".personal-channel-composer > span")
+        .first()
+        .innerText()).trim();
+      if (composerLabel !== "DeepSeek Harness (managed)") {
+        throw new Error(`Composer named ${composerLabel} instead of the steward's declared executor`);
+      }
+    } finally {
+      coverageEntries.push(...await stewardPicker.close());
+    }
+
+    // A machine that declares no steward executor keeps the shipped default,
+    // so the parity above is a resolution the control plane asked for and not
+    // a new hard-coded preference.
+    const undeclaredSteward = await openWorkspacePage(browser, url, {
+      apiOptions: { runtimeAgents: managedHostAdapters },
+      collectCoverage,
+    });
+    try {
+      const pickerLabel = (await undeclaredSteward.page
+        .locator("div.personal-agent-select button.personal-select-trigger")
+        .innerText()).replace(/\s+/g, " ").trim();
+      if (pickerLabel !== "Chat Codex") {
+        throw new Error(`An undeclared steward executor no longer used the shipped default: ${pickerLabel}`);
+      }
+    } finally {
+      coverageEntries.push(...await undeclaredSteward.close());
+    }
+
     // A managed host that cannot launch here names the missing fact, and never
     // claims the channel lacks a transport it now has.
     for (const [binding, expected] of [
@@ -306,7 +362,7 @@ export const executionChipScenario = {
     }
     return {
       coverageEntries,
-      note: "execution chip reports the selected executor, the credential it is billed to and the resolved model, names the steward channel's shipped default without claiming a credential branch, keeps a configured credential from moving it, names why a selected managed host cannot launch, and stays absent without a binding",
+      note: "execution chip reports the selected executor, the credential it is billed to and the resolved model, names the steward channel's shipped default without claiming a credential branch, keeps a configured credential from moving it, keeps the chat-runtime picker on the executor the machine declares for the steward, names why a selected managed host cannot launch, and stays absent without a binding",
     };
   },
 };

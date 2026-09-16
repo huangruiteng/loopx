@@ -7,7 +7,12 @@ from enum import Enum
 from typing import Any
 from pathlib import Path
 
-from ...chat_manager import manager_channel, manager_connection_executor_endpoint
+from ...chat_manager import (
+    manager_channel,
+    manager_connection_executor_endpoint,
+    manager_executor_endpoint_default,
+    steward_machine_defaults,
+)
 from ..external_connector_runtime import project_external_connector_status
 from .goal_channel_contracts import bindings_for_goal
 from .goal_channel_targets import goal_channel_target_for_name
@@ -20,6 +25,30 @@ class ManagerAuthorityMode(str, Enum):
 
     CONTEXT_ONLY = "context_only"
     TURN_AUTHORIZED = "turn_authorized"
+
+
+def manager_turn_executor(runtime_controller: Any) -> str:
+    """Resolve the manager executor from this machine's current selection."""
+
+    return manager_executor_endpoint_default(
+        machine_defaults=steward_machine_defaults(runtime_controller)
+    )
+
+
+def manager_session_requires_executor_rebind(
+    session: Mapping[str, Any] | None,
+    *,
+    expected_channel: str,
+    agent_id: str,
+) -> bool:
+    """Identify a live manager Session left on the machine's old executor."""
+
+    return bool(
+        session is not None
+        and session.get("channel_id") == expected_channel
+        and session.get("agent_id") != agent_id
+        and session.get("status") != "closed"
+    )
 
 
 def parse_manager_authority_mode(value: object) -> ManagerAuthorityMode | None:

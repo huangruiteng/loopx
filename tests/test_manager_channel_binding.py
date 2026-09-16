@@ -838,7 +838,7 @@ def test_every_production_steward_caller_passes_the_machine_defaults() -> None:
         "loopx/chat_manager.py",
         "loopx/chat_manager_context.py",
         "loopx/chat_runtime.py",
-        "loopx/extensions/lark/goal_topic_runtime.py",
+        "loopx/extensions/lark/manager_routing.py",
     }
     undocumented = [
         f"{path}:{line} {name}"

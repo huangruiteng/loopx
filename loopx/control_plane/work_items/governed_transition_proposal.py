@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from enum import StrEnum
@@ -39,6 +40,14 @@ _RECEIPT_FIELDS = {
     "status",
     "target_key",
 }
+# Receipts are persisted in the settlement journal, so the field set stays
+# closed and a new field is admitted only as an explicitly bounded addition
+# that an older receipt may still omit. `lane_todo_ids` is the readback of a
+# team plan: every lane Todo the settlement ensured, not just the first one.
+_OPTIONAL_RECEIPT_FIELDS = {"lane_todo_ids", "intent_basis"}
+_LANE_TODO_ID_LIMIT = 8
+_LANE_TODO_ID = re.compile(r"^todo_[A-Za-z0-9]{1,40}$")
+_INTENT_BASIS = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 TransitionCheckpoint = Callable[[list[dict[str, Any]]], None]
@@ -87,7 +96,11 @@ def validate_governed_transition_receipts(
     proposal_ids: set[str] = set()
     for index, raw in enumerate(value):
         receipt = _mapping(raw, f"governed transition receipt[{index}]")
-        if set(receipt) != _RECEIPT_FIELDS:
+        # An older receipt may omit the bounded readback field; nothing else may
+        # be added, so a receipt can never carry a field it did not mean to.
+        if not _RECEIPT_FIELDS <= set(receipt) <= (
+            _RECEIPT_FIELDS | _OPTIONAL_RECEIPT_FIELDS
+        ):
             raise ValueError("governed transition proposal receipt fields are invalid")
         if receipt.get("schema_version") != GOVERNED_TRANSITION_RECEIPT_SCHEMA_VERSION:
             raise ValueError("governed transition proposal receipt schema is invalid")
@@ -103,21 +116,50 @@ def validate_governed_transition_receipts(
             raise ValueError("governed transition proposal receipt kind is invalid")
         if receipt.get("status") != "committed":
             raise ValueError("governed transition proposal receipt status is invalid")
-        for field in (
-            "proposal_digest",
-            "monitor_key",
-            "action",
-            "todo_id",
-        ):
+        for field in ("proposal_digest", "action", "todo_id"):
             if not isinstance(receipt.get(field), str) or not receipt[field]:
                 raise ValueError(
                     f"governed transition proposal receipt {field} is invalid"
                 )
+        # A monitor transition is identified by its monitor key, so that key is
+        # required there. A team plan is not a monitor and must not invent one,
+        # so its key is explicitly absent rather than an empty string.
+        monitor_key = receipt.get("monitor_key")
+        if receipt.get("kind") == STEWARD_TEAM_PLAN_PREVIEW_KIND:
+            if monitor_key is not None:
+                raise ValueError(
+                    "governed transition proposal receipt monitor_key is invalid"
+                )
+        elif not isinstance(monitor_key, str) or not monitor_key:
+            raise ValueError(
+                "governed transition proposal receipt monitor_key is invalid"
+            )
         if receipt.get("target_key") is not None and not isinstance(
             receipt.get("target_key"), str
         ):
             raise ValueError(
                 "governed transition proposal receipt target_key is invalid"
+            )
+        lane_todo_ids = receipt.get("lane_todo_ids")
+        if lane_todo_ids is not None and (
+            not isinstance(lane_todo_ids, list)
+            or not 1 <= len(lane_todo_ids) <= _LANE_TODO_ID_LIMIT
+            or len(set(lane_todo_ids)) != len(lane_todo_ids)
+            or any(
+                not isinstance(item, str) or not _LANE_TODO_ID.fullmatch(item)
+                for item in lane_todo_ids
+            )
+        ):
+            raise ValueError(
+                "governed transition proposal receipt lane_todo_ids is invalid"
+            )
+        intent_basis = receipt.get("intent_basis")
+        if intent_basis is not None and (
+            not isinstance(intent_basis, str)
+            or not _INTENT_BASIS.fullmatch(intent_basis)
+        ):
+            raise ValueError(
+                "governed transition proposal receipt intent_basis is invalid"
             )
         validate_public_safe_value(receipt, path=f"transition_receipts[{index}]")
         receipts.append(receipt)
@@ -221,6 +263,48 @@ def _upsert_monitor(
     }
 
 
+def _intent_basis_for(
+    *,
+    goal_id: str,
+    goal: Mapping[str, Any],
+    registry_path: Path,
+    preview: Mapping[str, Any],
+) -> str | None:
+    """Read the canonical source basis one work-graph edit is applied against.
+
+    The source basis is a Goal-level fact, so any of the Goal's Agents reads the
+    same one; a ready lane is preferred because that is where the work will live.
+    A Goal whose basis cannot be read omits the field rather than inventing one.
+    """
+
+    lanes = preview.get("lanes") or []
+    basis_agent = next(
+        (
+            str(lane.get("agent_id"))
+            for lane in lanes
+            if lane.get("staffing") == "ready"
+        ),
+        str(lanes[0].get("agent_id")) if lanes else "",
+    )
+    if not basis_agent:
+        return None
+    try:
+        from ...control_plane.goals.shared_goal_alignment import (
+            project_shared_goal_alignment,
+        )
+
+        alignment = project_shared_goal_alignment(
+            goal_id=goal_id,
+            agent_id=basis_agent,
+            project=Path(str(goal.get("repo") or ".")).expanduser(),
+            registry_path=Path(registry_path),
+        )
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        return None
+    basis = (alignment.get("source_basis") or {}).get("source_basis_digest")
+    return str(basis) if basis else None
+
+
 def _apply_team_plan(
     *,
     registry_path: Path,
@@ -230,19 +314,26 @@ def _apply_team_plan(
 ) -> dict[str, Any]:
     """Create the confirmed lanes' first bounded Todos through the Todo owner.
 
-    The plan is re-validated here against this Goal's registered Agents and the
-    shipped advancement action kinds, so a proposal cannot become work by
-    bypassing admission. Only lanes the preview already marked ready are
-    materialized; a lane the preview reported as a gap stays a gap and creates
-    nothing, and the canonical Todo owner decides whether a row is added or
-    reused, which makes a replayed settlement idempotent.
-    """
+   The plan is re-validated here against this Goal's registered Agents and the
+   shipped advancement action kinds, so a proposal cannot become work by
+   bypassing admission. Only lanes the preview already marked ready are
+   materialized; a lane the preview reported as a gap stays a gap and creates
+   nothing, and the canonical Todo owner decides whether a row is added or
+   reused, which makes a replayed settlement idempotent.
+   """
 
     from ...agent_registry import registered_agent_ids_for_goal
     from ...history import load_registry
     from ...registry import registry_goals
     from ..todos.contract import TODO_ACTION_KIND_ADVANCEMENT_VALUES
 
+    # The plan names the Goal it staffs, and it may not be retargeted by the
+    # settlement it arrives in: admitting a plan against one Goal's agents and
+    # then creating its lanes under another would be a silent widening.
+    if str(proposal.get("goal_id") or "") != goal_id:
+        raise ValueError(
+            "steward team plan proposal names a different Goal than its settlement"
+        )
     registry = load_registry(registry_path)
     goal = next(
         (
@@ -259,6 +350,11 @@ def _apply_team_plan(
         registered_agent_ids=registered_agent_ids_for_goal(goal),
         supported_action_kinds=sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
     )
+    # Traceability is read before the edit: the receipt names the canonical
+    # basis this work-graph edit was applied against, so the lanes could not
+    # make the basis describe their own creation. A Goal whose basis cannot be
+    # read omits the field instead of inventing one.
+    intent_basis = _intent_basis_for(goal_id=goal_id, goal=goal, registry_path=registry_path, preview=preview)
     created: list[str] = []
     reused: list[str] = []
     for lane in preview["lanes"]:
@@ -290,6 +386,7 @@ def _apply_team_plan(
         "target_key": None,
         "created_todo_ids": created,
         "lane_todo_ids": lane_todo_ids,
+        "intent_basis": intent_basis,
         "reused_lane_count": len(reused),
         "gap_count": len(preview["gaps"]),
     }
@@ -413,6 +510,16 @@ def settle_governed_transition_proposals(
             "status": "committed",
             "target_key": result.get("target_key"),
         }
+        lane_todo_ids = result.get("lane_todo_ids")
+        if lane_todo_ids:
+            # The apply ensured every ready lane's first Todo; a receipt that
+            # named only the first one could not be read as "what exists now".
+            receipt["lane_todo_ids"] = [str(item) for item in lane_todo_ids]
+        if result.get("intent_basis"):
+            # The work-graph edit this receipt records is traceable to the
+            # canonical basis it was applied against, so a lane Todo can be tied
+            # back to the intent revision it was meant to advance.
+            receipt["intent_basis"] = str(result["intent_basis"])
         validate_public_safe_value(receipt, path="transition_receipt")
         receipts.append(receipt)
         by_proposal_id[proposal_id] = receipt
@@ -423,6 +530,7 @@ def settle_governed_transition_proposals(
 STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION = "steward_team_plan_preview_v0"
 STEWARD_TEAM_PLAN_LANE_LIMIT = 8
 STEWARD_TEAM_PLAN_PRIORITIES = ("P0", "P1", "P2", "P3")
+_GOAL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 STEWARD_TEAM_PLAN_GAP_REASONS = (
     "agent_not_registered",
     "capability_not_granted",
@@ -463,6 +571,13 @@ def validate_steward_team_plan_preview(
         raise ValueError("steward team plan preview schema_version is invalid")
     if plan.get("kind") != STEWARD_TEAM_PLAN_PREVIEW_KIND:
         raise ValueError("steward team plan preview kind is invalid")
+    # The plan names the Goal it staffs. Without that, the admission that
+    # validates its lanes and the settlement that materializes them would each
+    # have to guess which Goal's agents the host should describe, and a plan
+    # could be admitted against one Goal's facts and applied under another's.
+    goal_id = _plan_text(plan.get("goal_id"), "goal_id")
+    if not _GOAL_ID.fullmatch(goal_id):
+        raise ValueError("steward team plan preview requires an exact Goal id")
     registered = {str(value) for value in registered_agent_ids}
     action_kinds = {str(value) for value in supported_action_kinds}
     lanes_value = plan.get("lanes")
@@ -547,6 +662,7 @@ def validate_steward_team_plan_preview(
     preview = {
         "schema_version": STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION,
         "kind": STEWARD_TEAM_PLAN_PREVIEW_KIND,
+        "goal_id": goal_id,
         "objective": _plan_text(plan.get("objective"), "objective"),
         "lanes": lanes,
         "gaps": gaps,

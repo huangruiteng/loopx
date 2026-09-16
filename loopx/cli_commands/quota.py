@@ -22,6 +22,8 @@ from ..control_plane.quota.cli_projection import (
 from ..control_plane.quota.effect_program import SettlementIdentity
 from ..control_plane.quota.error_codes import (
     QuotaCommandValidationError,
+    QuotaActionSelectionConflictError,
+    QuotaActionSelectionConflictKind,
 )
 from ..control_plane.quota.heartbeat_receipt import (
     HEARTBEAT_RECEIPT_SCHEMA_VERSION,
@@ -201,6 +203,23 @@ def _apply_requested_quota_action_selection_preflight(
         if isinstance(selected_todo, Mapping)
         else None
     )
+    qualification_value = payload.get("action_selection_qualification")
+    qualification: Mapping[str, object] = (
+        qualification_value if isinstance(qualification_value, Mapping) else {}
+    )
+    if selected_todo_id is None and str(qualification.get("state") or "") == (
+        "qualified"
+    ):
+        # An unsettled-host-turn recovery decision carries no top-level
+        # `selected_todo`: its qualification names the Todo that prior Turn
+        # has to settle, and binding the guard to that Todo is the documented
+        # closeout path rather than a conflict with the projection.
+        qualification_selected = qualification.get("selected_todo")
+        selected_todo_id = (
+            normalize_todo_id(qualification_selected.get("todo_id"))
+            if isinstance(qualification_selected, Mapping)
+            else None
+        )
     selection_binding = (
         selected_todo.get("selection_binding")
         if isinstance(selected_todo, Mapping)
@@ -250,14 +269,19 @@ def _apply_requested_quota_action_selection_preflight(
     ):
         return False
 
-    qualification_value = payload.get("action_selection_qualification")
     if not isinstance(qualification_value, Mapping):
-        raise RuntimeError("requested action selection lacks typed qualification")
-    qualification = qualification_value
+        raise QuotaActionSelectionConflictError(
+            QuotaActionSelectionConflictKind.UNQUALIFIED,
+            requested_todo_id=requested_todo_id,
+            selected_todo_id=selected_todo_id,
+        )
     qualification_state = str(qualification.get("state") or "")
     if qualification_state not in {"deferred", "rejected"}:
-        raise RuntimeError(
-            "requested action selection qualification conflicts with its projection"
+        raise QuotaActionSelectionConflictError(
+            QuotaActionSelectionConflictKind.CONFLICT,
+            requested_todo_id=requested_todo_id,
+            selected_todo_id=selected_todo_id,
+            qualification_state=qualification_state,
         )
     qualification_reason = str(
         qualification.get("reason") or "candidate_not_currently_eligible"

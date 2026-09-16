@@ -959,7 +959,16 @@ export function registerAuthorityStoreConformance(
     const todos = loaded.head.todos as Record<string, unknown>[];
     const leases = loaded.head.leases as Record<string, unknown>[];
     const standing = projectStandingDecisions(todos)!;
-    assert.equal(standing.active_count, 1); // Four receipts, one scope/owner.
+    assert.equal(standing.active_count, 1); // Four approvals, one scope/owner.
+    assert.equal(
+      standing.inactive_count,
+      fixture.expected_inactive_standing_decision_count,
+      "a recorded rejection stays a standing receipt without becoming authority",
+    );
+    for (const entry of standing.entries as JsonObject[]) {
+      assert.equal(entry.active, entry.outcome === "approve",
+        "only an explicit approval may activate a standing decision");
+    }
     assert.equal(standing.conflict_count, undefined);
     assert.equal(todos.length, fixture.expected_initial_todo_count);
     assert.equal(leases.length, fixture.expected_current_lease_count);

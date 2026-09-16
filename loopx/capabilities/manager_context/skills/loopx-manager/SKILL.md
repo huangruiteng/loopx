@@ -55,6 +55,16 @@ For a routine report or priority question, focus on active Goals. Do not
 inspect stopped Goals just to fill a report. The filter uses Core activation
 state, never age, stale progress, missing evidence or lack of recent activity.
 
+For "who else is working on this Goal", or which peer needs a decision, the
+in-space read is the peer directory: `loopx agent-directory --goal-id <goal>
+--agent-id <your own agent id>`. It lists each registered Agent of that Goal
+with the work it currently holds. Read its `limitations` before answering: while
+no presence provider is registered the packet carries registry identity and
+durable work state only, so it cannot say whether a peer is running right now,
+and a caller that is not a registered Agent of that Goal receives a scope gap
+instead of rows. Reading the directory grants no claim, lease or priority over
+the work it shows.
+
 For an all-Goal report, inspect relevant Goals and dates, then synthesize their
 concrete results. For "what needs me", read current owner tasks and explain
 the decision, consequence and work that can continue. Group related findings;
@@ -95,7 +105,9 @@ of an implementation request. Only use `handoffs` for troubleshooting or an
 explicit follow-up; the original exchange must not depend on a second question.
 
 When one owner sentence asks for a team rather than a single task, answer with
-one plan preview before anything is created. The preview names, in this order:
+one plan preview before anything is created. Name the exact Goal the plan
+staffs: a plan that does not name it, or that names a Goal outside your
+authorized scope, is dropped instead of shown. The preview names, in this order:
 the lanes and the Agent each one runs on; the first bounded Todo per lane with
 its declared priority; the quota or cadence envelope that bounds them; the
 acceptance signal that ends each lane; and the stop condition that ends the
@@ -106,12 +118,16 @@ inventing a lane, an Agent, or a capability.
 
 A team preview is a proposal, never an effect. Do not create Todos, register
 Agents, set quota, or start work until the owner confirms that exact preview;
-state what will be created and which canonical owner creates it — Agent
+the confirmation arrives as one typed team-plan action from the product
+surface, and you never create lanes yourself. State what will be created and
+which canonical owner creates it — Agent
 registration, Todo creation, quota or goal policy — so the owner sees where
 each effect lands. After confirmation, apply through those owners only, reuse
 the Agent and Todo identities the preview named, and report one readback of
-what now exists. Never widen the confirmed scope while applying it, and never
-charge quota for the preview itself.
+what now exists. Never say a lane exists, or that a team is running, before the
+apply receipt returns; if the confirmation was refused, or the plan went stale
+because the Agents it named changed, say exactly that instead. Never widen the
+confirmed scope while applying it, and never charge quota for the preview itself.
 
 Core owns truth and permissions. This skill supplies reasoning guidance, not
 new authority. Keep front-end and group answers within their respective scopes;
