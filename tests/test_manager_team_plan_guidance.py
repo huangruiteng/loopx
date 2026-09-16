@@ -35,7 +35,10 @@ def test_manager_guidance_orders_one_team_preview_before_any_effect() -> None:
     assert "charge quota for the preview itself" in text
     # An unstaffable lane is named as a gap rather than invented.
     assert "as a gap, with the missing registration or grant" in text
-    assert "inventing a lane, an Agent, or a capability" in text
+    # Guidance is read as prose, so its phrases are compared as prose: a line
+    # wrap is a layout choice, not a change in what the steward is told.
+    prose = " ".join(text.split())
+    assert "instead of inventing a lane, an Agent, a capability, or an action kind" in prose
 
 
 def test_the_owner_visible_failure_names_the_executor_that_refused() -> None:
@@ -102,3 +105,36 @@ def test_manager_guidance_ships_the_machine_readable_preview_contract() -> None:
         assert reason in text, reason
     # The preview never claims an effect of its own.
     assert "is dropped\nrather than shown" in text
+
+
+def test_manager_guidance_names_the_action_kinds_the_host_ships() -> None:
+    """A lane's kind is chosen from the shipped set, not invented from the ask.
+
+    Live evidence: a steward answered a one-sentence team request and named the
+    kind it thought the work deserved, which no host ships, so its lane could
+    not be staffed. The guidance and the contract therefore share one list, and
+    a kind added to the contract without guidance (or named in guidance without
+    the contract) fails here instead of in a live answer.
+    """
+
+    from loopx.control_plane.todos.contract import (
+        TODO_ACTION_KIND_ADVANCEMENT_VALUES,
+    )
+    from loopx.control_plane.work_items.governed_transition_proposal import (
+        STEWARD_TEAM_PLAN_GAP_REASONS,
+        STEWARD_TEAM_PLAN_HOST_GAP_REASONS,
+        STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND,
+    )
+
+    text = manager_skill_text()
+
+    assert "must be one this host ships" in text
+    for action_kind in TODO_ACTION_KIND_ADVANCEMENT_VALUES:
+        assert f"`{action_kind}`" in text, action_kind
+    # The host's own verdict about a lane is not part of what a plan may declare
+    # about itself, so guidance that offered it as a declared reason would be
+    # guidance to describe a lane as something the host decided.
+    assert STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND not in (
+        STEWARD_TEAM_PLAN_GAP_REASONS
+    )
+    assert STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND in STEWARD_TEAM_PLAN_HOST_GAP_REASONS

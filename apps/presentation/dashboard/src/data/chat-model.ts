@@ -105,10 +105,36 @@ export type TodoProposal = {
   rationale: string;
 };
 
+/**
+ * An admitted steward team plan that rode in a Turn response.
+ *
+ * It is not a Todo and it is not a confirmation: the host validated the plan
+ * before it surfaced it, and the surface that confirms it is the typed
+ * `team.plan` action the manager channel stores as a card. Reading it here only
+ * keeps the answer intact, so a manager Turn that carries a preview still
+ * reaches the owner instead of failing the response schema.
+ */
+export type TeamPlanPreviewProposal = {
+  kind: "steward_team_plan_preview";
+  preview: Record<string, unknown>;
+};
+
+export type AgentProposal = TodoProposal | TeamPlanPreviewProposal;
+
+export function isTodoProposal(proposal: AgentProposal): proposal is TodoProposal {
+  return proposal.kind === "todo";
+}
+
+export function isTeamPlanPreviewProposal(
+  proposal: AgentProposal,
+): proposal is TeamPlanPreviewProposal {
+  return proposal.kind === "steward_team_plan_preview";
+}
+
 export type AgentResponse = {
   schema_version: "loopx_chat_agent_response_v0";
   message: string;
-  proposals: TodoProposal[];
+  proposals: AgentProposal[];
   gate: {
     kind: string;
     summary: string;

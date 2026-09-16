@@ -24,6 +24,8 @@ export {
   buildGoalStudioNodes,
   chatFailureMessage,
   completedGoalReviews,
+  isTeamPlanPreviewProposal,
+  isTodoProposal,
   pendingGoalReviews,
   proposalReviewState,
   sessionInvalidatedByPayload,
@@ -175,6 +177,24 @@ export const todoProposalSchema = z.object({
   rationale: z.string(),
 });
 
+/**
+ * The steward's admitted team plan, carried beside todo proposals.
+ *
+ * The plan is validated by the host before it reaches this response, and the
+ * card that confirms it is the typed `team.plan` action the manager channel
+ * stores. This schema exists so a Turn that carries the preview still parses
+ * here; it grants nothing and reads no lane into existence.
+ */
+export const teamPlanPreviewProposalSchema = z.object({
+  kind: z.literal("steward_team_plan_preview"),
+  preview: z.record(z.string(), z.unknown()),
+});
+
+export const agentProposalSchema = z.discriminatedUnion("kind", [
+  todoProposalSchema,
+  teamPlanPreviewProposalSchema,
+]);
+
 export const protectedActionProposalSchema = z.object({
   operation: z.enum(["merge", "release", "deploy", "delete", "payment"]),
   target: z.string().min(1).max(160),
@@ -186,7 +206,7 @@ export type ProtectedActionProposal = z.infer<typeof protectedActionProposalSche
 export const agentResponseSchema = z.object({
   schema_version: z.literal("loopx_chat_agent_response_v0"),
   message: z.string(),
-  proposals: z.array(todoProposalSchema),
+  proposals: z.array(agentProposalSchema),
   protected_action: protectedActionProposalSchema.nullable().optional().default(null),
   gate: z
     .object({

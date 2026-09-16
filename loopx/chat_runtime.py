@@ -18,6 +18,11 @@ from .chat_manager import (
 from .capabilities.manager_runtime import (
     load_effective_manager_runtime_profile, manager_runtime_session_fields,
 )
+from .capabilities.manager_context.team_plan import (
+    TeamPlanProjector,
+    project_team_plan_preview,
+    team_plan_admission_context,
+)
 from .capabilities.steward_executor import load_effective_steward_executor_defaults
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError, agent_endpoint_error
@@ -270,6 +275,11 @@ class ChatRuntimeController:
         self.session_queue_workers: set[str] = set()
         self.session_queue_threads: dict[str, threading.Thread] = {}
         self.closed = threading.Event()
+        # Optional projection of an admitted steward team preview into the typed
+        # action surface. It is injected by the host that owns that surface, so a
+        # controller without one still answers; the projection is what makes an
+        # admitted preview reachable as a card the owner can confirm.
+        self.team_plan_projector: TeamPlanProjector | None = None
 
     def manager_runtime_profile(
         self, channel_id: str = "manager"
@@ -289,57 +299,6 @@ class ChatRuntimeController:
         """
 
         return load_effective_steward_executor_defaults(self.store.root.parent)
-
-    def _team_plan_admission_context(
-        self, session: Mapping[str, Any]
-    ) -> dict[str, Any] | None:
-        """Host facts a team preview may be validated against, per Goal.
-
-        A team plan names its own Goal and the manager channel is not bound to
-        one, so admission receives a lookup instead of one Goal's facts. The
-        lookup re-uses the authorization the Turn owner already resolved: an
-        external manager channel resolves only its authorized Goals, and a plan
-        for any other Goal is dropped rather than validated against the Agents
-        of a Goal it does not name.
-        """
-
-        channel_id = str(session.get("channel_id") or "")
-        if not is_manager_channel(channel_id):
-            return None
-        from .agent_registry import load_goal_from_registry, registered_agent_ids_for_goal
-        from .control_plane.todos.contract import (
-            TODO_ACTION_KIND_ADVANCEMENT_VALUES,
-        )
-
-        def resolve(goal_id: str) -> list[str] | None:
-            if not goal_id:
-                return None
-            if channel_id != "manager":
-                # The owner's own channel is not scoped to a subset of Goals;
-                # an external channel only ever sees the Goals it was bound to.
-                scope = (
-                    self.manager_scope_resolver(session)
-                    if self.manager_scope_resolver
-                    else None
-                )
-                if not isinstance(scope, list) or goal_id not in {
-                    str(item) for item in scope
-                }:
-                    return None
-            try:
-                goal = load_goal_from_registry(Path(self.registry_path), goal_id)
-            except (OSError, ValueError, TypeError, KeyError):
-                return None
-            if goal is None:
-                # A Goal the registry does not know cannot be validated against
-                # anything, and its lanes are not gaps: the plan is dropped.
-                return None
-            return registered_agent_ids_for_goal(goal)
-
-        return {
-            "resolve_registered_agents": resolve,
-            "supported_action_kinds": sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
-        }
 
     def capabilities(self) -> list[dict[str, Any]]:
         builtins = builtin_chat_endpoints(
@@ -1234,7 +1193,11 @@ class ChatRuntimeController:
             # against the facts of the Goal it names, so the segment that parses
             # that answer gets the lookup rather than a second copy of the
             # evidence above.
-            team_plan_context = self._team_plan_admission_context(session)
+            team_plan_context = team_plan_admission_context(
+                registry_path=self.registry_path,
+                session=session,
+                manager_scope_resolver=self.manager_scope_resolver,
+            )
             if team_plan_context is not None:
                 adapter.team_plan_context = team_plan_context
             if attachments:
@@ -1266,6 +1229,14 @@ class ChatRuntimeController:
                 except (OSError, ValueError):
                     response = {**response, "proposals": [], "gate": None,
                                 "message": "材料尚未转交：目标绑定、来源授权或持久收件回读未通过。管家需要修复交接链路；没有改动任务或优先级。"}
+            project_team_plan_preview(
+                store=self.store,
+                session=session,
+                session_id=session_id,
+                turn_id=turn_id,
+                response=response,
+                projector=self.team_plan_projector,
+            )
             event_buffer.close()
             if consume_interrupted():
                 return

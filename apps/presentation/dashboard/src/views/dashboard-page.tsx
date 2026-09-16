@@ -53,6 +53,8 @@ import {
   sessionInvalidatedByPayload,
   todoNoWriteReceiptFromPayload,
   todoReceiptLabel,
+  isTeamPlanPreviewProposal,
+  isTodoProposal,
   type ChatSessionSnapshot,
   type ChatSessionSummary,
   type ChatImageAttachment,
@@ -1849,7 +1851,11 @@ function PersonalGoalHome({
             ?? model.goals[0]
             ?? null;
           if (recoveryGoal && streamed.response.proposals.length > 0) {
-            const cards = streamed.response.proposals.map((proposal) => ({
+            // A recovered Turn may carry the steward's admitted team plan beside
+            // its todo proposals. The plan is not a candidate Todo: the manager
+            // channel already stored it as the typed card the owner confirms, so
+            // only the todos become cards here.
+            const cards = streamed.response.proposals.filter(isTodoProposal).map((proposal) => ({
               goalId: recoveryGoal.goalId,
               id: proposalId.current++,
               previewId: null,
@@ -1858,10 +1864,12 @@ function PersonalGoalHome({
               state: "candidate" as const,
               statusMessage: null,
             }));
-            setProposalsByContext((current) => ({
-              ...current,
-              [targetContextId]: [...(current[targetContextId] ?? []), ...cards],
-            }));
+            if (cards.length > 0) {
+              setProposalsByContext((current) => ({
+                ...current,
+                [targetContextId]: [...(current[targetContextId] ?? []), ...cards],
+              }));
+            }
           }
         } catch (error) {
           if (cancelled) return;
@@ -2221,13 +2229,28 @@ function PersonalGoalHome({
         text: visibleAgentMessage(response.message || streamedText.trim())
           || `${answerIdentityLabel(targetContextId, selectedRoute.label)} 已完成分析。`,
       });
-      if (response.proposals.length > 0 && !targetGoal) {
+      const teamPlanPreviews = response.proposals.filter(isTeamPlanPreviewProposal);
+      if (teamPlanPreviews.length > 0) {
+        // The steward's team plan is offered as the typed card the manager
+        // channel stored for the Goal it staffs, so the owner confirms the plan
+        // there instead of typing the request again.
+        const goals = [...new Set(teamPlanPreviews
+          .map((preview) => String(preview.preview.goal_id ?? ""))
+          .filter(Boolean))];
+        updateManagerAssistantMessage(targetContextId, streamingMessageId, {
+          lines: [goals.length > 0
+            ? `团队计划已生成可确认卡片（${goals.join("、")}），确认后才会创建 lane。`
+            : "团队计划已生成可确认卡片，确认后才会创建 lane。"],
+        });
+      }
+      const todoProposals = response.proposals.filter(isTodoProposal);
+      if (todoProposals.length > 0 && !targetGoal && teamPlanPreviews.length === 0) {
         updateManagerAssistantMessage(targetContextId, streamingMessageId, {
           lines: ["请进入要修改的 Goal，预览并确认具体变更。"],
         });
       }
-      if (response.proposals.length > 0 && targetGoal) {
-        const cards = response.proposals.map((proposal) => ({
+      if (todoProposals.length > 0 && targetGoal) {
+        const cards = todoProposals.map((proposal) => ({
           goalId: targetGoal.goalId,
           id: proposalId.current++,
           previewId: null,

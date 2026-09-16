@@ -543,15 +543,32 @@ may not invent:
 - the stop condition that ends the team.
 
 A requested lane that cannot be staffed is a typed gap -- `agent_not_registered`,
-`capability_not_granted` or `audience_not_authorized` -- and the gap keeps the
-work it did not staff under `declined_first_todo`, so the owner sees what was
-asked for and what is missing instead of a lane that was quietly filled in or
-dropped. A lane that declares a gap may not declare work. The plan is a preview:
+`capability_not_granted` or `audience_not_authorized`, plus the host's own
+`action_kind_not_supported` -- and the gap keeps the work it did not staff under
+`declined_first_todo`, so the owner sees what was asked for and what is missing
+instead of a lane that was quietly filled in or dropped. The reasons a plan may
+declare for a lane it cannot staff itself and the reasons the host reports about
+one are two vocabularies: a plan cannot claim the host's verdict about its own
+lane, and a reader can tell a declared gap from a staffability verdict Core made.
+
+Two facts about *one lane* can make it unstaffable: this Goal does not register
+its Agent, or this host does not ship the action kind the lane asked for. Both
+are lane facts, so both become the same typed gap and neither refuses the plan:
+a plan whose first lane cannot be staffed is still the owner's request, and its
+staffable lanes are exactly what the owner asked to review. Refusing the whole
+plan for one lane's kind is what made a live steward answer a one-sentence team
+request correctly and still offer the owner nothing to confirm.
+
+A lane that declares a gap may not declare work. The plan is a preview:
 the validated payload carries `applies: false`, and an owner's confirmation of
 that exact preview is the only thing that admits an apply. Apply routes to the
 canonical owners each effect already has -- Agent registration, Todo creation,
 quota or goal policy -- reuses the identities the preview named, may not widen
 the confirmed scope, and a team plan is never settled as if the work were done.
+The confirmed payload is therefore a fixed point of the validator: validating an
+admitted preview again returns the same lanes, and a lane the preview reported as
+unstaffed is preserved as a gap rather than re-derived from the host's *current*
+facts, so an apply can never staff a lane the owner was shown as unstaffed.
 
 Shipped enforcement, in delivery order:
 
@@ -589,10 +606,23 @@ Shipped enforcement, in delivery order:
    bounded Todo and returns the lane readback. A registration change between
    preview and apply makes the proposal stale rather than applying a plan whose
    staffing has drifted.
+6. **Admitted preview to confirmable card.** The owner's own local manager
+   channel projects the preview it admitted into the typed action store, so the
+   product surface the owner already reads lists exactly one `team.plan` card
+   scoped to the Goal the plan staffs. The projection is idempotent per plan, so
+   a replayed Turn or a repeated ask reuses the card instead of stacking a
+   second one; it creates no work, and it grants nothing that confirming the card
+   would not grant. A Turn response now carries the preview beside its Todo
+   proposals, so the surfaces read one response shape instead of deciding which
+   kinds of answer may arrive.
 
-What is still missing is the surface that sends that confirmation and the
-per-Goal coverage behind it: a multi-lane preview has no frontend confirmation
-surface yet. Traceability is recorded rather than implied: the settlement reads
+The confirmation surface the owner's own channel needs is shipped: the admitted
+preview reaches the typed action store, and the card it produces renders the
+same click path a single-lane `team.plan` card already had. What is still
+missing is the per-audience coverage behind it: a remote manager audience (the
+Lark manager channel) keeps the preview in its answer text and has no card on
+its own surface yet, so no card is written on its behalf. Traceability is
+recorded rather than implied: the settlement reads
 the Goal's canonical source basis before it writes, and the receipt carries it as
 a bounded `intent_basis`, so each lane Todo can be tied to the revision it was
 meant to advance even though the Todo row itself does not carry the field. The

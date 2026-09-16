@@ -120,6 +120,164 @@ def test_a_declared_gap_keeps_its_reason_and_carries_no_work() -> None:
         )
 
 
+def _lane(
+    *,
+    lane_id: str,
+    action_kind: str,
+    text: str = "Advance the intake contract",
+    agent_id: str = "agent-alpha",
+) -> dict:
+    return {
+        "lane_id": lane_id,
+        "agent_id": agent_id,
+        "acceptance": "The lane's first Todo is delivered with evidence",
+        "first_todo": {
+            "text": text,
+            "priority": "P1",
+            "task_class": "advancement_task",
+            "action_kind": action_kind,
+        },
+    }
+
+
+def test_an_unsupported_action_kind_gaps_that_lane_instead_of_refusing_the_plan() -> None:
+    """The host cannot staff one lane's *kind*; the other lanes are still the plan.
+
+    Live evidence: a steward answered a one-sentence team request correctly, and
+    one lane asked for an action kind this host does not ship. The preview was
+    refused whole as a malformed payload, so the owner read a complete plan with
+    nothing to confirm. The *lane* is what cannot be staffed, so the lane -- not
+    the plan -- becomes the typed gap, exactly as an unregistered Agent already
+    does.
+    """
+
+    preview = _validate(
+        _plan(
+            lanes=[
+                _lane(lane_id="lane-alpha", action_kind="implement"),
+                _lane(
+                    lane_id="lane-beta",
+                    action_kind="public_smoke_quality_repair",
+                    text="Repair the public smoke",
+                ),
+            ]
+        )
+    )
+
+    assert preview["applies"] is False
+    ready, gap = preview["lanes"]
+    assert ready["staffing"] == "ready"
+    assert ready["first_todo"]["action_kind"] == "implement"
+    assert gap["staffing"] == "gap"
+    assert gap["gap_reason_code"] == "action_kind_not_supported"
+    assert "first_todo" not in gap
+    # The work the owner asked for is kept with the gap, including the kind that
+    # could not be staffed, so the next plan can be corrected instead of guessed.
+    assert gap["declined_first_todo"]["text"] == "Repair the public smoke"
+    assert gap["declined_first_todo"]["action_kind"] == "public_smoke_quality_repair"
+    assert preview["gaps"] == [
+        {"lane_id": "lane-beta", "reason_code": "action_kind_not_supported"}
+    ]
+
+
+def test_only_the_host_reports_the_staffability_reasons_it_owns() -> None:
+    """A plan may declare its own gap, but never the host's verdict about a lane."""
+
+    from loopx.control_plane.work_items.governed_transition_proposal import (
+        STEWARD_TEAM_PLAN_GAP_REASONS,
+        STEWARD_TEAM_PLAN_HOST_GAP_REASONS,
+        STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND,
+    )
+
+    assert STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND in STEWARD_TEAM_PLAN_HOST_GAP_REASONS
+    assert not set(STEWARD_TEAM_PLAN_HOST_GAP_REASONS) & set(
+        STEWARD_TEAM_PLAN_GAP_REASONS
+    )
+
+    plan = _plan()
+    lane = plan["lanes"][0]  # type: ignore[index]
+    lane.pop("first_todo")
+    lane["staffing_gap"] = {
+        "reason_code": STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND,
+        "note": "The lane's kind is not shipped on this machine",
+    }
+    with pytest.raises(ValueError, match="staffing_gap reason_code is invalid"):
+        _validate(plan)
+
+
+def test_an_admitted_preview_validates_to_itself() -> None:
+    """The confirmed payload is re-validated by the apply, so it must be stable.
+
+    A surface stores the validated preview and the apply validates that same
+    payload again with the host's own facts. If re-reading a gap lane demanded a
+    ``first_todo`` it does not have -- or re-derived it from the host's *current*
+    facts -- the owner's confirmed plan would be unappliable, or would staff a
+    lane the preview reported as unstaffed.
+    """
+
+    declared_gap_plan = _plan()
+    declared_gap_lane = declared_gap_plan["lanes"][0]  # type: ignore[index]
+    declared_gap_lane.pop("first_todo")
+    declared_gap_lane["staffing_gap"] = {
+        "reason_code": "capability_not_granted",
+        "note": "The reviewer capability is not granted on this machine",
+    }
+
+    admitted = _validate(
+        _plan(
+            lanes=[
+                _lane(lane_id="lane-ready", action_kind="implement"),
+                _lane(
+                    lane_id="lane-kind",
+                    action_kind="public_smoke_quality_repair",
+                    text="Repair the public smoke",
+                ),
+                _lane(
+                    lane_id="lane-agent",
+                    agent_id="agent-not-registered",
+                    action_kind="implement",
+                    text="Work that cannot be staffed",
+                ),
+                declared_gap_plan["lanes"][0],  # type: ignore[index]
+            ]
+        )
+    )
+
+    assert [lane["staffing"] for lane in admitted["lanes"]] == [
+        "ready",
+        "gap",
+        "gap",
+        "gap",
+    ]
+    assert _validate(admitted) == admitted
+    assert admitted["gaps"] == [
+        {"lane_id": "lane-kind", "reason_code": "action_kind_not_supported"},
+        {"lane_id": "lane-agent", "reason_code": "agent_not_registered"},
+        {"lane_id": "lane-alpha", "reason_code": "capability_not_granted"},
+    ]
+
+
+def test_a_lane_without_work_must_keep_why_it_is_a_gap() -> None:
+    """A gap lane with no reason and no evidence fails closed."""
+
+    plan = _plan()
+    lane = plan["lanes"][0]  # type: ignore[index]
+    lane.pop("first_todo")
+
+    with pytest.raises(ValueError, match="lane gap_reason_code is invalid"):
+        _validate(plan)
+
+    lane["gap_reason_code"] = "agent_not_registered"
+    with pytest.raises(ValueError, match="must keep why it is a gap"):
+        _validate(plan)
+
+    lane["gap_reason_code"] = "action_kind_not_supported"
+    lane["declined_first_todo"] = _plan()["lanes"][0]["first_todo"]  # type: ignore[index]
+    assert _validate(plan)["lanes"][0]["gap_reason_code"] == (
+        "action_kind_not_supported"
+    )
+
+
 @pytest.mark.parametrize(
     "mutation,match",
     [
@@ -246,8 +404,9 @@ def test_the_steward_turn_resolves_admission_facts_per_goal(tmp_path) -> None:
 
     import json as _json
 
-    from loopx.chat_runtime import ChatRuntimeController
-    from loopx.chat_store import ChatSessionStore
+    from loopx.capabilities.manager_context.team_plan import (
+        team_plan_admission_context,
+    )
 
     registry_path = tmp_path / "registry.json"
     registry_path.write_text(
@@ -271,19 +430,18 @@ def test_the_steward_turn_resolves_admission_facts_per_goal(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
-    store = ChatSessionStore(tmp_path / "runtime")
-    runtime = ChatRuntimeController(
-        store=store,
-        codex_bin="missing-codex",
-        registry_path=registry_path,
-        manager_scope_resolver=lambda session: ["authorized-goal"],
-    )
+    def context(session: dict) -> dict | None:
+        return team_plan_admission_context(
+            registry_path=registry_path,
+            session=session,
+            manager_scope_resolver=lambda _session: ["authorized-goal"],
+        )
 
     # Only the manager channel proposes teams; every other channel is untouched.
-    assert runtime._team_plan_admission_context({"channel_id": "lark:topic"}) is None
+    assert context({"channel_id": "lark:topic"}) is None
 
     # The owner's own channel is not scoped to a subset of Goals.
-    owner_context = runtime._team_plan_admission_context({"channel_id": "manager"})
+    owner_context = context({"channel_id": "manager"})
     resolve = owner_context["resolve_registered_agents"]
     assert resolve("authorized-goal") == ["agent-alpha"]
     assert resolve("other-goal") == ["agent-beta"]
@@ -292,9 +450,78 @@ def test_the_steward_turn_resolves_admission_facts_per_goal(tmp_path) -> None:
 
     # An external manager channel resolves only the Goals it is bound to, so a
     # plan naming any other Goal cannot be validated at all.
-    external = runtime._team_plan_admission_context(
-        {"channel_id": "manager.external." + "a" * 24}
-    )
+    external = context({"channel_id": "manager.external." + "a" * 24})
     external_resolve = external["resolve_registered_agents"]
     assert external_resolve("authorized-goal") == ["agent-alpha"]
     assert external_resolve("other-goal") is None
+
+
+def test_the_owner_channel_projects_an_admitted_preview_onto_the_action_surface(
+    tmp_path,
+) -> None:
+    """Admission answers; the projection is what offers the card to confirm.
+
+    The surfaces list typed actions, so a Turn proposal is invisible until the
+    channel hands it to the owner of that store. Only the owner's own local
+    channel is projected: a remote audience's confirmation surface is not this
+    store, so no card is written on its behalf.
+    """
+
+    from loopx.capabilities.manager_context.team_plan import (
+        project_team_plan_preview,
+    )
+    from loopx.chat_store import ChatSessionStore
+
+    store = ChatSessionStore(tmp_path / "runtime")
+    preview = {"goal_id": "authorized-goal", "lanes": [{"lane_id": "lane-alpha"}]}
+    response = {
+        "message": "Here is the plan",
+        "proposals": [{"kind": "steward_team_plan_preview", "preview": preview}],
+        "gate": None,
+    }
+    projected: list[dict] = []
+
+    def project(session: dict, *, projector=None) -> None:
+        project_team_plan_preview(
+            store=store,
+            session=session,
+            session_id="session-1",
+            turn_id="turn-1",
+            response=response,
+            projector=projector,
+        )
+
+    # Without a surface owner the answer is unchanged: the Controller does not
+    # invent a second place where cards live.
+    project({"channel_id": "manager"})
+    assert projected == []
+
+    projector = lambda value: (  # noqa: E731 - one inline surface owner
+        projected.append(dict(value)) or {"proposal_id": "proposal-team-plan"}
+    )
+    project({"channel_id": "manager"}, projector=projector)
+    assert projected == [preview]
+
+    # A remote manager channel and a Goal channel both keep the answer only.
+    for channel_id in ("manager.external." + "a" * 24, "goal.authorized-goal"):
+        project({"channel_id": channel_id}, projector=projector)
+    assert projected == [preview]
+
+    # A surface that cannot store the card does not fail the answer: the gap is
+    # typed on the Turn instead.
+    def refuse(_value: object) -> dict:
+        raise ValueError("the typed action store is unavailable")
+
+    project({"channel_id": "manager"}, projector=refuse)
+    kinds = [
+        event["kind"]
+        for event in store.events_after("session-1", "turn-1", None)
+    ]
+    # The successful projection named the card it stored and the Goal it staffs;
+    # the refused one reported a typed code instead of failing the answer.
+    assert kinds == ["team_plan.projected", "team_plan.projection_failed"]
+    projected_event = store.events_after("session-1", "turn-1", None)[0]
+    assert projected_event["payload"] == {
+        "goal_id": "authorized-goal",
+        "proposal_id": "proposal-team-plan",
+    }

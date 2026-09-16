@@ -1479,6 +1479,13 @@ def serve_chat(
         runtime_controller=server.runtime_controller,
         workspace_roots=resolved_scan_roots,
     )
+    # An admitted steward team preview is projected into the typed action store,
+    # because that store is what the product surfaces list: the chat action
+    # service owns it, so the channel hands the preview to that owner instead of
+    # teaching the runtime a second place where cards live.
+    server.runtime_controller.team_plan_projector = (
+        server.action_service.project_team_plan_preview
+    )
     server.lark_goal_topic_runtime = LarkGoalTopicRuntimeService(
         snapshot_provider=lambda: build_lark_goal_topic_runtime_snapshot(
             registry_path=server.registry_path,

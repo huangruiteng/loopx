@@ -164,3 +164,73 @@ def test_a_changed_registry_makes_the_confirmed_plan_stale(tmp_path: Path) -> No
     # it, so a registration change asks the owner to confirm the current plan.
     assert applied["proposal"]["status"] == "stale"
     assert "loopx:todo " not in _todos(project)
+
+
+def _validated(preview_plan: dict) -> dict:
+    from loopx.control_plane.todos.contract import (
+        TODO_ACTION_KIND_ADVANCEMENT_VALUES,
+    )
+    from loopx.control_plane.work_items.governed_transition_proposal import (
+        validate_steward_team_plan_preview,
+    )
+
+    return validate_steward_team_plan_preview(
+        preview_plan,
+        registered_agent_ids=[AGENT_ID],
+        supported_action_kinds=sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
+    )
+
+
+def test_an_admitted_preview_becomes_the_card_the_surfaces_list(
+    tmp_path: Path,
+) -> None:
+    """Admission shows the plan; the owner still confirms it from one card.
+
+    An admitted preview is not yet a confirmation surface: the product lists
+    typed actions, so the manager channel projects the preview it validated into
+    exactly one `team.plan` proposal. The projection creates no work, is scoped
+    to the Goal the plan names, and is idempotent per plan, so a replayed Turn
+    reuses the card instead of stacking a second one.
+    """
+
+    project, _registry_path, service = _fixture(tmp_path)
+    plan = _plan()
+    plan["lanes"].append(
+        {
+            "lane_id": "lane-beta",
+            "agent_id": AGENT_ID,
+            "acceptance": "Never reached",
+            "first_todo": {
+                "text": "Repair the public smoke",
+                "priority": "P1",
+                "task_class": "advancement_task",
+                "action_kind": "public_smoke_quality_repair",
+            },
+        }
+    )
+
+    proposal = service.project_team_plan_preview(_validated(plan))
+
+    assert proposal["action_kind"] == "team.plan"
+    assert proposal["context"] == {"kind": "manager", "goal_id": GOAL_ID}
+    assert proposal["status"] == "preview_ready"
+    stored_plan = proposal["normalized_parameters"]["plan"]
+    assert stored_plan["applies"] is False
+    assert [lane["staffing"] for lane in stored_plan["lanes"]] == ["ready", "gap"]
+    assert stored_plan["lanes"][1]["gap_reason_code"] == "action_kind_not_supported"
+    # The projection itself created nothing.
+    assert "loopx:todo " not in _todos(project)
+
+    replay = service.project_team_plan_preview(_validated(plan))
+    assert replay["proposal_id"] == proposal["proposal_id"]
+    assert len(service.store.list(context_kind="manager")) == 1
+
+    applied = service.apply(proposal["proposal_id"])
+    receipt = applied["proposal"]["receipt"]
+    assert receipt["outcome"] == "team_plan_applied"
+    # Confirming the card creates the lane that can run and not the one whose
+    # kind this host does not ship.
+    assert len(receipt["resource_ids"]["lane_todo_ids"]) == 1
+    state = _todos(project)
+    assert "Advance the intake contract" in state
+    assert "Repair the public smoke" not in state

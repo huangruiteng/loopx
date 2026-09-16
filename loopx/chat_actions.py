@@ -200,6 +200,43 @@ class ChatActionService(
             Path(root).expanduser().resolve() for root in workspace_roots
         )
 
+    def project_team_plan_preview(self, preview: Mapping[str, Any]) -> dict[str, Any]:
+        """Offer an admitted steward team preview as the card a surface lists.
+
+        An admitted preview is a validated proposal, not yet a confirmation: the
+        product surfaces list *typed actions*, so the manager channel projects
+        the preview it already admitted into exactly one `team.plan` proposal.
+        The projection creates no work and grants nothing -- confirming that
+        card is still the only apply, and the apply re-validates the same
+        payload with the host's own facts. It is idempotent per plan, so a
+        replayed Turn reuses the card instead of stacking a second one.
+        """
+
+        goal_id = str(preview.get("goal_id") or "")
+        if not goal_id:
+            raise ValueError("a team plan preview must name the Goal it staffs")
+        lanes = preview.get("lanes")
+        lane_count = len(lanes) if isinstance(lanes, Sequence) else 0
+        return self.preview(
+            {
+                "action_kind": "team.plan",
+                "summary": (
+                    f"确认 {goal_id} 的 {lane_count} 条 lane 团队计划"
+                    if lane_count
+                    else f"确认 {goal_id} 的团队计划"
+                ),
+                # The card is read by the manager channel that produced it, and
+                # it stays scoped to the one Goal the preview named.
+                "context": {"kind": "manager", "goal_id": goal_id},
+                "normalized_parameters": {
+                    "goal_id": goal_id,
+                    "plan": dict(preview),
+                    "requested_by": "manager",
+                },
+                "idempotency_key": "team-plan:" + _digest(dict(preview)),
+            }
+        )
+
     def _registry(self) -> dict[str, Any]:
         return load_registry(self.registry_path)
 

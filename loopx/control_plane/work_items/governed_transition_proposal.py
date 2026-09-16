@@ -531,11 +531,18 @@ STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION = "steward_team_plan_preview_v0"
 STEWARD_TEAM_PLAN_LANE_LIMIT = 8
 STEWARD_TEAM_PLAN_PRIORITIES = ("P0", "P1", "P2", "P3")
 _GOAL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+# The reasons a plan may declare for a lane it cannot staff itself.
 STEWARD_TEAM_PLAN_GAP_REASONS = (
     "agent_not_registered",
     "capability_not_granted",
     "audience_not_authorized",
 )
+# The reasons this host reports for a lane *it* cannot staff. They are the
+# host's own verdict about the same lane fact, so they stay a separate
+# vocabulary: a plan may not claim one of these to describe its own lane, and a
+# reader can tell an owner-declared gap from a staffability verdict Core made.
+STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND = "action_kind_not_supported"
+STEWARD_TEAM_PLAN_HOST_GAP_REASONS = (STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND,)
 
 
 def _plan_text(value: object, label: str) -> str:
@@ -546,6 +553,68 @@ def _plan_text(value: object, label: str) -> str:
         raise ValueError(f"{label} exceeds the public-safe preview length")
     validate_public_safe_value({"value": text}, path=label)
     return text
+
+
+def _unstaffed_lane(
+    *,
+    lane_id: str,
+    agent_id: str,
+    acceptance: str,
+    reason_code: str,
+    first_todo: Mapping[str, Any] | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """One lane this host cannot staff, keeping the work it declined.
+
+    A gap lane names the lane, the Agent it was asked to run on, the acceptance
+    signal it was meant to end on, and the typed reason it is not staffed. It
+    carries no ``first_todo``: the work it did not staff is evidence, not a lane
+    that exists, and it is kept either as the declined first Todo or as the note
+    the plan gave for the lane. One of the two is always present, so a reader can
+    always see why the lane is a gap instead of finding an unexplained one.
+    """
+
+    lane = {
+        "lane_id": lane_id,
+        "agent_id": agent_id,
+        "acceptance": acceptance,
+        "staffing": "gap",
+        "gap_reason_code": reason_code,
+    }
+    if first_todo is not None:
+        lane["declined_first_todo"] = dict(first_todo)
+    if note is not None:
+        lane["gap_note"] = note
+    return lane
+
+
+def _declined_todo(value: object) -> dict[str, Any]:
+    """Read the work a gap lane kept, without judging whether it can run.
+
+    The work a lane declined is evidence of what the owner asked for, so it is
+    bounded for public safety but not held to the staffability rules a lane that
+    will actually run must pass: the whole reason it is kept is that this host
+    could not staff it, and re-reading it must not turn an admitted gap back
+    into work.
+    """
+
+    declined = _mapping(value, "declined_first_todo")
+    priority = str(declined.get("priority") or "")
+    if priority not in STEWARD_TEAM_PLAN_PRIORITIES:
+        raise ValueError("declined_first_todo priority is invalid")
+    task_class = str(declined.get("task_class") or "")
+    if task_class != "advancement_task":
+        raise ValueError(
+            "a lane's declined first bounded Todo must be an advancement_task"
+        )
+    return {
+        "text": _plan_text(declined.get("text"), "declined_first_todo text"),
+        "priority": priority,
+        "task_class": task_class,
+        "action_kind": _plan_text(
+            declined.get("action_kind"), "declined_first_todo action_kind"
+        ),
+    }
 
 
 def validate_steward_team_plan_preview(
@@ -564,6 +633,12 @@ def validate_steward_team_plan_preview(
     a typed gap that keeps the work it did *not* staff under
     ``declined_first_todo``, so the owner sees what was asked for and what is
     missing instead of a lane that was quietly filled in or dropped.
+
+    The same holds for an action kind this host does not ship: it is a fact
+    about one lane's staffability, not a malformed plan, so that lane becomes a
+    typed gap and the plan is still admitted with its other lanes ready. Only a
+    payload the host cannot read at all -- a wrong schema, an unstaffable
+    plan-level field, or a lane that omits the Todo shape -- is refused whole.
     """
 
     plan = _mapping(payload, "steward_team_plan_preview")
@@ -599,25 +674,57 @@ def validate_steward_team_plan_preview(
         agent_id = _plan_text(lane.get("agent_id"), "agent_id")
         acceptance = _plan_text(lane.get("acceptance"), "lane acceptance")
         declared_gap = lane.get("staffing_gap")
+        requested_todo = lane.get("first_todo")
         if declared_gap is not None:
             gap = _mapping(declared_gap, "staffing_gap")
             reason_code = str(gap.get("reason_code") or "")
             if reason_code not in STEWARD_TEAM_PLAN_GAP_REASONS:
                 raise ValueError("staffing_gap reason_code is invalid")
-            if lane.get("first_todo") is not None:
+            if requested_todo is not None:
                 raise ValueError("a lane that declares a gap may not declare work")
-            normalized = {
-                "lane_id": lane_id,
-                "agent_id": agent_id,
-                "acceptance": acceptance,
-                "staffing": "gap",
-                "gap_reason_code": reason_code,
-                "gap_note": _plan_text(gap.get("note"), "staffing_gap note"),
-            }
-            lanes.append(normalized)
+            lanes.append(
+                _unstaffed_lane(
+                    lane_id=lane_id,
+                    agent_id=agent_id,
+                    acceptance=acceptance,
+                    reason_code=reason_code,
+                    note=_plan_text(gap.get("note"), "staffing_gap note"),
+                )
+            )
             gaps.append({"lane_id": lane_id, "reason_code": reason_code})
             continue
-        first_todo = _mapping(lane.get("first_todo"), "first_todo")
+        if requested_todo is None:
+            # A lane that arrives without work is a verdict somebody already
+            # made: this host's own, when an admitted preview is re-read by the
+            # apply, or the plan's, handled above. It is preserved rather than
+            # re-derived, so validation is idempotent and an apply cannot staff a
+            # lane the owner was shown as unstaffed.
+            reason_code = str(lane.get("gap_reason_code") or "")
+            if reason_code not in (
+                STEWARD_TEAM_PLAN_GAP_REASONS + STEWARD_TEAM_PLAN_HOST_GAP_REASONS
+            ):
+                raise ValueError("lane gap_reason_code is invalid")
+            declined = lane.get("declined_first_todo")
+            note = lane.get("gap_note")
+            if declined is None and note is None:
+                raise ValueError("a lane without work must keep why it is a gap")
+            lanes.append(
+                _unstaffed_lane(
+                    lane_id=lane_id,
+                    agent_id=agent_id,
+                    acceptance=acceptance,
+                    reason_code=reason_code,
+                    first_todo=(
+                        _declined_todo(declined) if declined is not None else None
+                    ),
+                    note=(
+                        _plan_text(note, "gap_note") if note is not None else None
+                    ),
+                )
+            )
+            gaps.append({"lane_id": lane_id, "reason_code": reason_code})
+            continue
+        first_todo = _mapping(requested_todo, "first_todo")
         text = _plan_text(first_todo.get("text"), "first_todo text")
         priority = str(first_todo.get("priority") or "")
         if priority not in STEWARD_TEAM_PLAN_PRIORITIES:
@@ -626,25 +733,37 @@ def validate_steward_team_plan_preview(
         if task_class != "advancement_task":
             raise ValueError("a lane's first bounded Todo must be an advancement_task")
         action_kind = str(first_todo.get("action_kind") or "")
-        if action_kind not in action_kinds:
-            raise ValueError("first_todo action_kind is not supported by this host")
         normalized_todo = {
             "text": text,
             "priority": priority,
             "task_class": task_class,
             "action_kind": action_kind,
         }
+        # Two different host facts make one lane unstaffable: this Goal does not
+        # register its Agent, or this host does not ship the action kind it asked
+        # for. Both are staffability facts about *one* lane, so both become the
+        # same typed gap and keep the declined work. Neither may refuse the plan:
+        # a plan whose first lane cannot be staffed is still the owner's request,
+        # and its staffable lanes are exactly what the owner asked to review.
+        # Before this, an unsupported kind raised, so Chat admission dropped the
+        # whole plan and the owner saw correct prose with nothing to confirm.
         if agent_id not in registered:
-            lane_result = {
-                "lane_id": lane_id,
-                "agent_id": agent_id,
-                "acceptance": acceptance,
-                "staffing": "gap",
-                "gap_reason_code": "agent_not_registered",
-                "declined_first_todo": normalized_todo,
-            }
-            lanes.append(lane_result)
-            gaps.append({"lane_id": lane_id, "reason_code": "agent_not_registered"})
+            lane_gap_reason = "agent_not_registered"
+        elif action_kind not in action_kinds:
+            lane_gap_reason = STEWARD_TEAM_PLAN_UNSUPPORTED_ACTION_KIND
+        else:
+            lane_gap_reason = ""
+        if lane_gap_reason:
+            lanes.append(
+                _unstaffed_lane(
+                    lane_id=lane_id,
+                    agent_id=agent_id,
+                    acceptance=acceptance,
+                    reason_code=lane_gap_reason,
+                    first_todo=normalized_todo,
+                )
+            )
+            gaps.append({"lane_id": lane_id, "reason_code": lane_gap_reason})
             continue
         lanes.append(
             {

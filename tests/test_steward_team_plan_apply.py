@@ -169,6 +169,39 @@ def test_a_gap_lane_creates_nothing_and_a_replay_adds_no_second_row(
     assert _todos(project).count("loopx:todo ") == 1
 
 
+def test_a_lane_whose_kind_the_host_does_not_ship_creates_nothing(
+    tmp_path: Path,
+) -> None:
+    """A confirmable plan may contain a lane this host cannot start.
+
+    The plan itself is admitted -- its other lanes are the owner's request -- and
+    the unstaffable lane is a typed gap, so confirming the plan creates exactly
+    the lanes that can run instead of failing the whole confirmation.
+    """
+
+    project, registry_path = _fixture(tmp_path)
+    unsupported_kind_lane = {
+        "lane_id": "lane-beta",
+        "agent_id": AGENT_ID,
+        "acceptance": "Never reached",
+        "first_todo": {
+            "text": "Repair the public smoke",
+            "priority": "P1",
+            "task_class": "advancement_task",
+            "action_kind": "public_smoke_quality_repair",
+        },
+    }
+
+    receipts = _settle(registry_path, _proposal(extra_lane=unsupported_kind_lane))
+
+    assert receipts[0]["action"] == "created"
+    assert receipts[0]["lane_todo_ids"] == [receipts[0]["todo_id"]]
+    state = _todos(project)
+    assert "Advance the intake contract" in state
+    assert "Repair the public smoke" not in state
+    assert state.count("loopx:todo ") == 1
+
+
 def test_an_unknown_goal_is_refused_before_any_todo(tmp_path: Path) -> None:
     project, registry_path = _fixture(tmp_path)
     unknown = _proposal()

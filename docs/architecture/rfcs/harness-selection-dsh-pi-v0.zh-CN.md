@@ -423,13 +423,25 @@ kind 为 `steward_team_plan_preview`（`steward_team_plan_preview_v0`）的提�
 - 结束每条 lane 的验收信号；
 - 结束整个团队的终止条件。
 
-配不齐的 lane 是类型化的 gap——`agent_not_registered`、`capability_not_granted` 或
-`audience_not_authorized`——并且该 gap 会把没配上人的那份工作留在 `declined_first_todo`
-里，让业主看到"要了什么、缺了什么"，而不是一条被悄悄填上或被丢掉的 lane；声明 gap 的
-lane 不得再声明工作。计划是**预览**：校验通过的载荷带 `applies: false`；只有业主对这份确切
-预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——Agent 注册、
-Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩大已确认范围，也不得把团队计划
-当作工作已完成的结算。
+配不齐的 lane 是类型化的 gap——`agent_not_registered`、`capability_not_granted`、
+`audience_not_authorized`，以及宿主自己的 `action_kind_not_supported`——并且该 gap 会把没
+配上人的那份工作留在 `declined_first_todo` 里，让业主看到"要了什么、缺了什么"，而不是一条
+被悄悄填上或被丢掉的 lane。计划可以为自己的 lane 声明 gap 理由，但不得冒用宿主对这条 lane
+的判断：声明用一套词表，宿主回报用另一套，读者因此能区分"计划自述的 gap"和"Core 做出的
+可配人性判断"。
+
+让**一条 lane** 配不齐的事实有两种：本 Goal 没注册它的 Agent，或者本机不 ship 它要的
+action kind。两者都是 lane 级别的事实，因此都变成同一种类型化 gap，且都不拒绝整份计划：
+第一条 lane 配不齐的计划仍然是业主的请求，而它可配齐的那些 lane 正是业主要审的东西。当初
+正是"因为一条 lane 的 kind 而拒绝整份计划"，让线上管家把一句话团队请求答对了，却什么也给不
+出确认。
+
+声明 gap 的 lane 不得再声明工作。计划是**预览**：校验通过的载荷带 `applies: false`；只有
+业主对这份确切预览的确认，才允许进入落地。落地只经各 effect 既有的 canonical owner——
+Agent 注册、Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩大已确认范围，也不
+得把团队计划当作工作已完成的结算。因此，这份被确认的载荷在校验器下是**不动点**：对已准入的
+预览再校验一次会得到同样的 lanes，而预览已报为 unstaffed 的 lane 会被保留成 gap，而不是
+按宿主**当前**事实重新推导，所以落地永远不会去给一条业主看到的是 gap 的 lane 配上人。
 
 按交付顺序，已经落地并受强制的部分：
 
@@ -455,13 +467,20 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
    提案所有者在 `PRE_SETTLEMENT` 相位重新校验，因此**一次业主确认**就会为每条 ready lane
    建出首个有界 Todo 并返回 lane 回读。预览与落地之间若发生注册变化，提案会变为 stale，而
    不是把 staffing 已经漂移的计划落地。
+6. **从准入预览到可确认卡片。** 业主自己的本地管家通道会把它已准入的预览投影进类型化
+   action store，因此业主本就在读的产品面上会列出**恰好一张** `team.plan` 卡片，且作用域是
+   计划点名的那个 Goal。投影按计划幂等：重放的 Turn 或重复的请求复用同一张卡片，而不会叠出
+   第二张；它不创建工作，也不授予任何"确认卡片"之外的东西。Turn 响应现在把预览与 Todo 提案
+   放在同一形状里，因此产品面读一种响应形状，而不是自己判断"哪种答案可能出现"。
 
-仍然缺的是**发出这次确认的表面**：多 lane 预览还没有前端确认面。可追溯性已经被记录而不是被
-暗示：结算在写入**之前**读取该 Goal 的规范 source basis，回执以有界字段 `intent_basis`
-携带它，因此每条 lane Todo 都能被追溯回它本应推进的那个修订——尽管 Todo 行本身还不携带该
-字段。回读也不再是缺口：落地会把这次确保的每一条 lane Todo 以有界字段 `lane_todo_ids` 发布
-出去；这两个字段都是那个封闭且持久化的回执字段集的加性例外，因此早前写下的回执仍然通过校验，
-而团队计划回执不带 monitor key——计划不是 monitor。
+业主自己那条通道所需的确认面已经落地：准入预览会到达类型化 action store，它产出的卡片走的
+正是单 lane `team.plan` 卡片本就有的点击路径。仍然缺的是它背后的**按受众覆盖**：远端管家
+受众（Lark 管家通道）仍只在回答正文里带着预览，在它自己的面上还没有卡片，因此不会替它写下
+卡片。可追溯性已经被记录而不是被暗示：结算在写入**之前**读取该 Goal 的规范 source basis，
+回执以有界字段 `intent_basis` 携带它，因此每条 lane Todo 都能被追溯回它本应推进的那个修订
+——尽管 Todo 行本身还不携带该字段。回读也不再是缺口：落地会把这次确保的每一条 lane Todo 以
+有界字段 `lane_todo_ids` 发布出去；这两个字段都是那个封闭且持久化的回执字段集的加性例外，
+因此早前写下的回执仍然通过校验，而团队计划回执不带 monitor key——计划不是 monitor。
 
 ### 与 multi-agent / shared authority 契约的关系
 

@@ -113,8 +113,9 @@ its declared priority; the quota or cadence envelope that bounds them; the
 acceptance signal that ends each lane; and the stop condition that ends the
 team. Build every lane from Agents and Todos Core already knows, and from the
 capabilities the current profile actually grants. Name a requested lane you
-cannot staff as a gap, with the missing registration or grant, instead of
-inventing a lane, an Agent, or a capability.
+cannot staff as a gap, with the missing registration or grant, or with the
+shipped action kind that covers the work it asked for, instead of inventing a
+lane, an Agent, a capability, or an action kind.
 
 A team preview is a proposal, never an effect. Do not create Todos, register
 Agents, set quota, or start work until the owner confirms that exact preview;
@@ -159,11 +160,21 @@ in the response envelope's `proposals` as exactly one item of kind
 ```
 
 At most 8 lanes, each with a distinct `lane_id`. A priority is `P0`, `P1`,
-`P2` or `P3`. A lane you cannot staff keeps its `lane_id`, `agent_id` and
-`acceptance`, declares `staffing_gap` with one of `agent_not_registered`,
+`P2` or `P3`. A lane's `action_kind` must be one this host ships — `advance`,
+`analyze`, `benchmark_run`, `codex_run`, `compact_blocker_writeback`,
+`compare`, `execute`, `fix`, `implement`, `rebuild`, `rebuild_score`, `repair`,
+`run`, `run_eval`, `test`, `validate` or `writeback` — and never a kind you
+invented for the request, however apt it reads.
+
+A lane you cannot staff keeps its `lane_id`, `agent_id` and `acceptance`,
+declares `staffing_gap` with one of `agent_not_registered`,
 `capability_not_granted` or `audience_not_authorized` plus a note, and declares
-no `first_todo`. A preview that arrives without this item, names a Goal you are
-not authorized for, or names an Agent that Goal does not register is dropped
+no `first_todo`. Naming an Agent this Goal does not register, or an action kind
+this host does not ship, is that same fact reached from the host's side: Core
+keeps the lane and reports it as a gap instead of creating it, and the rest of
+the plan still reaches the owner. Describe such a lane as the gap it will become
+instead of padding the plan with work that cannot start. A preview that arrives
+without this item, or names a Goal you are not authorized for, is dropped
 rather than shown: the owner must never be offered a confirmation for work that
 cannot be staffed.
 

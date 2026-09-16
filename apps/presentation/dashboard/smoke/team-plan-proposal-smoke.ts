@@ -6,7 +6,13 @@
  * the steward had already validated.
  */
 
-import { typedActionKindSchema, typedActionProposalSchema } from "../src/data/chat.js";
+import {
+  agentResponseSchema,
+  isTeamPlanPreviewProposal,
+  isTodoProposal,
+  typedActionKindSchema,
+  typedActionProposalSchema,
+} from "../src/data/chat.js";
 import { teamPlanFields, teamPlanGoalId, teamPlanLaneCount } from "../src/features/personal-workspace/team-plan-preview.js";
 
 const GOAL_ID = "team-plan-smoke-goal";
@@ -20,6 +26,38 @@ function check(condition: boolean, message: string) {
 
 check(typedActionKindSchema.safeParse("team.plan").success, "transport accepts the steward team plan kind");
 check(!typedActionKindSchema.safeParse("team.plans").success, "the kind stays exact");
+
+// A manager Turn carries the admitted preview beside its Todo proposals: the
+// transcript reads one response shape, and a preview must not fail it. Before
+// this, a Turn that carried the preview was unreadable, so the answer a steward
+// had already produced could not reach the owner at all.
+const managerResponse = agentResponseSchema.safeParse({
+  schema_version: "loopx_chat_agent_response_v0",
+  message: "Here is the plan",
+  proposals: [
+    { kind: "todo", text: "Do one thing", priority: "P1", rationale: "why" },
+    { kind: "steward_team_plan_preview", preview: { goal_id: "team-plan-smoke-goal", lanes: [] } },
+  ],
+  protected_action: null,
+  gate: null,
+});
+check(managerResponse.success, "a Turn response may carry the admitted team preview");
+if (managerResponse.success) {
+  const todoProposals = managerResponse.data.proposals.filter(isTodoProposal);
+  const teamPlans = managerResponse.data.proposals.filter(isTeamPlanPreviewProposal);
+  check(todoProposals.length === 1, "only the Todo proposal becomes a candidate card");
+  check(teamPlans.length === 1 && teamPlans[0].preview.goal_id === "team-plan-smoke-goal", "the preview keeps the Goal it staffs");
+}
+check(
+  !agentResponseSchema.safeParse({
+    schema_version: "loopx_chat_agent_response_v0",
+    message: "Here is the plan",
+    proposals: [{ kind: "steward_team_plan_preview" }],
+    protected_action: null,
+    gate: null,
+  }).success,
+  "a preview without the validated plan is not a readable answer",
+);
 
 const plan = {
   schema_version: "steward_team_plan_preview_v0",
