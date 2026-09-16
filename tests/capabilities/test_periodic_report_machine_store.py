@@ -406,6 +406,7 @@ def test_canonical_machine_config_cli_uses_the_same_store_and_projection(
         "manager_runtime",
         "periodic_report",
         "pull_request_review",
+        "steward_executor",
         "todo_replan_cadence",
     ]
 

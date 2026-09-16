@@ -23,6 +23,17 @@ def _configuration_value(
     return deepcopy({str(key): item for key, item in value.items()})
 
 
+def _steward_executor_editor_options() -> tuple[list[str], list[str]]:
+    """Return the steward editor's option lists from their owning namespace."""
+
+    from .steward_executor.machine_defaults import (
+        steward_executor_endpoints,
+        steward_reasoning_efforts,
+    )
+
+    return sorted(steward_executor_endpoints()), list(steward_reasoning_efforts())
+
+
 def _field(
     key: str,
     label: str,
@@ -60,6 +71,10 @@ def capability_configuration_editor(
 ) -> dict[str, Any]:
     """Return the provider-neutral editor contract consumed by every UI scope."""
 
+    # The steward namespace owns its closed vocabulary, so the editor offers the
+    # same values instead of restating them: a form cannot submit an executor or
+    # effort the owning namespace would reject.
+    steward_endpoints, steward_efforts = _steward_executor_editor_options()
     definitions: dict[str, dict[str, Any]] = {
         "todo_replan_cadence": {
             "supported_scopes": ["machine", "goal"],
@@ -127,6 +142,45 @@ def capability_configuration_editor(
                         "Restricted uses only the scoped LoopX read model. Trusted owner "
                         "enables normal host tools under this persistent machine grant; "
                         "protected operations keep their own authority checks."
+                    ),
+                ),
+            ],
+        },
+        "steward_executor": {
+            "supported_scopes": ["machine"],
+            "writable_scopes": ["machine"],
+            "fields": [
+                _field(
+                    "executor_endpoint",
+                    "Steward executor",
+                    "select",
+                    options=steward_endpoints,
+                    required=True,
+                    description=(
+                        "The executor this machine's steward channel answers on: the "
+                        "interactive CLI login, or the operator-billed managed host. "
+                        "The choice outranks the Chat service environment."
+                    ),
+                ),
+                _field(
+                    "executor_model",
+                    "Model",
+                    "text",
+                    nullable=True,
+                    description=(
+                        "Optional model for the selected executor. Leave blank to keep "
+                        "the executor's own default."
+                    ),
+                ),
+                _field(
+                    "executor_reasoning_effort",
+                    "Reasoning effort",
+                    "select",
+                    options=steward_efforts,
+                    nullable=True,
+                    description=(
+                        "Optional reasoning effort for the selected executor. Leave "
+                        "blank to keep the executor's own default."
                     ),
                 ),
             ],

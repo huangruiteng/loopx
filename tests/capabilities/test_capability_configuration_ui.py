@@ -77,6 +77,64 @@ def test_reward_memory_editor_writes_binding_without_returning_private_path() ->
     assert "config_path" not in current
 
 
+def test_steward_executor_editor_is_machine_only_and_typed() -> None:
+    """The steward's executor is a machine setting no Goal can override."""
+
+    editor = capability_configuration_editor("steward_executor")
+
+    assert editor["editable"] is True
+    assert editor["supported_scopes"] == ["machine"]
+    assert editor["writable_scopes"] == ["machine"]
+    fields = {field["key"]: field for field in editor["fields"]}
+    # The form offers exactly the choices the owning namespace accepts, so a
+    # submission cannot name an executor the channel has no contract for.
+    assert fields["executor_endpoint"]["input_kind"] == "select"
+    assert fields["executor_endpoint"]["options"] == ["codex", "dsh"]
+    assert fields["executor_endpoint"]["required"] is True
+    assert fields["executor_model"]["input_kind"] == "text"
+    assert fields["executor_model"]["nullable"] is True
+    assert fields["executor_reasoning_effort"]["input_kind"] == "select"
+    assert fields["executor_reasoning_effort"]["nullable"] is True
+    assert "high" in fields["executor_reasoning_effort"]["options"]
+    with pytest.raises(ValueError, match="does not support Goal configuration"):
+        resolve_capability_configuration(
+            "steward_executor",
+            goal_override={
+                "schema_version": "steward_executor_machine_defaults_v0",
+                "executor_endpoint": "dsh",
+            },
+        )
+    catalog = build_capability_configuration_catalog(
+        machine_namespaces=[
+            {
+                "namespace": "steward_executor",
+                "title": "Steward executor",
+                "current": {
+                    "schema_version": "steward_executor_machine_defaults_v0",
+                    "executor_endpoint": "dsh",
+                    "executor_model": "deepseek-v4-flash",
+                    "executor_reasoning_effort": "high",
+                },
+                "configuration_template": {
+                    "schema_version": "steward_executor_machine_defaults_v0",
+                    "executor_endpoint": "codex",
+                    "executor_model": None,
+                    "executor_reasoning_effort": None,
+                },
+            }
+        ]
+    )
+    capability = catalog["capabilities"][0]
+    assert capability["available_scopes"] == ["machine"]
+    # The configured machine value is the effective value, and it is reported as
+    # an inherited machine default rather than as a capability default.
+    assert capability["effective_configuration"]["source"] == "machine_default"
+    assert capability["effective_configuration"]["inherited"] is True
+    assert capability["effective_configuration"]["configuration"] == (
+        capability["machine_current"]
+    )
+
+
 def test_catalog_merges_machine_and_goal_descriptors_without_losing_scope() -> None:
     catalog = build_capability_configuration_catalog(
         machine_namespaces=[
