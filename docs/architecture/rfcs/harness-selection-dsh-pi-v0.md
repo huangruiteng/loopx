@@ -474,6 +474,42 @@ Validation: `tests/capabilities/test_steward_executor_machine_defaults.py`,
 `tests/capabilities/test_capability_configuration_ui.py`, and
 `examples/loopx-steward-channel-binding-smoke.py`.
 
+### Steward Answer Identity and Runtime Selection (2026-09-16)
+
+Once a machine could declare its steward executor, the Dashboard was still
+answering two different questions with one value: *who answered me* and *which
+runtime served the turn*. The transcript titled a steward answer with whatever
+the chat-runtime picker happened to hold, and the picker itself preferred a
+`Codex` adapter whenever one was discovered on the machine -- so a channel
+resolving to the managed host could still present itself as an individual CLI
+login, and the header chip, the composer and the answer could each name a
+different executor.
+
+Two rules now hold on the manager channel:
+
+* **Answer identity names the speaker.** The transcript labels a steward answer
+  `LoopX Manager` / `LoopX 管家` on every path that can produce one -- return
+  receipts, resumed history, recovery streaming, the streaming placeholder, the
+  completion fallback, interruption and failure. The executor and its model
+  stay in the machine-capability chip, which is the surface that reports them.
+  Goal channels keep naming the Goal's own Agent.
+* **Runtime selection resolves the way the channel resolves.** The chat-runtime
+  picker follows the channel owner's precedence for the manager context: the
+  declared steward executor first, the shipped default only when the machine
+  declares nothing. A discovered adapter is never presented as the steward.
+
+An explicit operator pick still wins for that context, and the client still
+sends no endpoint when the operator made no pick, so the create-session contract
+in `loopx/chat_server.py` -- "each channel resolves its own default through its
+own owner" -- is unchanged. An explicit pick is also the only path that moves
+this channel off the declared executor, which keeps a discovered CLI from
+silently rewriting a machine decision.
+
+Evidence: `examples/personal-workspace-browser-smoke.mjs` (`execution-chip`
+scenario for the picker and composer resolution, `chat-recovery` scenario for
+the answer identity), plus a live readback on the installed Dashboard where the
+header chip resolved `dsh` while the picker previously reported `Codex`.
+
 ## Steward Team Intake (2026-09-16)
 
 The steward answers questions. Since `2026-09-16` its shipped guidance also
