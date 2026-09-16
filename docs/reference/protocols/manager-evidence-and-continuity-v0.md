@@ -284,6 +284,13 @@ before/after scope checks, so it never widens authority. The declaration and the
 read use the same SSH configuration, so one packet cannot call a host
 unconfigured and read it in the same Turn.
 
+Because one Turn dials one host, which source receives that dial rotates: a
+source that was never read goes first, then the source whose successful read is
+oldest. Declaration order never decides it, so a source listed last cannot be
+deferred on every Turn that arrives after the cache TTL. The packet still
+reports its sources in declaration order, so the rotation chooses the dial
+rather than the shape of the answer.
+
 Every declared source carries a typed outcome in the same block: `read` or
 `cached` with `read_at` and `age_seconds`; `unavailable` with its reason, the last
 successful read and a `coverage_effect`; `not_configured` for alias drift; or

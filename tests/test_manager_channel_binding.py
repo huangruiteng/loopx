@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import threading
 import urllib.request
@@ -769,4 +770,82 @@ def test_the_live_capabilities_readback_carries_the_channel_mode(tmp_path):
     assert binding["session_status"] == "busy"
     assert binding["session_mode_source"] == (
         MANAGER_CHANNEL_SESSION_MODE_SOURCE_READBACK
+    )
+
+
+# The resolvers below default `machine_defaults` to None, which resolves to the
+# product default and reports `machine_defaults_status: not_read`. That default
+# exists so an unconfigured caller degrades exactly like an unconfigured machine;
+# it is not a licence for a production caller to skip the machine layer and
+# report the shipped default while the machine actually selected something.
+_STEWARD_RESOLVER_NAMES = frozenset(
+    {
+        "_resolve_manager_endpoint",
+        "manager_channel_binding",
+        "manager_endpoint_default_reason",
+        "manager_executor_endpoint_default",
+        "manager_model_config",
+        "manager_model_resolution",
+        "selected_manager_executor_endpoint",
+    }
+)
+
+
+def _steward_resolver_call_sites() -> list[tuple[str, int, str, bool]]:
+    """Return every production call to a steward resolver and whether it discloses."""
+
+    repository_root = Path(__file__).resolve().parents[1]
+    call_sites: list[tuple[str, int, str, bool]] = []
+    for path in sorted((repository_root / "loopx").rglob("*.py")):
+        if "benchmark" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if isinstance(function, ast.Name):
+                name = function.id
+            elif isinstance(function, ast.Attribute):
+                name = function.attr
+            else:
+                continue
+            if name not in _STEWARD_RESOLVER_NAMES:
+                continue
+            call_sites.append(
+                (
+                    path.relative_to(repository_root).as_posix(),
+                    node.lineno,
+                    name,
+                    any(keyword.arg == "machine_defaults" for keyword in node.keywords),
+                )
+            )
+    return call_sites
+
+
+def test_every_production_steward_caller_passes_the_machine_defaults() -> None:
+    """A caller may not report the product default while a machine decided."""
+
+    call_sites = _steward_resolver_call_sites()
+    # A vacuous scan would pass this test without guarding anything: the owner
+    # module and its callers are the call sites this invariant is about.
+    assert len(call_sites) >= 14, call_sites
+    assert {path for path, _line, _name, _ok in call_sites} >= {
+        "loopx/chat_manager.py",
+        "loopx/chat_runtime.py",
+        "loopx/chat_server.py",
+        "loopx/extensions/lark/goal_topic_runtime.py",
+    }
+    undocumented = [
+        f"{path}:{line} {name}"
+        for path, line, name, discloses in call_sites
+        if not discloses
+    ]
+    assert undocumented == [], (
+        "every production steward resolver call must pass machine_defaults so the "
+        "readback cannot understate the machine's selection: " + ", ".join(undocumented)
     )

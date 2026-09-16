@@ -122,21 +122,21 @@ bypass never overrides this gate, and author-owned fallback needs user authority
 
 ## Full PR Review And Bilingual Format
 
-Every review must cover the whole PR, not only the top finding: read the full
-diff/local validation, then explain motivation, architecture, changed symbols, both paths,
-whole-diff risk, validation, and judgment. A findings-only or blocker-only body is incomplete.
+Every review must cover the whole PR, not only the top finding: read the full diff/local
+validation, then explain motivation, architecture, changed symbols, both paths, whole-diff
+risk, validation, and judgment. A findings-only or blocker-only body is incomplete.
 
 Publish two artifacts:
 
-1. **详细中文评审** - a standalone Chinese full-PR review with the exact head
-   and five sections: `动机`, `改动思路`, `具体改动`, `对主干的风险`,
-   `我的整体评价`. Cover every changed surface and key symbols, not just the
-   main finding.
-2. **英文简短结论** - start with exactly `English verdict:` and include the
-   verdict, exact head, key finding, and validation.
+1. **详细中文评审** - a standalone Chinese full-PR review with the exact head and five
+   sections: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`. Cover every
+   changed surface and key symbols, not only the main finding.
+2. **英文简短结论** - a line starting with exactly `English verdict:` followed by the bare
+   token `APPROVE` or `REQUEST_CHANGES`, then the head, key finding, and validation. The
+   parser matches that token as a keyword, so `English verdict: Approved at ...` is invalid
+   and leaves the head without a merge-ready approval; write `English verdict: APPROVE - ...`.
 
-Do not publish before the Chinese section covers the entire PR. Read both
-artifacts back.
+Do not publish before the Chinese section covers the entire PR. Read both artifacts back.
 
 ## Example / Walkthrough / Smoke-Only PRs
 
