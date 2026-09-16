@@ -390,7 +390,9 @@ export type PersonalWorkspaceCallbacks = {
     projectionVerified: boolean;
   }>;
   onGoalDeleted?: (goalId: string) => void;
-  onReconcileStatus?: () => void | Promise<void>;
+  /** Re-read the workspace projection after an applied action. `invalidateGoalIds`
+   * names the Goals the action touched, so a peer's snapshot is not re-read for it. */
+  onReconcileStatus?: (options?: { invalidateGoalIds?: string[] }) => void | Promise<void>;
   onRefresh?: () => void | Promise<void>;
   onRetryGoalArchive?: () => void | Promise<void>;
   onPreviewAction?: (request: WorkspaceActionPreviewRequest) => WorkspaceActionPreview | Promise<WorkspaceActionPreview>;

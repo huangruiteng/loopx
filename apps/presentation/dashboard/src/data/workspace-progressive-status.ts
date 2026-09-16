@@ -20,6 +20,33 @@ export type WorkspaceProgress = {
   errors: Record<string, WorkspaceLoadError>;
 };
 
+/**
+ * Snapshots a same-source refresh may keep instead of re-reading.
+ *
+ * A directory entry is the cheap authoritative signal for "this Goal's
+ * lifecycle did not move here": when the entry is unchanged, its snapshot still
+ * describes the Goal, and re-reading it costs one full status collection per
+ * Goal. Goals the caller just acted on are never reused, and a Goal that left
+ * the directory loses its snapshot with it.
+ */
+export function reusableGoalSnapshots(
+  previous: Pick<WorkspaceProgress, "directory" | "snapshots"> | null,
+  directory: WorkspaceDirectory,
+  options: { invalidateGoalIds?: Iterable<string> } = {},
+): Record<string, StatusPayload> {
+  if (!previous) return {};
+  const invalidated = new Set(options.invalidateGoalIds ?? []);
+  const before = new Map(previous.directory.goals.map((goal) => [goal.id, goal]));
+  return Object.fromEntries(directory.goals.flatMap((goal) => {
+    const earlier = before.get(goal.id);
+    const snapshot = previous.snapshots[goal.id];
+    if (!earlier || !snapshot || invalidated.has(goal.id)) return [];
+    if (earlier.display_name !== goal.display_name
+      || earlier.activation_state !== goal.activation_state) return [];
+    return [[goal.id, snapshot]];
+  }));
+}
+
 function queryUrl(url: string, fields: Record<string, string>, base: string) {
   const parsed = new URL(url, base);
   parsed.searchParams.delete("goal_activation");

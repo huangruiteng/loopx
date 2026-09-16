@@ -1,7 +1,7 @@
 import type { GoalAcceptanceObservation } from "../data/goal-acceptance-observation";
 import { attentionDetails, sourceAttention } from "../features/personal-workspace/attention-details";
 import type { AttentionDetails } from "../features/personal-workspace/attention-details";
-import { directoryStatusPayload, fetchWorkspaceDirectory, loadWorkspaceGoalSnapshots, type WorkspaceProgress, type WorkspaceLoadError } from "../data/workspace-progressive-status";
+import { directoryStatusPayload, fetchWorkspaceDirectory, loadWorkspaceGoalSnapshots, reusableGoalSnapshots, type WorkspaceProgress, type WorkspaceLoadError } from "../data/workspace-progressive-status";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert, Moon, RefreshCw, Sun } from "lucide-react";
 
@@ -1369,7 +1369,7 @@ function PersonalGoalHome({
   onGoalActivationStateChange: (goalId: string, activationState: "active" | "stopped") => void;
   onGoalDeleted: (goalId: string) => void;
   onSelectGoal: (goalId: string) => void;
-  onReconcileStatus: () => void | Promise<void>;
+  onReconcileStatus: (options?: { invalidateGoalIds?: string[] }) => void | Promise<void>;
   onRefresh: () => void | Promise<void>;
   onRetryGoalArchive: () => void | Promise<void>;
   payload: StatusPayload;
@@ -3088,6 +3088,8 @@ export function DashboardPage() {
     options: {
       background?: boolean;
       retryOnly?: boolean;
+      reuseSnapshots?: boolean;
+      invalidateGoalIds?: string[];
       resyncAttempt?: number;
       selectionRevision?: number;
     } = {},
@@ -3118,8 +3120,14 @@ export function DashboardPage() {
       const directory = await fetchWorkspaceDirectory(trimmed, window.location.href).catch(() => null);
       if (!statusRequestCanCommit(statusRequestFenceRef.current, request)) return;
       if (directory) {
-        const retained = options.retryOnly && source.kind === "url" && source.label === trimmed
-          && progress?.directory.registry_revision === directory.registry_revision ? progress.snapshots : {};
+        // A refresh that keeps the same source only re-reads the Goals whose
+        // directory entry moved or that the caller just acted on. Dropping every
+        // snapshot here would send the whole workspace back to its loading lane
+        // after one Goal's pause, resume or open.
+        const retained = (options.retryOnly || options.reuseSnapshots)
+          && source.kind === "url" && source.label === trimmed
+          ? reusableGoalSnapshots(progress, directory, { invalidateGoalIds: options.invalidateGoalIds })
+          : {};
         setProgress({ directory, snapshots: retained, errors: {} });
         const requestedDirectory = { ...directory, goals: directory.goals.filter((goal) => !retained[goal.id]) };
         let directoryChanged = false;
@@ -3351,9 +3359,9 @@ export function DashboardPage() {
         ) } : current);
       }}
       onSelectGoal={selectGoal}
-      onReconcileStatus={() => loadFromUrl(
+      onReconcileStatus={(options) => loadFromUrl(
         source.kind === "url" ? source.label : (statusUrl || defaultGlobalStatusUrl),
-        { background: true },
+        { background: true, invalidateGoalIds: options?.invalidateGoalIds, reuseSnapshots: true },
       )}
       onRetryGoalArchive={retryGoalArchive}
       onRefresh={() => loadFromUrl(source.kind === "url" ? source.label : (statusUrl || defaultGlobalStatusUrl), { retryOnly: Boolean(progress && Object.keys(progress.errors).length) })}

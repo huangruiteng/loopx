@@ -1194,7 +1194,7 @@ export function PersonalWorkspacePage({
         callbacks.onGoalActivationStateChange?.(goal.goalId, result.activationState);
         setActionFeedback(t("feedback.completed", { title: summaryByOperation[operation] }));
         if (operation === "stop") selectGoal(null);
-        await (callbacks.onReconcileStatus ?? callbacks.onRefresh)?.();
+        await reconcileStatus([goal.goalId]);
         return;
       }
       const proposal = await createPreview({
@@ -1320,6 +1320,22 @@ export function PersonalWorkspacePage({
     }
   }
 
+  /**
+   * Reconcile the projection after an applied action. The touched Goal is the
+   * only one whose snapshot is dropped; a peer keeps the snapshot it already
+   * had, so one Goal's pause does not send the rest of the workspace back to
+   * its loading lane.
+   */
+  function reconcileStatus(invalidateGoalIds?: string[]) {
+    const reconcile = callbacks.onReconcileStatus;
+    const request = reconcile
+      ? reconcile({ invalidateGoalIds })
+      : callbacks.onRefresh?.();
+    return Promise.resolve(request).catch(() => {
+      setActionFeedback(t("feedback.goalRefreshFailed"));
+    });
+  }
+
   async function applyProposal(
     proposal: WorkspaceActionPreview,
     options: {
@@ -1362,8 +1378,7 @@ export function PersonalWorkspacePage({
           if (proposal.lifecycleOperation === "delete" && proposal.goalId) {
             callbacks.onGoalDeleted?.(proposal.goalId);
           }
-          const reconcile = callbacks.onReconcileStatus ?? callbacks.onRefresh;
-          void Promise.resolve().then(() => reconcile?.()).catch(() => undefined);
+          void reconcileStatus(proposal.goalId ? [proposal.goalId] : undefined);
         }
         return;
       }
@@ -1404,8 +1419,7 @@ export function PersonalWorkspacePage({
         callbacks.onGoalDeleted?.(applied.goalId);
       }
       if (applied.actionKind === "goal.lifecycle") {
-        const reconcile = callbacks.onReconcileStatus ?? callbacks.onRefresh;
-        void Promise.resolve().then(() => reconcile?.()).catch(() => undefined);
+        void reconcileStatus(applied.goalId ? [applied.goalId] : undefined);
       }
     } catch (error) {
       if (lifecycleChange) {
@@ -1460,10 +1474,7 @@ export function PersonalWorkspacePage({
     },
     onOpenGoal: (goalId) => {
       selectGoal(goalId);
-      const reconcile = callbacks.onReconcileStatus ?? callbacks.onRefresh;
-      void Promise.resolve().then(() => reconcile?.()).catch(() => {
-        setActionFeedback(t("feedback.goalRefreshFailed"));
-      });
+      void reconcileStatus([goalId]);
     },
     onOpenGoalView: (tab) => {
       setSelectedGoalTab(tab);
