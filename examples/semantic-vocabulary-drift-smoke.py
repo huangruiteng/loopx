@@ -51,7 +51,7 @@ TIERS = {"kernel", "cross_runtime", "cross_module"}
 STATUSES = {"canonical", "legacy", "merge_candidate"}
 FORMAL_MODEL_KEYS = {
     "schema_version", "universes", "roles", "role_hierarchy", "relations", "invariants", "proof_boundary",
-    "enforcement_policy",
+    "enforcement_policy", "candidate_decisions",
 }
 FORMAL_MODEL_SCHEMA_VERSION = "loopx_semantic_formal_model_v0"
 FORMAL_UNIVERSE_KEYS = {"vocabularies", "values", "sites", "scopes", "roles"}
@@ -67,6 +67,15 @@ FORMAL_INVARIANTS = {
 }
 FORMAL_ENFORCEMENT = {"m0", "m0_5", "m1", "advisory", "unproved"}
 FORMAL_POLICY_KEYS = {"blocking_now", "blocking_next", "advisory", "unproved"}
+FORMAL_CANDIDATE_DECISIONS = {
+    "reuse_existing",
+    "extend_vocabulary",
+    "create_vocabulary",
+    "local_only",
+    "external_input",
+    "compatibility_only",
+    "unknown",
+}
 
 # Hard ceiling on the registry's own floors and budgets, kept in code rather than
 # in the registry so one single-diff edit to ``vocabulary_v0.json`` cannot relax
@@ -230,9 +239,17 @@ def check_formal_model(model: dict[str, Any]) -> None:
     for policy_name, ids in policy.items():
         require(all(stages[item_id] == stage_for_policy[policy_name] for item_id in ids),
                 f"formal_model policy lane {policy_name} disagrees with invariant enforcement stage")
+    candidates = model["candidate_decisions"]
+    require(set(candidates) == {"values", "default", "meaning"},
+            "formal_model candidate_decisions must define values, default, and meaning")
+    require(candidates["values"] == sorted(FORMAL_CANDIDATE_DECISIONS),
+            "formal_model candidate_decisions must be a stable exhaustive classification")
+    require(candidates["default"] == "unknown",
+            "formal_model candidate_decisions must default unresolved candidates to unknown")
+    require(candidates["meaning"].strip(), "formal_model candidate_decisions needs a meaning")
     boundary = model["proof_boundary"]
-    require(set(boundary) == {"established", "bounded", "unproved"},
-            "formal_model proof_boundary must separate established, bounded, and unproved claims")
+    require(set(boundary) == {"established", "bounded", "unknown", "unproved"},
+            "formal_model proof_boundary must separate established, bounded, unknown, and unproved claims")
     for key in boundary:
         require(isinstance(boundary[key], list) and all(isinstance(value, str) and value.strip() for value in boundary[key]),
                 f"formal_model proof_boundary.{key} must contain non-empty claim names")
