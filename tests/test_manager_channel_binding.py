@@ -836,8 +836,8 @@ def test_every_production_steward_caller_passes_the_machine_defaults() -> None:
     assert len(call_sites) >= 14, call_sites
     assert {path for path, _line, _name, _ok in call_sites} >= {
         "loopx/chat_manager.py",
+        "loopx/chat_manager_context.py",
         "loopx/chat_runtime.py",
-        "loopx/chat_server.py",
         "loopx/extensions/lark/goal_topic_runtime.py",
     }
     undocumented = [
