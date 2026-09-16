@@ -22,10 +22,11 @@ import {
   startServer,
 } from "./personal-workspace-browser/fixture.mjs";
 import { navigationSortingScenario } from "./personal-workspace-browser/navigation-sorting.mjs";
+import { progressiveLoadingScenario } from "./personal-workspace-browser/progressive-loading.mjs";
 import { teamPlanScenario } from "./personal-workspace-browser/team-plan.mjs";
 import { typedActionsScenario } from "./personal-workspace-browser/typed-actions.mjs";
 
-const scenarioCatalog = [navigationSortingScenario, chatRecoveryScenario, typedActionsScenario, teamPlanScenario, executionChipScenario];
+const scenarioCatalog = [navigationSortingScenario, chatRecoveryScenario, typedActionsScenario, teamPlanScenario, executionChipScenario, progressiveLoadingScenario];
 const requestedScenario = process.env.LOOPX_PERSONAL_WORKSPACE_SCENARIO;
 const scenarios = requestedScenario
   ? scenarioCatalog.filter((scenario) => scenario.id === requestedScenario)

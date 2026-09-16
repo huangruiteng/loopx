@@ -261,9 +261,28 @@ function capturedStatusGeneration(state) {
   return state.capturedStatusGeneration;
 }
 
-function filterStatusFixtureToScope(fixture, statusGeneration, scope) {
-  const activationForGoal = (goalId) => statusGeneration.get(goalId) ?? "active";
-  const matchesScope = (goalId) => activationForGoal(goalId) === scope;
+/** The registry revision the progressive loader fences every Goal read against. */
+function workspaceRegistryRevision(state) {
+  return [...capturedStatusGeneration(state).entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([goalId, activationState]) => `${goalId}:${activationState}`)
+    .join("|");
+}
+
+/**
+ * Goals the fixture injects into both the workspace directory and the status
+ * payload. One list keeps a Goal's registered name identical in a per-Goal read
+ * and in the directory entry that outlives its snapshot.
+ */
+const directoryGoalFixtures = [
+  { id: "product-release", display_name: "Product Release" },
+  { id: "research-monitor", display_name: "Research Monitor" },
+  { id: "progress-projection", display_name: "Progress Projection" },
+  { id: "legacy-benchmark", display_name: "Legacy Benchmark" },
+  { id: "archived-notes", display_name: "Archived Notes" },
+];
+
+function filterStatusFixtureToScope(fixture, matchesScope) {
   fixture.attention_queue.items = fixture.attention_queue.items.filter((item) => matchesScope(item.goal_id));
   fixture.attention_queue.item_count = fixture.attention_queue.items.length;
   if (fixture.todo_index?.items) {
@@ -288,7 +307,7 @@ function filterStatusFixtureToScope(fixture, statusGeneration, scope) {
   }
 }
 
-export async function installApi(page, { goalSubagentConfigurationEnabled = true, initialActionProposals = [], managerChannelBinding = null, runtimeAgents = null } = {}) {
+export async function installApi(page, { goalSubagentConfigurationEnabled = true, initialActionProposals = [], managerChannelBinding = null, progressiveWorkspace = false, runtimeAgents = null } = {}) {
   let turnCounter = 0;
   const runtime = page.__loopxRuntime ??= { actionProposals: new Map(), goalSubagentConfigurations: new Map(), larkConnections: [], messages: new Map(), sessions: new Map(), turnMessages: new Map() };
   const actionProposals = runtime.actionProposals;
@@ -359,12 +378,34 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
     capturedStatusGeneration: null,
     activationChangeAfterCapturedActive: null,
     statusRequestCount: 0,
+    // Progressive loading reads one Goal at a time; the scenario asserts which
+    // Goals a single action sent back through the loader.
+    goalStatusRequests: [],
+    workspaceDirectoryRequests: 0,
     turnRequests: [],
     get larkConnections() { return runtime.larkConnections; },
     get goalSubagentConfigurations() { return runtime.goalSubagentConfigurations; },
   };
   await page.route(`http://127.0.0.1:${port}/status.json*`, async (route) => {
     state.statusRequestCount += 1;
+    const requestUrl = new URL(route.request().url());
+    const requestedGoalId = requestUrl.searchParams.get("goal_id");
+    if (progressiveWorkspace && requestUrl.searchParams.get("view") === "workspace-directory") {
+      state.workspaceDirectoryRequests += 1;
+      // The directory carries the same registered names as the per-Goal
+      // payloads, so a Goal keeps its title while it has no snapshot.
+      const registeredNames = new Map(directoryGoalFixtures.map((goal) => [goal.id, goal.display_name]));
+      await route.fulfill({ contentType: "application/json", json: {
+        ok: true,
+        schema_version: "loopx_workspace_directory_v1",
+        registry_revision: workspaceRegistryRevision(state),
+        goals: [...state.goalActivationStates.entries()].map(([id, activation_state]) => ({
+          activation_state, display_name: registeredNames.get(id) ?? id, id, registry_member: true,
+        })),
+      }, status: 200 });
+      return;
+    }
+    if (progressiveWorkspace && requestedGoalId) state.goalStatusRequests.push(requestedGoalId);
     const fixture = structuredClone(require(resolve(repoRoot, "examples/status.example.json")));
     const defaultSubagentConfiguration = { mode: "default", spawn_allowed: false, max_children: 0, allowed_domains: [] };
     const projectedSubagentConfiguration = (goalId, fallback) => state.freezeGoalSubagentStatusProjection
@@ -376,14 +417,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       periodic_report_index_url: "/periodic-report-workspace",
       periodic_report_detail_url: "/periodic-report-workspace-projection",
     };
-    const directoryFixtures = [
-      { id: "product-release", display_name: "Product Release" },
-      { id: "research-monitor", display_name: "Research Monitor" },
-      { id: "progress-projection", display_name: "Progress Projection" },
-      { id: "legacy-benchmark", display_name: "Legacy Benchmark" },
-      { id: "archived-notes", display_name: "Archived Notes" },
-    ];
-    for (const directoryGoal of directoryFixtures) {
+    for (const directoryGoal of directoryGoalFixtures) {
       const activation_state = statusGeneration.get(directoryGoal.id) ?? "active";
       const existingGoal = fixture.run_history.goals.find((goal) => goal.id === directoryGoal.id);
       if (existingGoal) {
@@ -584,10 +618,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
     const isActiveScope = goalActivationScope === "active";
     const activeGoalCount = fixture.run_history.goals.filter((goal) => goal.activation_state !== "stopped").length;
     const stoppedGoalCount = fixture.run_history.goals.length - activeGoalCount;
-    const registryRevision = [...statusGeneration.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([goalId, activationState]) => `${goalId}:${activationState}`)
-      .join("|");
+    const registryRevision = workspaceRegistryRevision(state);
     const delayMs = state.nextStatusDelayMs;
     state.nextStatusDelayMs = 0;
     if (delayMs > 0) await new Promise((resolveWait) => setTimeout(resolveWait, delayMs));
@@ -595,6 +626,25 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       state.failNextStatusRequest = false;
       await route.fulfill({ contentType: "application/json", json: { error: "temporary status failure" }, status: 503 });
       return;
+    }
+    if (progressiveWorkspace) {
+      // The real service answers a per-Goal read with exactly that Goal and the
+      // registry revision the directory was read at.
+      fixture.workspace_registry_revision = registryRevision;
+      if (requestedGoalId) {
+        fixture.goal_projection = {
+          schema_version: "loopx_goal_projection_scope_v0",
+          scope: "active",
+          complete: true,
+          projected_goal_count: 1,
+          registry_goal_count: fixture.run_history.goals.length,
+          registry_revision: registryRevision,
+        };
+        fixture.run_history.goals = fixture.run_history.goals.filter((goal) => goal.id === requestedGoalId);
+        filterStatusFixtureToScope(fixture, (goalId) => goalId === requestedGoalId);
+        await route.fulfill({ contentType: "application/json", json: fixture, status: 200 });
+        return;
+      }
     }
     if (isActiveScope) {
       fixture.goal_projection = {
@@ -606,7 +656,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         registry_revision: registryRevision,
       };
       fixture.run_history.goals = fixture.run_history.goals.filter((goal) => goal.activation_state !== "stopped");
-      filterStatusFixtureToScope(fixture, statusGeneration, "active");
+      filterStatusFixtureToScope(fixture, (goalId) => (statusGeneration.get(goalId) ?? "active") === "active");
       // Freeze only the first half of the active-first read. The stopped
       // request must observe the registry after the intervening lifecycle
       // change so this fixture exercises the cross-snapshot revision fence.
@@ -635,7 +685,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         registry_revision: registryRevision,
       };
       fixture.run_history.goals = fixture.run_history.goals.filter((goal) => goal.activation_state === "stopped");
-      filterStatusFixtureToScope(fixture, statusGeneration, "stopped");
+      filterStatusFixtureToScope(fixture, (goalId) => (statusGeneration.get(goalId) ?? "active") === "stopped");
     } else {
       fixture.goal_projection = {
         schema_version: "loopx_goal_projection_scope_v0",

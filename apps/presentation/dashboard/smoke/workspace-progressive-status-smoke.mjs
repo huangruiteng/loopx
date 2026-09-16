@@ -10,9 +10,39 @@ await build({ configFile: false, logLevel: "silent", build: {
   lib: { entry: resolve("src/data/workspace-progressive-status.ts"), formats: ["es"], fileName: () => "loader.mjs" },
   rolldownOptions: { external: ["zod"] },
 } });
-const { loadWorkspaceGoalSnapshots, directoryStatusPayload } = await import(pathToFileURL(resolve(outDir, "loader.mjs")).href);
+const { loadWorkspaceGoalSnapshots, directoryStatusPayload, reusableGoalSnapshots } = await import(pathToFileURL(resolve(outDir, "loader.mjs")).href);
 const directory = { ok: true, schema_version: "loopx_workspace_directory_v1", registry_revision: "r1",
   goals: [{ id: "alpha", display_name: "Alpha", activation_state: "active", registry_member: true }] };
+
+// What a same-source refresh may keep: a paused Goal must not send its peers
+// back to the loading lane, and the touched Goal must not survive as a stale
+// snapshot.
+const entry = (id, activation_state = "active", display_name = id) =>
+  ({ id, display_name, activation_state, registry_member: true });
+const snapshots = { alpha: { alpha: true }, beta: { beta: true }, gamma: { gamma: true } };
+const earlier = {
+  directory: { ok: true, schema_version: "loopx_workspace_directory_v1", registry_revision: "r1",
+    goals: [entry("alpha"), entry("beta"), entry("gamma")] },
+  snapshots,
+};
+const paused = { ok: true, schema_version: "loopx_workspace_directory_v1", registry_revision: "r2",
+  goals: [entry("alpha"), entry("beta", "stopped"), entry("gamma")] };
+assert.deepEqual(Object.keys(reusableGoalSnapshots(earlier, paused)), ["alpha", "gamma"],
+  "a Goal whose lifecycle moved is re-read instead of reused");
+assert.deepEqual(Object.keys(reusableGoalSnapshots(earlier, paused, { invalidateGoalIds: ["gamma"] })), ["alpha"],
+  "a Goal the action touched is re-read even when its directory entry held");
+assert.deepEqual(Object.keys(reusableGoalSnapshots(earlier, paused, { invalidateGoalIds: ["beta"] })), ["alpha", "gamma"],
+  "invalidating the Goal that already changed keeps its peers");
+assert.deepEqual(Object.keys(reusableGoalSnapshots(earlier, {
+  ...paused, goals: [entry("alpha"), entry("gamma"), entry("delta")],
+})), ["alpha", "gamma"], "a Goal that left the directory loses its snapshot");
+assert.deepEqual(Object.keys(reusableGoalSnapshots(earlier, {
+  ...paused, goals: [entry("alpha"), entry("beta", "active", "Renamed"), entry("gamma")],
+})), ["alpha", "gamma"], "a renamed Goal is re-read rather than reused under its new title");
+assert.deepEqual(reusableGoalSnapshots(null, paused), {}, "a first read has nothing to reuse");
+assert.deepEqual(Object.keys(reusableGoalSnapshots(earlier, paused, { invalidateGoalIds: ["alpha", "gamma"] })), [],
+  "invalidating every Goal is a full re-read");
+const retentionChecks = 7;
 const access = { error_code: "workspace_status_access_denied" };
 const original = { fetch, setTimeout, clearTimeout };
 const deadline = {};
@@ -79,7 +109,7 @@ try {
   const payload = { ...directoryStatusPayload(directory), workspace_registry_revision: "r1" };
   await check("success", () => json(payload, 200), ["success"], 1);
   await check("wrong Goal", () => json({ ...payload, run_history: { ...payload.run_history, goals: [{ id: "beta" }] } }, 200), ["scope"], 1);
-  console.log(JSON.stringify({ ok: true, checks }));
+  console.log(JSON.stringify({ ok: true, checks: checks + retentionChecks }));
 } finally {
   globalThis.fetch = original.fetch;
   globalThis.setTimeout = original.setTimeout;
