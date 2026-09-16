@@ -119,3 +119,51 @@ def test_the_preview_kind_has_no_materializer() -> None:
     """Nothing may apply the preview while only the preview slice exists."""
 
     assert STEWARD_TEAM_PLAN_PREVIEW_KIND not in _SETTLEMENT_PHASE_BY_PROPOSAL_KIND
+
+
+def test_the_chat_normalizer_admits_a_preview_only_with_host_facts() -> None:
+    """The production caller: one malformed or unproven preview never surfaces."""
+
+    from loopx.chat import normalize_agent_response
+
+    envelope = {
+        "message": "Here is the plan",
+        "proposals": [_plan()],
+        "context_handoff": None,
+        "protected_action": None,
+        "gate": None,
+    }
+    context = {
+        "registered_agent_ids": ["agent-alpha"],
+        "supported_action_kinds": ["implement"],
+    }
+
+    surfaced = normalize_agent_response(envelope, team_plan_context=context)
+    proposals = surfaced["proposals"]
+    assert [item["kind"] for item in proposals] == [
+        "steward_team_plan_preview"
+    ]
+    assert proposals[0]["preview"]["applies"] is False
+    assert proposals[0]["preview"]["lanes"][0]["staffing"] == "ready"
+
+    # Without the host facts the preview cannot be validated, so it is not
+    # surfaced at all rather than admitted half-checked.
+    assert normalize_agent_response(envelope)["proposals"] == []
+
+    # A malformed preview is dropped like any other proposal the normalizer
+    # cannot accept, and the owner's answer text still arrives.
+    malformed = {**envelope, "proposals": [_plan(kind="not_a_plan")]}
+    dropped = normalize_agent_response(malformed, team_plan_context=context)
+    assert dropped["proposals"] == []
+    assert dropped["message"] == "Here is the plan"
+
+    # The plain Todo proposals keep their existing behaviour.
+    todo = {
+        **envelope,
+        "proposals": [
+            {"kind": "todo", "text": "Do one thing", "priority": "P2", "rationale": "why"}
+        ],
+    }
+    assert normalize_agent_response(todo)["proposals"] == [
+        {"kind": "todo", "text": "Do one thing", "priority": "P2", "rationale": "why"}
+    ]

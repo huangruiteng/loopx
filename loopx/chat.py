@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .todos import add_goal_todo
+from .control_plane.work_items.governed_transition_proposal import (
+    STEWARD_TEAM_PLAN_PREVIEW_KIND,
+)
 
 
 CHAT_AGENT_RESPONSE_SCHEMA_VERSION = "loopx_chat_agent_response_v0"
@@ -178,12 +181,29 @@ def _compact_line(value: Any, *, limit: int) -> str:
     return text[:limit].strip()
 
 
-def _normalize_proposals(value: Any, *, protected_paths: Iterable[Path | str]) -> list[dict[str, str]]:
-    proposals: list[dict[str, str]] = []
+def _normalize_proposals(
+    value: Any,
+    *,
+    protected_paths: Iterable[Path | str],
+    team_plan_context: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    proposals: list[dict[str, Any]] = []
     if not isinstance(value, list):
         return proposals
     for raw in value[:5]:
-        if not isinstance(raw, dict) or raw.get("kind") != "todo":
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("kind") == STEWARD_TEAM_PLAN_PREVIEW_KIND:
+            # A team plan is admitted here or not at all: without the host facts
+            # that say which Agents and action kinds exist, a preview cannot be
+            # validated, so it is never surfaced half-checked.
+            preview = _validated_team_plan_preview(raw, team_plan_context)
+            if preview is not None:
+                proposals.append(
+                    {"kind": STEWARD_TEAM_PLAN_PREVIEW_KIND, "preview": preview}
+                )
+            continue
+        if raw.get("kind") != "todo":
             continue
         text = _compact_line(redact_local_paths(str(raw.get("text") or ""), protected_paths=protected_paths), limit=400)
         if not text:
@@ -204,6 +224,29 @@ def _normalize_proposals(value: Any, *, protected_paths: Iterable[Path | str]) -
             }
         )
     return proposals
+
+
+def _validated_team_plan_preview(
+    raw: Mapping[str, Any], context: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """Return the validated preview, or ``None`` when it may not be surfaced."""
+
+    if not isinstance(context, Mapping):
+        return None
+    from .control_plane.work_items.governed_transition_proposal import (
+        validate_steward_team_plan_preview,
+    )
+
+    try:
+        return validate_steward_team_plan_preview(
+            raw,
+            registered_agent_ids=list(context.get("registered_agent_ids") or []),
+            supported_action_kinds=list(context.get("supported_action_kinds") or []),
+        )
+    except ValueError:
+        # A malformed preview is dropped exactly like any other proposal this
+        # normalizer cannot accept; the answer text still reaches the owner.
+        return None
 
 
 def _normalize_protected_action(
@@ -272,6 +315,7 @@ def normalize_agent_response(
     payload: Mapping[str, Any],
     *,
     protected_paths: Iterable[Path | str] = (),
+    team_plan_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Normalize one structured provider response to the public Chat contract."""
 
@@ -289,6 +333,7 @@ def normalize_agent_response(
         "proposals": _normalize_proposals(
             payload.get("proposals"),
             protected_paths=protected,
+            team_plan_context=team_plan_context,
         ),
         "protected_action": _normalize_protected_action(
             payload.get("protected_action"),
