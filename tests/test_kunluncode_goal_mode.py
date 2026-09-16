@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import subprocess
 from pathlib import Path
@@ -1597,3 +1598,21 @@ def test_native_goal_pro_rejects_complete_without_verifier_pass(
     assert state is not None
     assert state["native"]["status"] == "complete"
     assert state["native"]["verified"] is False
+
+
+def test_mcp_pin_has_one_source_of_truth() -> None:
+    """Refs #4447: the `mcp` pin is defined once and derived everywhere else.
+
+    The pin is deliberately exact, not a range: the server imports
+    `mcp.server.fastmcp`, which the MCP SDK 2.x line no longer ships, and the
+    pin was set by a security fix. Before this change the version string was
+    repeated in the requirement, in the compatibility probe and in the
+    user-facing error, so a bump could leave a stale probe behind.
+    """
+    probe_source = inspect.getsource(cli._compatible_python)
+
+    assert cli.MCP_SDK_VERSION
+    assert cli.MCP_REQUIREMENT == f"mcp=={cli.MCP_SDK_VERSION}"
+    assert cli.MCP_REQUIREMENT.startswith("mcp==")
+    assert cli.MCP_SDK_VERSION not in probe_source
+    assert "MCP_SDK_VERSION" in probe_source
