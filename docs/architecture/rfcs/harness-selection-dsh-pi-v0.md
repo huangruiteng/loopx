@@ -362,6 +362,14 @@ could otherwise be read as offering it:
 * **no tool authority** — the segment is refused by the dsh sandbox itself when
   it reaches for a write, and the channel reports `trust_scope: read_only`.
 
+Because the segment cannot read anything for itself, every source it is expected
+to speak about has to be supplied by LoopX in the same bounded prompt: the
+declared evidence window and the registered-source read are composed by the Turn
+owner, cached and budgeted so a wider reach cannot slow every turn. This is a
+transport consequence, not a new authority: the segment still cannot widen its
+own scope, and any source it did not receive is a named coverage gap rather than
+evidence of no progress.
+
 The earlier typed reason `managed_host_chat_transport_unsupported` is retired
 with this change; it described a transport gap that no longer exists, and keeping
 it would have made a working host unreachable. The reasons the channel can still

@@ -291,7 +291,8 @@ for line in sys.stdin:
             session_id=session["session_id"], turn_id=turn["turn_id"], timeout_sec=10
         )
         assert done["status"] == "completed", done
-        assert collected == [{"include_details": False}]
+        # An interactive endpoint keeps the on-demand read: no inline source read.
+        assert collected == [{"include_details": False, "remote_evidence": False}]
         events = store.events_after(session["session_id"], turn["turn_id"], None)
         reads = [e for e in events if e["kind"] == "manager.evidence_read"]
         assert (
