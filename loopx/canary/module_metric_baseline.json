@@ -35,10 +35,15 @@
       "dict_any_count": 0,
       "lines": 1590
     },
+    "loopx/chat_runtime.py": {
+      "any_count": 33,
+      "dict_any_count": 0,
+      "lines": 1502
+    },
     "loopx/chat_server.py": {
       "any_count": 25,
       "dict_any_count": 0,
-      "lines": 1513
+      "lines": 1514
     },
     "loopx/codex_cli_probe.py": {
       "any_count": 37,
@@ -64,6 +69,11 @@
       "any_count": 85,
       "dict_any_count": 0,
       "lines": 1544
+    },
+    "loopx/extensions/lark/goal_topic_runtime.py": {
+      "any_count": 46,
+      "dict_any_count": 0,
+      "lines": 1509
     },
     "loopx/extensions/lark/presentation/explore_results.py": {
       "any_count": 68,
