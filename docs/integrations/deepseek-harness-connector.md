@@ -158,6 +158,14 @@ steward channel resolves the same profile when it selects the managed host, so
 the channel and the bounded Turns it drives cannot land on two different managed
 models.
 
+The credential those two surfaces authenticate with is a machine setting rather
+than a launch-file variable: `loopx machine-config credential set`, the
+Dashboard's machine capability settings, or the service environment, resolving
+in that order. The key is write-only and never enters the machine-configuration
+document, so an operator changes it from a product surface instead of editing a
+launch file and restarting the service. See
+[Operator Model Credential](../reference/operator-model-credential.md).
+
 Both `loopx turn plan` and `loopx turn run-once` report a `managed_executor`
 block, so a caller reads the planned executor instead of inferring it from a
 host id:

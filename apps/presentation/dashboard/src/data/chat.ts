@@ -1371,6 +1371,55 @@ export type MachineConfigurationPreview = z.infer<typeof machineConfigurationPre
 export type MachineConfigurationTransaction = z.infer<typeof machineConfigurationTransactionSchema>;
 export type MachineConfigurationRollbackPlan = z.infer<typeof machineConfigurationRollbackPlanSchema>;
 
+// The operator credential readback is redacted by construction: the key field
+// carries a fingerprint and never a value, so this schema has no place to put
+// one even if a future server tried to send it.
+export const operatorCredentialFieldSchema = z.object({
+  configured: z.boolean(),
+  source: z.enum(["machine_store", "service_environment", "unset"]),
+  env_var: z.string().optional(),
+  fingerprint: z.string().nullable().optional(),
+  value: z.string().nullable().optional(),
+  blocked_by: z.string().optional(),
+});
+
+export const operatorCredentialSchema = z.object({
+  ok: z.literal(true),
+  // The chat route returns the same versioned projection the CLI prints, so the
+  // browser and the terminal cannot drift into two spellings of one readback.
+  schema_version: z.literal("operator_provider_credential_projection_v0"),
+  action: z.string().optional(),
+  store_ref: z.string(),
+  store_revision: z.string(),
+  record_present: z.boolean(),
+  status: z.enum(["configured", "absent", "invalid"]),
+  repair: z.string(),
+  provider_key: operatorCredentialFieldSchema,
+  base_url: operatorCredentialFieldSchema,
+});
+
+export type OperatorCredential = z.infer<typeof operatorCredentialSchema>;
+
+export async function fetchOperatorCredential() {
+  return operatorCredentialSchema.parse(
+    await requestJson<unknown>("/api/chat/operator-credential"),
+  );
+}
+
+export async function writeOperatorCredential(update: {
+  provider_key?: string;
+  base_url?: string;
+  clear_provider_key?: boolean;
+  clear_base_url?: boolean;
+}) {
+  return operatorCredentialSchema.parse(
+    await requestJson<unknown>("/api/chat/operator-credential", {
+      method: "POST",
+      body: JSON.stringify(update),
+    }),
+  );
+}
+
 export async function fetchMachineConfiguration() {
   return machineConfigurationInspectionSchema.parse(
     await requestJson<unknown>("/api/chat/machine-configuration"),

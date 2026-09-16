@@ -38,7 +38,7 @@ three areas are overloaded:
 | `docs/*.md` | Concepts, contracts, integrations, operations, and roadmaps share one flat namespace | Keep only proven stable anchors; move lower-traffic files by owner and repair inbound links |
 | `docs/product/*.md` | Runtime experiments, product foundations, surfaces, and use cases are interleaved | Group under `foundations/`, `runtimes/`, `surfaces/`, and `use-cases/` |
 | `docs/reference/protocols/*.md` | Versioned contracts are flat and hard to scan | First group the index by domain; move files only with a separate protocol-path compatibility review |
-| `benchmark/` | Current benchmark research needs a small RFC-linked home outside product packages | Keep protocols and public-safe practice here; archive superseded runners under `deprecate/benchmark-legacy/` |
+| `benchmark/` | Current benchmark research needs a small RFC-linked home outside product packages | Keep protocols and public-safe practice here; place retired implementations and immutable experiment snapshots according to the canonical [archive placement rules](../../benchmark/README.md#archive-placement) |
 
 This is a coverage-preserving migration. Unique claims, public evidence, and
 useful links must either remain at their current path or appear in a new

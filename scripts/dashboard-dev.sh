@@ -120,9 +120,10 @@ trap cleanup EXIT INT TERM
 
 if ! PYTHON_BIN="$(bash "${SCRIPT_DIR}/loopx-python.sh")"; then
   echo "LoopX requires Python 3.11 or newer to start status and Chat services." >&2
-  echo "Install Python 3.11+ (for example: brew install python@3.12), or set" >&2
-  echo "LOOPX_PYTHON to an existing Python 3.11+ executable and retry, e.g.:" >&2
-  echo "  LOOPX_PYTHON=/path/to/python3.12 npm run dev" >&2
+  echo "From the repository root, prepare a project environment and retry:" >&2
+  echo "  uv sync --extra test" >&2
+  echo "  uv run --extra test bash scripts/dashboard-dev.sh" >&2
+  echo "Or set LOOPX_PYTHON to an existing Python 3.11+ executable." >&2
   echo "Starting the Vite UI only; use 'npm run dev:web' for the same UI-only preview." >&2
   cd "${DASHBOARD_DIR}"
   exec npm run dev:web

@@ -1,3 +1,5 @@
+import { EffectiveAction, type QuotaEffectiveActionValue } from "./effective_action.generated.ts";
+import { AgentScopeFrontierAction } from "../agents/agent_scope_frontier.generated.ts";
 import { createHash } from "node:crypto";
 import { access, readFile, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -454,9 +456,12 @@ function exactBlockedWait(decision: MonitorDecision): JsonObject | null {
 }
 
 function blockedSuccessorAllowed(decision: MonitorDecision): boolean {
-  return ["agent_scope_wait", "monitor_quiet_skip"].includes(
+  return ([
+    AgentScopeFrontierAction.AGENT_SCOPE_WAIT, EffectiveAction.MONITOR_QUIET_SKIP,
+  ] satisfies readonly QuotaEffectiveActionValue[] as readonly string[]).includes(
     decision.effective_action ?? "",
-  ) && !decision.should_run && !decision.requires_user_action && exactBlockedWait(decision) !== null;
+  ) && !decision.should_run &&
+    !decision.requires_user_action && exactBlockedWait(decision) !== null;
 }
 
 function externalMonitorAllowed(decision: MonitorDecision): boolean {
@@ -510,7 +515,7 @@ function admission(request: MonitorRequest): Admission {
   const external = externalMonitorAllowed(request.decision);
   const due = dueMonitorAllowed(request.decision, request.observation);
   if (
-    request.decision.effective_action !== "monitor_quiet_skip" &&
+    request.decision.effective_action !== EffectiveAction.MONITOR_QUIET_SKIP &&
     !external && !due && !blocked
   ) {
     throw new EffectRuntimeRequestError(

@@ -115,6 +115,19 @@ where the endpoint came from (`executor_endpoint_source`, now including
 (`executor_endpoint_default_reason`), so an operator reads a decided default
 instead of inferring it from the resolved host name.
 
+A manager connection does not keep a second copy of that decision. The
+connection record stores the resolved endpoint as an **observation** with its
+source, and every read path -- the Lark route, the authorized-connection
+resolution, and the Turn that answers on the channel -- re-resolves from the
+machine. A record written while a different default was in force therefore
+cannot keep answering on an endpoint the operator has since replaced, which is
+what previously let a machine whose readback said `dsh` keep running its
+steward on `codex`. When the machine does change the selection, the Session
+bound to the channel still runs on the earlier endpoint; that Turn is refused
+with the typed `manager_channel_executor_rebind_required` receipt, and the reply
+names the one action that repairs it -- re-applying the connection, which opens
+the channel Session on the endpoint the machine now selects.
+
 Both managed surfaces resolve their **execution profile** from one owner
 (`loopx/control_plane/turn_driver/execution_profile.py`): provider
 `deepseek-official`, model `deepseek-v4-flash` (DeepSeek V4.1 Flash) and reasoning
@@ -460,6 +473,57 @@ Validation: `tests/capabilities/test_steward_executor_machine_defaults.py`,
 `tests/test_manager_channel_binding.py`, `tests/test_chat_machine_configuration_api.py`,
 `tests/capabilities/test_capability_configuration_ui.py`, and
 `examples/loopx-steward-channel-binding-smoke.py`.
+
+## Steward Team Intake (planned, 2026-09-16)
+
+The steward answers questions today, and since `2026-09-16` its shipped
+guidance carries one bounded procedure for a different request: one owner
+sentence that asks for a *team* rather than a task. That procedure is guidance,
+not machine enforcement, so this section records where the enforced contract
+belongs and what it must validate before any implementation lands.
+
+The intake boundary is the canonical governed-proposal owner
+(`loopx/control_plane/work_items/governed_transition_proposal.py`), not a new
+CLI command and not a new capability. That owner already dispatches proposals
+by kind, publishes a typed receipt with a proposal digest, and the Chat Turn
+already projects `response.proposals` into `proposal.ready` events. A team
+request is therefore one proposal of a new kind, not a parallel intake path
+beside the existing one. A command with no second caller, and a builder module
+with no caller at all, both stay out: this repository keeps an uncalled
+abstraction in design state until its call site exists.
+
+The proposal payload is validated before anything may be applied, and it names:
+
+- each lane and the Agent that runs it, resolved from Agents Core already
+  registers for the Goal;
+- that lane's first bounded Todo, with its declared priority, task class and
+  action kind;
+- the quota or cadence envelope that bounds the lanes;
+- the acceptance signal that ends each lane;
+- the stop condition that ends the team.
+
+A requested lane that cannot be staffed is a typed gap naming the missing
+registration or grant; it is never filled in by inventing an Agent, a Todo
+capability, or a lane the machine cannot run. The plan is a preview: it creates
+no Todo, registers no Agent, sets no quota, and spends none, and an owner's
+confirmation of that exact preview is the only thing that admits an apply.
+Apply routes to the canonical owners each effect already has -- Agent
+registration, Todo creation, quota or goal policy -- reuses the identities the
+preview named, and returns one readback of what exists. It may not widen the
+confirmed scope, and a team plan is never settled as if the work were done.
+
+Delivery is two slices, in this order:
+
+1. **Preview slice (next).** The typed payload contract and its validator, with
+   focused tests, and no materializer registered, so a preview cannot apply
+   even by mistake.
+2. **Apply slice.** A materializer for that kind, with its settlement phase and
+   readback, routed through the owners above.
+
+What this planned contract does not authorize: the steward still only proposes
+and delegates; selecting a steward executor or storing a credential grants none
+of these effects; and nothing here widens OS, provider, audience or work-state
+authority.
 
 ## Steward Channel Readiness by Milestone (2026-09-15)
 

@@ -222,6 +222,22 @@ broader actor lifecycle or authority model than the implementation provides.
 
 ## Engineering Quality And Right-Sized Scope
 
+### Source-Checkout Python Entry Points
+
+Run source development and validation from the intended worktree root with
+`uv run --extra test python ...` or `uv run --extra test loopx ...`. Use
+`uv sync --extra test` to prepare the project environment. An explicitly
+activated compatible environment with the checkout installed remains valid.
+Check `sys.executable` and `loopx.__file__` when interpreter or source provenance
+is uncertain; a global `loopx` may point to another release snapshot.
+
+Keep Python subprocesses on the selected interpreter (`sys.executable`), and
+keep bootstrap interpreter discovery, supported-version declarations, CI
+version coverage, and version-specific fixtures intact. Do not replace those
+with a nested `uv run`, rewrite historical execution receipts, or commit a
+generated `uv.lock` as part of an unrelated change. See the testing and quality
+guide for the validation layers and the source-checkout environment boundary.
+
 ### Refactor Real-Path Validation
 
 Before delivering a refactor, validate the affected production entrypoint and
@@ -456,6 +472,10 @@ Use this classification when cleaning or reviewing benchmark-related changes:
   provider-neutral capability contract.
 - Keep benchmark-native runners, adapters, ledgers, scoring reducers, and dated
   experiment packets outside the active product surface. Historical versions
-  belong under `deprecate/benchmark-legacy/` and are not part of active CI.
+  follow the canonical archive placement rules in `benchmark/README.md`:
+  retired implementations and dated packets belong under
+  `deprecate/benchmark-legacy/`; explicitly identified immutable experiment
+  snapshots may remain under `benchmark/` only under that document's conditions.
+  Neither category is part of active CI benchmark execution.
 - Add a new active benchmark smoke only when it protects a stable toolkit
   behavior; experiment-specific validation belongs with the research workspace.

@@ -18,11 +18,35 @@ resolve_candidate() {
   command -v "${candidate}" 2>/dev/null || true
 }
 
+# Discover installed minor-version names, then validate the executable itself.
+# Numeric ordering avoids selecting python3.9 before python3.14 lexically.
+versioned_python_names() {
+  local directory candidate name minor
+  for directory in "$@"; do
+    for candidate in "${directory:-.}"/python3.*; do
+      [ -x "${candidate}" ] && [ ! -d "${candidate}" ] || continue
+      name="${candidate##*/}"
+      minor="${name#python3.}"
+      case "${minor}" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      printf '%s\n' "${name}"
+    done
+  done | sort -t. -k2,2nr | uniq
+}
+
 select_loopx_python() {
   local candidate=""
   local resolved=""
   local configured_python=""
   local authoritative=0
+  local directory=""
+  local remaining_path="${PATH:-}:"
+  local -a path_directories=()
+  while [[ "${remaining_path}" == *:* ]]; do
+    path_directories+=("${remaining_path%%:*}")
+    remaining_path="${remaining_path#*:}"
+  done
 
   if [ -n "${LOOPX_PYTHON:-}" ]; then
     configured_python="${LOOPX_PYTHON}"
@@ -44,34 +68,34 @@ select_loopx_python() {
     echo "Ignoring non-functional Python recorded in .loopx-python: ${configured_python}" >&2
   fi
 
-  for candidate in \
-    "${REPO_ROOT}/.venv/bin/python" \
-    python3.13 \
-    python3.12 \
-    python3.11 \
-    python3; do
-    resolved="$(resolve_candidate "${candidate}")"
-    if [ -n "${resolved}" ] && python_version_ok "${resolved}"; then
-      printf '%s\n' "${resolved}"
-      return 0
-    fi
-  done
+  resolved="$(resolve_candidate "${REPO_ROOT}/.venv/bin/python")"
+  if [ -n "${resolved}" ] && python_version_ok "${resolved}"; then
+    printf '%s\n' "${resolved}"
+    return 0
+  fi
 
-  for candidate in \
-    "${HOME:-}/.local/bin/python3.13" \
-    "${HOME:-}/.local/bin/python3.12" \
-    "${HOME:-}/.local/bin/python3.11" \
-    /opt/homebrew/bin/python3.13 \
-    /opt/homebrew/bin/python3.12 \
-    /opt/homebrew/bin/python3.11 \
-    /usr/local/bin/python3.13 \
-    /usr/local/bin/python3.12 \
-    /usr/local/bin/python3.11; do
+  while IFS= read -r candidate; do
     resolved="$(resolve_candidate "${candidate}")"
     if [ -n "${resolved}" ] && python_version_ok "${resolved}"; then
       printf '%s\n' "${resolved}"
       return 0
     fi
+  done < <(versioned_python_names "${path_directories[@]}")
+
+  resolved="$(resolve_candidate python3)"
+  if [ -n "${resolved}" ] && python_version_ok "${resolved}"; then
+    printf '%s\n' "${resolved}"
+    return 0
+  fi
+
+  for directory in "${HOME:-}/.local/bin" /opt/homebrew/bin /usr/local/bin; do
+    while IFS= read -r candidate; do
+      resolved="$(resolve_candidate "${directory}/${candidate}")"
+      if [ -n "${resolved}" ] && python_version_ok "${resolved}"; then
+        printf '%s\n' "${resolved}"
+        return 0
+      fi
+    done < <(versioned_python_names "${directory}")
   done
 
   return 1

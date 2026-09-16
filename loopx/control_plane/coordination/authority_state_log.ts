@@ -163,6 +163,29 @@ export function applyAuthorityStateDelta(
   return canonicalAuthorityObject(result, "reconstructed authority state");
 }
 
+/**
+ * Does this delta rebuild exactly this projection from `previous`?
+ *
+ * The live SQLite writer and the V1 migration both have to prove that the delta
+ * they are about to persist really reconstructs the projection they are
+ * publishing, so the rule has one owner instead of one inline comparison per
+ * caller: the caller only ever needs to know whether the log it is writing is
+ * readable by its own read path. A delta that cannot be decoded, or that does
+ * not apply to `previous`, is a failed reconstruction rather than a different
+ * outcome, because a failed proof is what makes those callers fail closed.
+ */
+export function authorityStateDeltaReconstructs(
+  previous: JsonObject,
+  delta: AuthorityStateDelta,
+  projection: JsonObject,
+): boolean {
+  try {
+    return canonicalBytesEqual(applyAuthorityStateDelta(previous, delta), projection);
+  } catch {
+    return false;
+  }
+}
+
 function applyAuthorityStateOperation(root: JsonObject, operation: AuthorityStateOperation): void {
   const segments = operation.path;
   if (segments.length === 0) protocol("authority state delta cannot target the root state");

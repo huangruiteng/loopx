@@ -474,6 +474,65 @@ def test_one_dial_per_turn_defers_the_other_declared_source(tmp_path):
     assert "remote_source_deferred_to_next_turn" in result["limitations"]
 
 
+def test_the_single_dial_rotates_to_the_source_read_longest_ago(tmp_path):
+    """A Turn dials one host, so declaration order must not decide who starves.
+
+    With two registered hosts and a Turn interval longer than the cache TTL, a
+    declaration-ordered dial let the first declared host take every read while
+    the second could only ever report `deferred_budget`. The dial now rotates to
+    the source read longest ago -- or never -- first.
+    """
+
+    config, channel = _evidence_root(
+        tmp_path, registered=("first-host", "second-host")
+    )
+    calls = []
+    runner = _packet_runner(calls)
+
+    first = remote_evidence(
+        tmp_path,
+        channel,
+        True,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+    # No source has history yet, so the first Turn dials one and defers the
+    # other, and the packet still reports both in declaration order.
+    assert len(calls) == 1
+    assert [row["source_id"] for row in first["sources"]] == [
+        "ssh:first-host",
+        "ssh:second-host",
+    ]
+    read_first, deferred_first = (row["status"] for row in first["sources"])
+    assert {read_first, deferred_first} == {"read", "deferred_budget"}
+
+    expired = datetime.now(timezone.utc) + timedelta(
+        seconds=MANAGER_REMOTE_EVIDENCE_TTL_SECONDS + 1
+    )
+    second = remote_evidence(
+        tmp_path,
+        channel,
+        True,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+        now=expired,
+    )
+
+    # The never-read source takes the dial this time instead of starving behind
+    # the expired read that used to win on declaration order alone.
+    assert len(calls) == 2
+    statuses = {row["source_id"]: row["status"] for row in second["sources"]}
+    assert statuses["ssh:second-host"] == "read"
+    assert statuses["ssh:first-host"] == "deferred_budget"
+    assert second["read_status"] == "partial"
+    assert calls[-1][0][-2] == "second-host"
+    assert "remote_source_deferred_to_next_turn" in second["limitations"]
+
+
 def test_grant_change_invalidates_the_cached_source_read(tmp_path):
     config, channel = _evidence_root(tmp_path)
     calls = []

@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from ..quota.effective_action import EffectiveAction
 import shlex
 import typing
 from collections.abc import Mapping
@@ -454,23 +454,23 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     kind = str(execution_obligation.get("kind") or "")
     effective_action = str(payload.get("effective_action") or "")
     state = str(payload.get("state") or "")
-    if effective_action == "governed_capability_intent":
+    if effective_action == EffectiveAction.GOVERNED_CAPABILITY_INTENT.value:
         return effective_action
-    if effective_action == "unsettled_host_turn_recovery":
+    if effective_action == EffectiveAction.UNSETTLED_HOST_TURN_RECOVERY.value:
         return effective_action
-    if effective_action == "agent_monitor_only":
+    if effective_action == EffectiveAction.AGENT_MONITOR_ONLY.value:
         return "agent_monitor_only"
-    if effective_action == "monitor_due":
+    if effective_action == EffectiveAction.MONITOR_DUE.value:
         return "monitor_due"
-    if effective_action == "terminal_no_followup" or state == "terminal_no_followup":
+    if effective_action == EffectiveAction.TERMINAL_NO_FOLLOWUP.value or state == "terminal_no_followup":
         return "terminal_no_followup"
-    if effective_action == "peer_coordination_blocked":
+    if effective_action == EffectiveAction.PEER_COORDINATION_BLOCKED.value:
         return effective_action
     if payload.get("scoped_user_gate_fallback"):
         return "scoped_user_gate_fallback"
     if _user_gate_notification_suppressed(payload):
         return "user_gate_cooldown_wait"
-    if effective_action == "automation_prompt_upgrade_required":
+    if effective_action == EffectiveAction.AUTOMATION_PROMPT_UPGRADE_REQUIRED.value:
         return "automation_prompt_upgrade"
     if user_channel_action_required(payload):
         if (
@@ -495,22 +495,22 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "external_evidence_observation"
     if kind == AUTONOMOUS_REPLAN_REQUIRED_MODE:
         return "autonomous_replan"
-    if effective_action == "coordinate_task_bundle":
+    if effective_action == EffectiveAction.COORDINATE_TASK_BUNDLE.value:
         return "task_orchestration"
     agent_scope_action = _agent_scope_frontier_action(effective_action)
     if agent_scope_action is not None:
         return agent_scope_action.value
-    if effective_action == "monitor_quiet_skip":
+    if effective_action == EffectiveAction.MONITOR_QUIET_SKIP.value:
         return "monitor_quiet_skip"
-    if effective_action == "heartbeat_settled_skip":
+    if effective_action == EffectiveAction.HEARTBEAT_SETTLED_SKIP.value:
         return "heartbeat_settled_skip"
-    if payload.get("recovery_delivery_allowed") or effective_action == "outcome_floor_recovery":
+    if payload.get("recovery_delivery_allowed") or effective_action == EffectiveAction.OUTCOME_FLOOR_RECOVERY.value:
         return "outcome_floor_recovery"
-    if effective_action == "capability_bridge_repair":
+    if effective_action == EffectiveAction.CAPABILITY_BRIDGE_REPAIR.value:
         return "capability_bridge_repair"
-    if effective_action == "agent_workspace_repair":
+    if effective_action == EffectiveAction.AGENT_WORKSPACE_REPAIR.value:
         return effective_action
-    if effective_action == "boundary_projection_repair":
+    if effective_action == EffectiveAction.BOUNDARY_PROJECTION_REPAIR.value:
         return "boundary_projection_repair"
     if payload.get("self_repair_allowed"):
         return "control_plane_self_repair"

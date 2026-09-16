@@ -15,8 +15,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.configure_goal import configure_goal  # noqa: E402
-from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
-from loopx.upgrade import build_upgrade_plan, prompt_digest, render_upgrade_plan_markdown  # noqa: E402
+from loopx.upgrade import (  # noqa: E402
+    build_upgrade_plan,
+    goal_heartbeat_prompt,
+    prompt_digest,
+    render_upgrade_plan_markdown,
+)
 
 
 GOAL_ID = "upgrade-plan-goal"
@@ -335,6 +339,12 @@ def write_registered_codex_app_automation(codex_home: Path, *, prompt: str) -> P
     return automation_path
 
 
+def registered_goal(registry_path: Path, goal_id: str) -> dict:
+    """Read the fixture registration the upgrade plan renders prompts from."""
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    return next(goal for goal in registry["goals"] if goal.get("id") == goal_id)
+
+
 def assert_registered_agent_activation_is_checked(root: Path) -> None:
     registry_path = write_registered_fixture(root)
     payload = build_upgrade_plan(registry_path=registry_path, cli_bin="loopx")
@@ -362,18 +372,14 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
     assert activation["missing_targets"] == ["thin:codex-current"], payload
     assert "do not claim LoopX setup complete" in activation["recommended_action"], payload
 
-    rendered = build_heartbeat_prompt(
-        goal_id=REGISTERED_GOAL_ID,
-        active_state=None,
-        active_state_source="registry",
-        resolved_active_state=Path(goal["state_file"]),
-        thin=True,
+    # Build the expected prompt through the same owner the plan uses, so a new
+    # prompt input cannot reach only one of the two call sites.
+    rendered = goal_heartbeat_prompt(
+        registered_goal(registry_path, REGISTERED_GOAL_ID),
         cli_bin="loopx",
+        mode="thin",
         agent_id=REGISTERED_AGENT_ID,
-        registered_agents=[REGISTERED_AGENT_ID],
         available_capabilities=["network", "external_evidence_poll"],
-        runtime_profile="codex_app_heartbeat",
-        turn_granularity="fine",
     )["task_body"]
     assert "Fine-grained planning contract" in rendered, rendered
     write_registered_codex_app_automation(root / "registered-codex-home", prompt=rendered)
@@ -424,13 +430,11 @@ def assert_registered_agent_activation_is_checked(root: Path) -> None:
 
 
 def assert_codex_app_automation_is_discovered(registry_path: Path, codex_home: Path, first_payload: dict) -> None:
-    rendered = build_heartbeat_prompt(
-        goal_id=GOAL_ID,
-        active_state=None,
-        active_state_source="registry",
-        thin=True,
+    rendered = goal_heartbeat_prompt(
+        registered_goal(registry_path, GOAL_ID),
         cli_bin="loopx",
-        runtime_profile="codex_app_heartbeat",
+        mode="thin",
+        agent_id=None,
     )["task_body"]
     expected_sha = first_payload["managed_heartbeats"][0]["generated_prompts"]["thin"]["sha256"]
     assert prompt_digest(rendered) == expected_sha, first_payload

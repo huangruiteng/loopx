@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
+from loopx.control_plane.todos.user_gate import apply_scoped_user_gate_fallback_projection
 from loopx.control_plane.quota.scheduler_ack import (
     record_quota_scheduler_ack_for_decision,
 )
@@ -30,6 +33,30 @@ AGENT_ID = "codex-main-control"
 APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
     "codex_app_heartbeat"
 )
+
+
+@pytest.mark.parametrize("action", ["quota_skip", "monitor_quiet_skip", None])
+def test_runnable_user_gate_fallback_replaces_a_canonical_skip_action(action):
+    original = {"decision": "skip", "should_run": False, "effective_action": action}
+    result = apply_scoped_user_gate_fallback_projection(
+        original, fallback={"recommended_action": "advance non-gated work"},
+        replan_decision_allowed=False,
+    )
+    assert result["effective_action"] == "scoped_user_gate_fallback"
+    assert result["should_run"] is True
+    assert original["should_run"] is False
+
+
+def test_user_gate_fallback_preserves_repair_and_replan_precedence():
+    original = {"decision": "run", "should_run": True, "effective_action": "capability_bridge_repair"}
+    fallback = {"recommended_action": "advance non-gated work"}
+    result = apply_scoped_user_gate_fallback_projection(
+        original, fallback=fallback, replan_decision_allowed=False,
+    )
+    assert result["effective_action"] == "capability_bridge_repair"
+    assert apply_scoped_user_gate_fallback_projection(
+        original, fallback=fallback, replan_decision_allowed=True,
+    ) is original
 
 
 def _status_payload(*, gate_action_kind: str, blocks_deferred: bool = False) -> dict:

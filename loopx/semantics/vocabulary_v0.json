@@ -1,9 +1,8 @@
 {
   "schema_version": "loopx_semantic_vocabulary_v0",
   "rfc": "docs/architecture/rfcs/semantic-vocabulary-convergence-v0.md",
-  "inventory": "loopx/semantics/inventory_v0.json",
   "policy": {
-    "scope": "Repository-wide. The curated vocabularies below are the kernel and cross-runtime sets; the generated inventory maps every other closed-set carrier under loopx/ so additions are visible in a diff.",
+    "scope": "Repository-wide. The curated vocabularies below are the kernel and cross-runtime sets; the generated inventory maps every other closed-set carrier under loopx/ so additions are visible in the full-tree scan and optional report.",
     "closed_sets": "Every value a registered vocabulary may carry is listed here. Adding, renaming, or removing a value is a registry edit reviewed with the code change; an unregistered literal fails the drift smoke.",
     "owner_exclusivity": "A registered symbol is defined only in its listed owner modules. Any other module imports it instead of redefining the literal. An owner is always module::Symbol or null; a null owner requires a literal_scan.",
     "budgets_only_decrease": "Retirement, twin, and inventory-ratchet budgets only fall. Lowering a budget is a routine edit; raising one needs the maintainer approval recorded in the RFC decision log. Each budget must equal its BUDGET_ANCHOR or RETIREMENT_ANCHOR literal in the drift smoke, so tightening edits the JSON and the code literal in one diff, and a later diff cannot raise the JSON back toward a stale anchor.",
@@ -114,7 +113,7 @@
         "owner_carrier_set_equality",
         "cross_runtime_owner_parity",
         "declared_projection_mapping",
-        "inventory_snapshot_freshness"
+        "current_tree_inventory"
       ],
       "bounded": [
         "fixed_literal_forms",
@@ -135,7 +134,7 @@
   },
   "coverage_floor": {
     "vocabularies": 26,
-    "owner_symbols": 46,
+    "owner_symbols": 49,
     "literal_scan_fields": 1,
     "projections": 1,
     "relations": 9,
@@ -173,6 +172,30 @@
         "validation_failed": "Legacy failure class per turn-loop-controller-v0; always routes to repair.",
         "writeback_failed": "Legacy failure class per turn-loop-controller-v0; always routes to repair.",
         "quota_spend_failed": "Legacy failure class per turn-loop-controller-v0; always routes to repair."
+      },
+      "input_producer": "loopx/control_plane/turn_driver/transaction.py::_result_kind",
+      "producers": [
+        "loopx/control_plane/turn_driver/executor.py::_host_result_stage",
+        "loopx/control_plane/turn_driver/executor.py::_run_task_validator",
+        "loopx/control_plane/turn_driver/executor.py::_task_validation_receipt",
+        "loopx/control_plane/turn_driver/executor.py::_task_validation_stage",
+        "loopx/control_plane/turn_driver/transaction.py::_result_kind"
+      ],
+      "call_producers": {
+        "loopx/control_plane/turn_driver/executor.py::_host_failure": [
+          "kind"
+        ],
+        "loopx/control_plane/turn_driver/executor.py::_task_validation_receipt": [
+          "recovery_kind"
+        ]
+      },
+      "return_producers": [
+        "loopx/control_plane/turn_driver/executor.py::_task_validation_receipt"
+      ],
+      "return_paths": {
+        "loopx/control_plane/turn_driver/executor.py::_task_validation_receipt": [
+          "recovery_kind"
+        ]
       }
     },
     "turn_route": {
@@ -192,7 +215,23 @@
         "wait",
         "blocked",
         "contract_error"
-      ]
+      ],
+      "producers": [
+        "loopx/control_plane/turn_driver/driver.py::_typed_route",
+        "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan",
+        "loopx/control_plane/turn_driver/loop_controller.py::_envelope_route"
+      ],
+      "return_producers": [
+        "loopx/control_plane/turn_driver/driver.py::_typed_route",
+        "loopx/control_plane/turn_driver/loop_controller.py::_envelope_route",
+        "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan"
+      ],
+      "return_paths": {
+        "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan": [
+          "route",
+          "kind"
+        ]
+      }
     },
     "loop_disposition": {
       "meaning": "Pure controller verdict for the outer loop after combining the last Turn receipt with the fresh route.",
@@ -211,27 +250,56 @@
         "repair",
         "replan",
         "terminal"
-      ]
+      ],
+      "producers": [
+        "loopx/control_plane/turn_driver/loop_controller.py::_completion_disposition",
+        "loopx/control_plane/turn_driver/loop_controller.py::_replan_disposition",
+        "loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition",
+        "loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition"
+      ],
+      "return_producers": [
+        "loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition"
+      ],
+      "call_producers": {
+        "loopx/control_plane/turn_driver/loop_controller.py::_disposition": [
+          "disposition"
+        ]
+      }
     },
     "agent_scope_frontier_action": {
-      "meaning": "Frontier verdict for an agent-scoped lane; its value is written into the agent_scope_frontier.effective_action slot of the Turn Envelope.",
+      "meaning": "Frontier verdict for an agent-scoped lane. New v1 payloads use agent_scope_frontier.action; the root should-run effective_action projects the same value through its registered disjoint union. Legacy v0 signed payloads remain readable without rewriting.",
       "tier": "kernel",
       "status": "canonical",
       "owners": {
         "python": "loopx/control_plane/agents/agent_scope_frontier.py::AgentScopeFrontierAction",
-        "typescript": null
+        "typescript": "loopx/control_plane/agents/agent_scope_frontier.generated.ts::AGENT_SCOPE_FRONTIER_ACTIONS"
       },
       "values": [
         "agent_scope_exhausted",
         "agent_scope_wait",
         "reassignment_required",
         "successor_replan_required"
-      ]
+      ],
+      "producers": [
+        "loopx/control_plane/agents/agent_scope.py::_blocked_successor_wait_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_blocking_handoff_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_cleared_handoff_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_deferred_resume_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_monitor_blocked_resume_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_other_agent_or_exhausted_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_route_continuation_frontier",
+        "loopx/control_plane/agents/agent_scope.py::_selected_candidate_priority_frontier"
+      ],
+      "call_producers": {
+        "loopx/control_plane/agents/agent_scope_frontier.py::build_agent_scope_frontier_payload": [
+          "action"
+        ]
+      }
     },
     "lease_action": {
       "meaning": "Authority-core lease mutation verb.",
       "tier": "kernel",
-      "status": "canonical",
+      "status": "legacy",
       "owners": {
         "python": "loopx/control_plane/coordination/authority_core.py::LeaseAction",
         "typescript": null
@@ -241,15 +309,40 @@
         "renew",
         "transfer",
         "release"
-      ]
+      ],
+      "producers": [],
+      "compatibility_only": {
+        "acquire": {
+          "reason": "Retained by the legacy typed LeaseModeGateCommand input interface; current in-repository runtime callers use the separate acquire/renew/transfer/release command classes, not this vocabulary. No persisted use is asserted.",
+          "retirement": "M4: retire the legacy Python lease-mode input interface after caller and migration review."
+        },
+        "renew": {
+          "reason": "Retained by the legacy typed LeaseModeGateCommand input interface; current in-repository runtime callers use the separate acquire/renew/transfer/release command classes, not this vocabulary. No persisted use is asserted.",
+          "retirement": "M4: retire the legacy Python lease-mode input interface after caller and migration review."
+        },
+        "transfer": {
+          "reason": "Retained by the legacy typed LeaseModeGateCommand input interface; current in-repository runtime callers use the separate acquire/renew/transfer/release command classes, not this vocabulary. No persisted use is asserted.",
+          "retirement": "M4: retire the legacy Python lease-mode input interface after caller and migration review."
+        },
+        "release": {
+          "reason": "Retained by the legacy typed LeaseModeGateCommand input interface; current in-repository runtime callers use the separate acquire/renew/transfer/release command classes, not this vocabulary. No persisted use is asserted.",
+          "retirement": "M4: retire the legacy Python lease-mode input interface after caller and migration review."
+        }
+      },
+      "value_notes": {
+        "acquire": "Compatibility-only input member; no observed in-repository producer. Preserve the typed caller interface until its M4 retirement review.",
+        "renew": "Compatibility-only input member; no observed in-repository producer. Preserve the typed caller interface until its M4 retirement review.",
+        "transfer": "Compatibility-only input member; no observed in-repository producer. Preserve the typed caller interface until its M4 retirement review.",
+        "release": "Compatibility-only input member; no observed in-repository producer. Preserve the typed caller interface until its M4 retirement review."
+      }
     },
     "effective_action": {
-      "meaning": "Compacted should-run verdict carried by status/should-run payloads and the Turn Envelope; consumers dispatch on it by string comparison. No enum exists on either runtime, so the owner is null and the literal scan is the only check.",
+      "meaning": "Compacted should-run verdict carried by status/should-run payloads and the Turn Envelope; the Python enum owns the finite value domain while the wire field remains a string for compatibility.",
       "tier": "kernel",
       "status": "merge_candidate",
       "owners": {
-        "python": null,
-        "typescript": null
+        "python": "loopx/control_plane/quota/effective_action.py::EffectiveAction",
+        "typescript": "loopx/control_plane/quota/effective_action.generated.ts::EFFECTIVE_ACTIONS"
       },
       "literal_scan": {
         "field": "effective_action",
@@ -266,11 +359,13 @@
         "agent_workspace_repair",
         "automation_prompt_upgrade_required",
         "autonomous_replan_required",
-        "block_replay",
+        "blocked_health",
+        "blocked_wait",
         "boundary_projection_repair",
         "capability_bridge_repair",
         "control_plane_health_repair",
         "control_plane_projection_repair",
+        "control_plane_repair",
         "coordinate_task_bundle",
         "external_evidence_observe",
         "governed_capability_intent",
@@ -280,32 +375,55 @@
         "monitor_due",
         "monitor_quiet_skip",
         "normal_run",
-        "observe_replay",
-        "operator_gate",
+        "operator_gate_notify",
         "operator_inbox_material_review_due",
         "outcome_floor_recovery",
         "peer_coordination_blocked",
-        "quota_action_selection_deferred",
-        "quota_action_selection_rejected",
         "quota_skip",
         "runtime_user_gate_projection_repair",
         "scoped_user_gate_fallback",
-        "skip",
         "state_projection_gap_repair",
         "terminal_no_followup",
+        "throttled_skip",
         "todo_decision_scope_projection_repair",
         "unsettled_host_turn_recovery"
       ],
-      "variable_sourced_values": {
-        "quota_action_selection_deferred": "loopx/cli_commands/quota.py",
-        "quota_action_selection_rejected": "loopx/cli_commands/quota.py"
-      },
+      "producers": [
+        "loopx/cli_commands/quota.py::_apply_requested_quota_action_selection_preflight",
+        "loopx/control_plane/quota/decision_summary.py::_task_orchestration_effective_action",
+        "loopx/control_plane/quota/decision_summary.py::quota_effective_action",
+        "loopx/control_plane/quota/decision_summary.py::resolve_quota_run_decision",
+        "loopx/control_plane/quota/heartbeat_receipt.py::fail_heartbeat_receipt",
+        "loopx/control_plane/quota/live_decision.py::_apply_pending_capability_intent_precedence",
+        "loopx/control_plane/quota/projection_repair.py::build_boundary_projection_repair_hint",
+        "loopx/control_plane/quota/projection_repair.py::build_state_projection_gap_repair_hint",
+        "loopx/control_plane/quota/settlement_precedence.py::apply_settled_replay_payload_precedence",
+        "loopx/control_plane/quota/settlement_precedence.py::apply_settled_replay_route_precedence",
+        "loopx/control_plane/quota/should_run.py::build_quota_paused_should_run_payload",
+        "loopx/control_plane/quota/should_run_packet.py::_apply_agent_monitor_only_precedence",
+        "loopx/control_plane/quota/should_run_packet.py::_resolve_quota_should_run_route",
+        "loopx/control_plane/quota/stall_repair.py::build_quota_stall_self_repair_hint",
+        "loopx/control_plane/quota/stall_repair.py::build_runtime_capability_user_gate_repair_hint",
+        "loopx/control_plane/quota/unsettled_host_turn.py::apply_unsettled_host_turn_recovery_if_required",
+        "loopx/control_plane/todos/decision_scope.py::build_required_decision_scope_repair_hint",
+        "loopx/control_plane/todos/user_gate.py::apply_scoped_user_gate_fallback_projection"
+      ],
+      "compatibility_only": {},
       "value_notes": {
-        "skip": "Compared in loopx/control_plane/todos/user_gate.py; no producer writes it into effective_action. Candidate dead value (decision-level skip lives in the decision field).",
-        "observe_replay": "Written only by turn_journal.ts into the replay observation slot; not a should-run verdict. Slot split is RFC Section 12 Q6.",
-        "block_replay": "Written only by turn_journal.ts into the replay observation slot; not a should-run verdict. Slot split is RFC Section 12 Q6.",
-        "quota_action_selection_deferred": "Reaches the slot through the error_code variable in cli_commands/quota.py; an error code doubling as a verdict.",
-        "quota_action_selection_rejected": "Reaches the slot through the error_code variable in cli_commands/quota.py; an error code doubling as a verdict."
+        "blocked_health": "Existing result of quota_effective_action; previously missed because the literal scan did not inspect declared return functions.",
+        "blocked_wait": "Existing result of quota_effective_action; previously missed because the literal scan did not inspect declared return functions.",
+        "control_plane_repair": "Existing result of quota_effective_action; previously missed because the literal scan did not inspect declared return functions.",
+        "operator_gate_notify": "Existing result of quota_effective_action; previously missed because the literal scan did not inspect declared return functions.",
+        "throttled_skip": "Existing result of quota_effective_action; previously missed because the literal scan did not inspect declared return functions."
+      },
+      "return_producers": [
+        "loopx/control_plane/quota/decision_summary.py::quota_effective_action",
+        "loopx/control_plane/quota/decision_summary.py::_task_orchestration_effective_action"
+      ],
+      "return_paths": {
+        "loopx/control_plane/quota/decision_summary.py::_task_orchestration_effective_action": [
+          0
+        ]
       }
     },
     "settlement_step_kind": {
@@ -667,22 +785,14 @@
         "field": "effective_action",
         "slots": [
           {
-            "slot": "decision.effective_action",
-            "vocabulary": "effective_action"
-          },
-          {
-            "slot": "agent_scope_frontier.effective_action",
-            "vocabulary": "agent_scope_frontier_action"
-          },
-          {
-            "slot": "turn_journal_replay.observation.effective_action",
-            "values": [
-              "observe_replay",
-              "block_replay"
+            "slot": "should_run.effective_action",
+            "vocabularies": [
+              "effective_action",
+              "agent_scope_frontier_action"
             ]
           }
         ],
-        "note": "One field name, three vocabularies, inside one Turn Envelope. The literal scan cannot tell slots apart, so the decision vocabulary lists the replay values with notes until Q6 splits them."
+        "note": "The root should-run/Turn Envelope action is an explicitly registered disjoint union of decision and frontier actions. Nested frontier v1 uses action only; legacy v0 fields remain readable without rewriting signed snapshots. Replay uses observation.decision, and selection failures use quota_skip plus error_code."
       }
     ],
     "subsets": [
@@ -743,27 +853,27 @@
       "meaning": "Decision fields the should-run documentation already calls legacy. Budgets count modules under loopx/ that still mention the field.",
       "fields": {
         "execution_obligation": {
-          "python_module_budget": 21,
+          "python_module_budget": 20,
           "typescript_module_budget": 1
         },
         "heartbeat_recommendation": {
-          "python_module_budget": 18,
+          "python_module_budget": 17,
           "typescript_module_budget": 1
         },
         "work_lane_contract": {
-          "python_module_budget": 32,
+          "python_module_budget": 29,
           "typescript_module_budget": 3
         },
         "external_evidence_observation": {
-          "python_module_budget": 11,
+          "python_module_budget": 8,
           "typescript_module_budget": 1
         },
         "goal_boundary": {
-          "python_module_budget": 35,
+          "python_module_budget": 30,
           "typescript_module_budget": 2
         },
         "protocol_action_packet": {
-          "python_module_budget": 7,
+          "python_module_budget": 5,
           "typescript_module_budget": 2
         }
       }
@@ -786,8 +896,32 @@
     "multi_value_fork_definitions": 10,
     "same_runtime_forks_semantic": 18,
     "conflicting_values_semantic": 2,
-    "multi_value_meaning": "Enums, named closed sets, Literal aliases, and TypeScript as-const arrays are vocabulary exactly as a NAME = \"value\" constant is, so they get the same collision rule. One name defined in two modules with identical values is a twin; with different values it is a fork.",
+    "multi_value_meaning": "Enums, named closed sets, Literal aliases, and TypeScript as-const arrays are vocabulary exactly as a NAME = \"value\" constant is, so they get the same collision rule. One name defined in two modules with identical values is a twin; with different values it is a fork. The semantic multi-value-fork budget excludes only names declared in scope_declarations.",
     "multi_value_forks_note": "The 4 counted forks include SOURCE_SURFACES, whose four definitions are four CLI commands each listing its own data sources; that is bounded-context reuse of one name, not drift. It stays in the budget until M0.5 adds a scope field (RFC Section 5) and must not be removed by renaming.",
-    "semantic_meaning": "same_runtime_forks_semantic and conflicting_values_semantic exclude module-local convention names such as SCHEMA_VERSION, COMMAND, or *_LABEL, which every module legitimately names for itself. The remaining names are shared vocabulary, where a duplicate is real drift rather than local naming; the unfiltered totals stay visible in the generated inventory summary."
+    "semantic_meaning": "same_runtime_forks_semantic and conflicting_values_semantic exclude module-local convention names such as SCHEMA_VERSION, COMMAND, or *_LABEL, which every module legitimately names for itself. The remaining names are shared vocabulary, where a duplicate is real drift rather than local naming; the unfiltered totals stay visible in the generated inventory summary.",
+    "multi_value_forks_semantic": 3
+  },
+  "scope_declarations": {
+    "SOURCE_SURFACES": {
+      "kind": "bounded_context",
+      "contexts": [
+        {
+          "id": "global_risks",
+          "owner": "loopx/global_risks.py::SOURCE_SURFACES"
+        },
+        {
+          "id": "global_todos",
+          "owner": "loopx/global_todos.py::SOURCE_SURFACES"
+        },
+        {
+          "id": "summary_all",
+          "owner": "loopx/summary_all.py::SOURCE_SURFACES"
+        },
+        {
+          "id": "pr_review",
+          "owner": "loopx/pr_review.py::SOURCE_SURFACES"
+        }
+      ]
+    }
   }
 }

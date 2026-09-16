@@ -328,3 +328,141 @@ def settle_governed_transition_proposals(
         by_proposal_id[proposal_id] = receipt
         checkpoint(receipts)
     return receipts
+
+
+STEWARD_TEAM_PLAN_PREVIEW_KIND = "steward_team_plan_preview"
+STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION = "steward_team_plan_preview_v0"
+STEWARD_TEAM_PLAN_LANE_LIMIT = 8
+STEWARD_TEAM_PLAN_PRIORITIES = ("P0", "P1", "P2", "P3")
+STEWARD_TEAM_PLAN_GAP_REASONS = (
+    "agent_not_registered",
+    "capability_not_granted",
+    "audience_not_authorized",
+)
+
+
+def _plan_text(value: object, label: str) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        raise ValueError(f"{label} must be a non-empty string")
+    if len(text) > 600:
+        raise ValueError(f"{label} exceeds the public-safe preview length")
+    validate_public_safe_value({"value": text}, path=label)
+    return text
+
+
+def validate_steward_team_plan_preview(
+    payload: object,
+    *,
+    registered_agent_ids: Sequence[str],
+    supported_action_kinds: Sequence[str],
+) -> dict[str, Any]:
+    """Validate one steward team preview, and refuse to invent its staffing.
+
+    The preview is the whole effect of this kind: it creates nothing, so it has
+    no materializer and no settlement phase. A lane whose Agent this Goal does
+    not register becomes a typed gap that keeps the work it did *not* staff
+    under ``declined_first_todo``, so the owner sees what was asked for and what
+    is missing instead of a lane that was quietly filled in or dropped.
+    """
+
+    plan = _mapping(payload, "steward_team_plan_preview")
+    if plan.get("schema_version") != STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION:
+        raise ValueError("steward team plan preview schema_version is invalid")
+    if plan.get("kind") != STEWARD_TEAM_PLAN_PREVIEW_KIND:
+        raise ValueError("steward team plan preview kind is invalid")
+    registered = {str(value) for value in registered_agent_ids}
+    action_kinds = {str(value) for value in supported_action_kinds}
+    lanes_value = plan.get("lanes")
+    if not isinstance(lanes_value, Sequence) or isinstance(lanes_value, (str, bytes)):
+        raise ValueError("steward team plan preview requires a lane list")
+    if not 1 <= len(lanes_value) <= STEWARD_TEAM_PLAN_LANE_LIMIT:
+        raise ValueError(
+            f"steward team plan preview requires 1..{STEWARD_TEAM_PLAN_LANE_LIMIT} lanes"
+        )
+    lanes: list[dict[str, Any]] = []
+    gaps: list[dict[str, str]] = []
+    seen_lanes: set[str] = set()
+    for raw_lane in lanes_value:
+        lane = _mapping(raw_lane, "steward_team_plan_lane")
+        lane_id = _plan_text(lane.get("lane_id"), "lane_id")
+        if lane_id in seen_lanes:
+            raise ValueError("steward team plan preview repeats a lane_id")
+        seen_lanes.add(lane_id)
+        agent_id = _plan_text(lane.get("agent_id"), "agent_id")
+        acceptance = _plan_text(lane.get("acceptance"), "lane acceptance")
+        declared_gap = lane.get("staffing_gap")
+        if declared_gap is not None:
+            gap = _mapping(declared_gap, "staffing_gap")
+            reason_code = str(gap.get("reason_code") or "")
+            if reason_code not in STEWARD_TEAM_PLAN_GAP_REASONS:
+                raise ValueError("staffing_gap reason_code is invalid")
+            if lane.get("first_todo") is not None:
+                raise ValueError("a lane that declares a gap may not declare work")
+            normalized = {
+                "lane_id": lane_id,
+                "agent_id": agent_id,
+                "acceptance": acceptance,
+                "staffing": "gap",
+                "gap_reason_code": reason_code,
+                "gap_note": _plan_text(gap.get("note"), "staffing_gap note"),
+            }
+            lanes.append(normalized)
+            gaps.append({"lane_id": lane_id, "reason_code": reason_code})
+            continue
+        first_todo = _mapping(lane.get("first_todo"), "first_todo")
+        text = _plan_text(first_todo.get("text"), "first_todo text")
+        priority = str(first_todo.get("priority") or "")
+        if priority not in STEWARD_TEAM_PLAN_PRIORITIES:
+            raise ValueError("first_todo priority is invalid")
+        task_class = str(first_todo.get("task_class") or "")
+        if task_class != "advancement_task":
+            raise ValueError("a lane's first bounded Todo must be an advancement_task")
+        action_kind = str(first_todo.get("action_kind") or "")
+        if action_kind not in action_kinds:
+            raise ValueError("first_todo action_kind is not supported by this host")
+        normalized_todo = {
+            "text": text,
+            "priority": priority,
+            "task_class": task_class,
+            "action_kind": action_kind,
+        }
+        if agent_id not in registered:
+            lane_result = {
+                "lane_id": lane_id,
+                "agent_id": agent_id,
+                "acceptance": acceptance,
+                "staffing": "gap",
+                "gap_reason_code": "agent_not_registered",
+                "declined_first_todo": normalized_todo,
+            }
+            lanes.append(lane_result)
+            gaps.append({"lane_id": lane_id, "reason_code": "agent_not_registered"})
+            continue
+        lanes.append(
+            {
+                "lane_id": lane_id,
+                "agent_id": agent_id,
+                "acceptance": acceptance,
+                "staffing": "ready",
+                "first_todo": normalized_todo,
+            }
+        )
+    envelope = _mapping(plan.get("quota_envelope"), "quota_envelope")
+    if not envelope:
+        raise ValueError("steward team plan preview requires a quota envelope")
+    validate_public_safe_value(envelope, path="quota_envelope")
+    preview = {
+        "schema_version": STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION,
+        "kind": STEWARD_TEAM_PLAN_PREVIEW_KIND,
+        "objective": _plan_text(plan.get("objective"), "objective"),
+        "lanes": lanes,
+        "gaps": gaps,
+        "quota_envelope": dict(envelope),
+        "stop_condition": _plan_text(plan.get("stop_condition"), "stop_condition"),
+        # A preview is never an effect: the contract states it, so a reader does
+        # not have to know which materializers happen to be registered.
+        "applies": False,
+    }
+    validate_public_safe_value(preview, path="steward_team_plan_preview")
+    return preview

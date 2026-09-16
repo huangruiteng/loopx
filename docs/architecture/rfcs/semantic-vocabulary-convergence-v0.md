@@ -1,13 +1,13 @@
 # RFC: Semantic Vocabulary Convergence and Commit-Time Drift Checks (v0)
 
 - **RFC status:** Draft
-- **Delivery maturity:** Partial (M0 registry, generated inventory, and drift smoke ship with this RFC)
+- **Delivery maturity:** Partial (M0 registry, computed inventory, and drift smoke ship with this RFC)
 - **Authors / owners:** LoopX contributors; control-plane kernel maintainers own approval
 - **Created:** 2026-09-15
-- **Last normative revision:** 2026-09-15
+- **Last normative revision:** 2026-09-16
 - **Implementation baseline:** `1dc6ad8d8`
 - **Related contracts:** `loopx/semantics/vocabulary_v0.json`,
-  `loopx/semantics/inventory_v0.json`,
+  `loopx/semantics/inventory.py`,
   `loopx/control_plane/turn_transaction_contract.json`,
   `loopx/control_plane/coordination/coordination_state_contract_v0.json`,
   [Turn Envelope v0](../../reference/protocols/turn-envelope-v0.md),
@@ -34,30 +34,32 @@ not amend normative sections.
 
 ## 1. Decision summary
 
-1. **What becomes authoritative.** Two files under `loopx/semantics/`. The
+1. **What becomes authoritative.** A curated registry and a computed inventory under `loopx/semantics/`. The
    curated registry `vocabulary_v0.json` names each kernel and cross-runtime
    vocabulary, the exact `module::Symbol` allowed to define it, the relations
    between vocabularies (same concept, shared field name, subset), the total
    projections, and the budgets the repository ratchets down. The generated
-   inventory `inventory_v0.json` maps every closed-set carrier under `loopx/`:
+   inventory maps every closed-set carrier under `loopx/`:
    string enums, `Literal` aliases, named closed sets, TypeScript `as const`
    arrays, and every constant name defined in more than one module. A public
    smoke, `examples/semantic-vocabulary-drift-smoke.py`, checks the code against
    both inside the default `pytest` sweep on every pull request; premerge and
    the full-public fleet are additional surfaces (Section 10). A change that widens a
-   vocabulary, forks a constant, adds a carrier, or weakens the registry must
-   edit the registry or regenerate the inventory in the same diff, so the
-   reviewer sees the semantic change as a change.
-2. **What remains unchanged.** Runtime behavior, wire formats, and the enum
-   classes themselves. Each enum keeps living in its owner module; the registry
-   is checked against code by AST and text scan, it does not generate code and
-   product code never imports it.
+   vocabulary, forks a constant, or changes a budget must carry the required
+   owner/registry edits in the same diff. Ordinary new carriers are discovered
+   automatically and do not require a generated snapshot commit (Q9).
+2. **Authority and generation.** Each enum lives in its owner module; the
+   registry is checked against code by AST and text scan, and product code never
+   imports it. The M1 generator derives the TypeScript effective-action binding
+   from the Python owner after checking registry parity. This does not change
+   wire values or move value authority to the registry; M2's shared contract
+   generation remains a later milestone.
 3. **Default and opt-in boundary.** The check is always on for the repository.
    It has no runtime flag because it never runs inside the product.
 4. **Principal constraint.** Fail closed, deterministic, and not weakenable by
    a data edit alone. An unregistered literal in either runtime, a second
    defining module, a budget overrun, a registry value no module carries, a
-   stale inventory, an owner declared without a symbol, or a coverage count
+   stale generated binding, an owner declared without a symbol, or a coverage count
    below the recorded floor each fails the smoke. The dispatch forms the scan
    recognises live in the smoke, not in the registry. The smoke reads only
    tracked sources and prints no private data.
@@ -172,8 +174,9 @@ the TypeScript runtime each own one spelling of the same idea.
   compares with `<=`, which lets a budget tightened below the anchor be raised
   back to the anchor later without any code edit. Equality makes every
   tightening a two-file diff and every loosening a code edit a reviewer sees.
-- **I6 Same-diff visibility.** A semantic change and its registry edit or
-  inventory regeneration land in one reviewable diff.
+- **I6 Same-diff visibility.** A semantic change and its required owner, registry or budget
+  edits land in one reviewable diff. Computed inventory reports are evidence,
+  not committed authority.
 - **I7 Deterministic and public-safe.** The check reads tracked sources only,
   needs no network or credentials, and its failure text names files and
   values, never private data.
@@ -181,7 +184,7 @@ the TypeScript runtime each own one spelling of the same idea.
   symbols, projections, relations, schema versions, and scanned suffixes is
   recorded as a floor. An owner is `module::Symbol` or `null`; a bare module
   path is rejected, and a null owner requires a literal scan. The dispatch
-  forms the scan recognises are fixed in the smoke. A registry edit therefore
+  forms the scan recognises are fixed in the scanner code. A registry edit therefore
   cannot silently narrow what the guard sees.
 - **I9 Both carrier shapes are measured.** A vocabulary reaches the code either
   as a string constant (`NAME = "value"`) or as a multi-value carrier (an enum,
@@ -205,7 +208,7 @@ the TypeScript runtime each own one spelling of the same idea.
   producer and must be registered as one. Enforced from M0.5.
 - **I12 Every kernel value is produced.** For a `kernel` vocabulary, every
   value not listed under `compatibility_only` has at least one production site
-  the fixed production forms recognise or a `variable_sourced_values` entry. A
+  the fixed production forms recognise or an executable witness at a registered input decoder. A variable-source note alone is not production evidence. A
   value that is only compared is dead or compatibility-only, never canonical.
   `skip` in `effective_action` is the first expected failure. Enforced from
   M0.5; at M0 the literal scan accepts a compared value as carried.
@@ -226,7 +229,7 @@ the TypeScript runtime each own one spelling of the same idea.
 ### In scope
 
 - The registry file, its schema, and the ownership rule for editing it.
-- The generated inventory, its generator with `--check`, and its unit test.
+- The computed inventory, optional report export/check commands, and their tests.
 - The drift smoke and its placement in the premerge and full-public fleets.
 - The vocabularies registered at M0: the four Turn-kernel sets
   (`turn_result_kind`, `turn_route`, `loop_disposition`, `effective_action`),
@@ -315,10 +318,10 @@ definitions in `global_risks.py`, `global_todos.py`, `summary_all.py`, and
 `pr_review.py` each list the data sources of that one CLI command, and the
 value sets are meant to differ. It is counted in `multi_value_forks` today and
 must not be "fixed" by renaming, because a rename lowers the number without
-changing the code's meaning. M0.5 adds a `scope` field to the registry with at
-least `global` and `bounded_context`, lets a bounded-context name be declared
-once with its owning contexts, and removes declared names from the fork
-budget (I14, the schema rows below, and the M0.5 row in Section 11). Until
+changing the code's meaning. The M0.5 scope slice adds top-level `scope_declarations` with at
+least `global` and `bounded_context`; a bounded-context name is declared once
+with its owning contexts, and declared names are removed from the semantic
+fork budget while the raw inventory count remains visible (I14, the schema rows below, and the M0.5 row in Section 11). Until
 then the fork budget is a ceiling that contains this one known
 misclassification, recorded in the registry's `inventory_ratchets` note.
 
@@ -360,6 +363,147 @@ when a value is added or removed after M0.5; `cross_module` only if promoted
 whose listed symbol is a journal or receipt writer marks the vocabulary
 `persisted`, which is the fact Q2 and Q10 wait on.
 
+### Executable production evidence during M0.5/M1
+
+The producer guard and the owner-carrier check have separate evidence. Defining
+an enum member proves membership, not production. For each vocabulary with
+producer metadata, the guard compares observed result values against `values`,
+rejects undeclared **function sites**, and checks that every non-compatibility
+value has an observed producer. A variable-source note is not liveness evidence.
+`return_producers` lists the registered functions whose scalar return expressions
+belong to this vocabulary; packet builders' unrelated return text is excluded.
+`return_paths` selects an explicit field/index path from a returned packet.
+`call_producers` names reviewed builder parameters; their module binding and
+actual signature are checked against tracked source. These declarations and
+their code anchors move together. Selectors equal the code-owned map, with an
+empty map for every other vocabulary, so additions also require a code change.
+An unconfirmed field-named keyword argument retains closedness/unknown evidence
+but cannot establish producer liveness or require producer registration. These
+are reviewed output contracts, not automatic proofs of arbitrary helper-body
+semantics. Local enum containers and
+arguments to arbitrary predicates do not establish production; a selected
+scalar must reach an observed output. Mutated or escaped mutable aliases remain
+unknown. Generation uses strict enum extraction and rejects unsupported members
+before writing any artifact, including when the second owner is invalid.
+
+Python field assignments (including subscript/attribute and annotated writes),
+dictionaries, call keywords, owner-member results and declared scalar returns
+are parsed with AST. Imported enum aliases resolve only to the registered owner;
+shadowed names, reassignments and unresolved calls remain unknown. Conditional
+results exclude the condition's literals. TypeScript object writes, assignments
+and declared returns use the repository's TypeScript parser rather than regex.
+Neither parser executes inspected source. These are syntactic result witnesses,
+not a proof of reachability or whole-program data flow.
+
+`uv run python examples/semantic-vocabulary-drift-smoke.py --report` lists unresolved
+production locations. Unresolved parts cannot supply missing value evidence; known
+conditional branches remain structural witnesses, not reachability proofs.
+The producer guard covers all six kernel entries using distinct evidence lanes:
+`effective_action`, `turn_route`, `loop_disposition`, and
+`agent_scope_frontier_action` have source witnesses; `turn_result_kind` also has
+executable input witnesses at the fixed `transaction._result_kind` decoder.
+For each registered value the real decoder must return the matching typed member;
+invalid probes must report rejection. This proves a permitted production path,
+not that a Host has emitted every member or that every host execution is valid.
+`input_producer` cannot select arbitrary code: the verifier is fixed in the smoke.
+
+`lease_action` is explicitly legacy/compatibility-only: in-repository runtime
+callers use separate acquire/renew/transfer/release command classes. Its four
+members remain available to the existing typed `LeaseModeGateCommand` input
+interface until M4 caller/migration review. No persisted usage is asserted.
+The producer list is empty only because every value carries an explicit reason
+and retirement milestone. A newly observed producer invalidates that declaration. Kernel families without producer metadata are printed as coverage pending; their
+owner parity must not be reported as I12/I13 completion. M0.5 remains incomplete
+until all required families meet its acceptance rows.
+
+The decision owner includes five existing results previously missed by the
+literal scanner: `blocked_health`, `blocked_wait`, `control_plane_repair`,
+`operator_gate_notify`, and `throttled_skip`. Registering them preserves the
+existing quota behavior. M1 removes the unproduced `skip` and synthetic
+`operator_gate` admission. The fallback consumer now recognizes the actual
+`quota_skip` action; a runnable scoped fallback must not keep a skip action.
+Legacy field retirement remains a separate acceptance obligation.
+
+Preparation for the TypeScript parser: `npm ci --ignore-scripts` from the
+repository root, using its lockfile. The scan itself needs no network or
+credentials. Python 3.11+ and the repository-supported Node runtime are required.
+
+### M1 action domains and compatibility
+
+#### Why this stage is necessary
+
+M1 makes callers read the appropriate field and lets later PRs distinguish a
+new decision from a new diagnostic. Expanding one string set cannot do this:
+copying `result_kind` or an arbitrary host action into the quota action field
+feeds different meanings into the same dispatch surface. Seeing an enum in a
+comparison also does not prove that the system produces its values. M1 separates
+these evidence roles and fixes the scoped fallback mismatch that recognized
+unproduced `skip` while the actual output was `quota_skip`.
+
+The boundary is deliberately limited: the root action remains the distinguishable
+`D ⊔ F` union without adding wire tags to every string; only load-bearing producers
+require registration, not every consumer; historical signed data remains readable.
+The checks cover finite vocabularies, supported output forms and generated artifact
+consistency. They do not prove whole-program semantic completeness, reachability of
+all branches or arbitrary variable-flow safety.
+
+The cost is regenerating bindings after owner changes and installing the locked
+TypeScript parser for local scans. Reusing existing CI jobs still adds job work and
+contributor repair effort; no new required job does not mean no new obligation.
+First classify a failure: replace bare actions with owner references; accompany a
+new decision with owner, producer and consumer validation; keep diagnostics in
+`error_code` and Turn results in `decision`. Use Section 10 regeneration commands
+for stale artifacts. Repair scanner false positives with a regression example,
+rather than widening the vocabulary, reducing coverage or relaxing budgets.
+
+#### Output contracts and compatibility boundaries
+
+Let `D` be the 32 decision values owned by `EffectiveAction`, and `F` the four
+values owned by `AgentScopeFrontierAction`. The root should-run and its envelope
+projection retain the existing action strings through `A = D ⊔ F`. The registry
+anchors the two member vocabularies and checks `D ∩ F = ∅`; hence the value
+identifies its domain without a new wire tag. The TypeScript bindings and union
+type derive from these owners, not an independently maintained third value list.
+This is the registered-union option in Q6. A union arm cannot establish another
+owner's producer liveness, and a canonical decision function's scalar return
+domain remains `D`.
+
+| Surface | Current contract | Compatibility |
+| --- | --- | --- |
+| Root should-run / Turn Envelope `effective_action` | Decision/frontier union `A` | Frontier verdicts retain their meaning and spelling |
+| Nested `agent_scope_frontier_v1.action` | Frontier domain `F`; one emitted action field | Readers prefer `action` and retain the old v0 alias as fallback |
+| Internal journal replay observation | Existing `decision=replay_legal\|replay_blocked` | Public inspection and stored journal shapes do not change |
+| Turn-result Effect observation | Turn verdict in `decision`; `effective_action=null` | Intentional projection change: read `decision` for the verdict; host action fields cannot author a quota decision |
+| Action-selection rejection or deferral | `effective_action=quota_skip`; diagnostic in `error_code` | Intentional CLI change: readers distinguish reasons using the unchanged diagnostic code |
+
+New frontier writes remove the redundant nested `effective_action` and advance
+the nested schema to v1. They do not normalize historical signed v0 documents:
+the envelope capsule still preserves both legacy keys when present, and journal
+resume returns the stored plan unchanged. Compatibility tests characterize old
+signatures before the migration, mutate signed fields to prove coverage, and use
+the real filesystem journal writer and resume reader. New v1 signatures change
+only for the declared nested schema/field reduction. No frontend setting owns
+this alias; the quota CLI and Markdown reader are covered by the live tests.
+
+The transient `effect.interpret_turn_result` projection previously copied either
+an arbitrary host action or `result_kind` into the quota action field. It now
+emits JSON null, preserved as `None` by the Python adapter. Its TypeScript return
+type fixes the action to null; quota observations retain their existing string
+action. The executor reads the result's `decision` and persists the normalized
+host result and plan, not this transient observation. Real host validation still
+rejects unsupported action fields, and executor/journal replay tests cover the
+unchanged no-spend wait path. This projection change does not migrate stored
+result, receipt or journal schema versions.
+
+The literal guard uses Python AST and the TypeScript compiler parser for bounded
+field writes, comparisons, membership and match/switch cases. It rejects bare
+action literals even when registered: import the owner instead. Conditions,
+unrelated fields, comments and source examples inside strings do not count as
+action values. This is a syntax boundary, not a whole-program data-flow proof;
+dynamic keys, aliases and unresolved expressions retain their declared limits.
+The generated bindings/glossary freshness check reuses the existing PR pytest
+and smoke path; this milestone adds no required CI job.
+
 ### Formal model and proof boundary
 
 The registry is a finite specification of a larger program semantics. Let
@@ -396,7 +540,7 @@ The minimum semantic obligations are:
 
 These are different proof obligations. M0 establishes owner-set equality,
 cross-runtime parity, the declared executable projection, and inventory
-freshness. Fixed literal forms and closed-set carriers provide bounded evidence,
+computed from the current tracked tree. Fixed literal forms and closed-set carriers provide bounded evidence,
 not whole-program proof. M0.5 adds bounded producer and scope checks. Producer
 discovery over dynamic code, behavioural equivalence of `same_concept`, and
 persisted-reader compatibility remain unproved until their source-to-sink
@@ -473,9 +617,10 @@ vocabulary key fails the smoke.
 | `vocabularies.<name>.tier`, `status` | `kernel`, `cross_runtime`, `cross_module`; `canonical`, `legacy`, `merge_candidate` | Closed enumerations |
 | `vocabularies.<name>.literal_scan` | `field`, roots, suffixes | Every literal the fixed dispatch forms capture is registered; every registered value is captured or variable-sourced (I2) |
 | `vocabularies.<name>.variable_sourced_values` | value to producer module | The producer still contains the quoted value |
-| `vocabularies.<name>.scope` (M0.5) | `global` or `bounded_context`; a `bounded_context` entry lists `contexts`, each with one owner symbol | Closed enumeration; declared bounded-context names are excluded from `multi_value_forks`; an undeclared multi-module name stays a fork (I14) |
-| `vocabularies.<name>.producers` (M0.5) | `path::Symbol` sites that write the field, required for `kernel` | Every site writes registered values only; every value not under `compatibility_only` has at least one site or a variable-sourced entry (I12, I13) |
-| `vocabularies.<name>.compatibility_only` (M0.5) | values kept so readers of persisted records still resolve them | Subset of `values`; zero production sites; each carries a `value_notes` reason and a retirement milestone |
+| `scope_declarations.<name>` (M0.5a) | `bounded_context` and its context IDs, each with one `module::Symbol` owner | Every declared name resolves to one inventory fork, names every defining module exactly once, and is excluded only from `multi_value_forks_semantic`; undeclared forks remain visible (I14) |
+| `vocabularies.<name>.input_producer` | Fixed executable decoder witness, currently `turn_result_kind` only | Every registered input produces the matching typed member and invalid probes reject; arbitrary callable selection is forbidden |
+| `vocabularies.<name>.producers` (M0.5) | `path::Symbol` sites that write the field, required for `kernel` | Every site writes registered values only; every value not under `compatibility_only` has at least one source site or executable input witness (I12, I13) |
+| `vocabularies.<name>.compatibility_only` (M0.5) | values retained for persisted readers or a legacy typed caller interface | Subset of `values`; zero production sites; each carries a `value_notes` reason and a retirement milestone |
 | `formal_model` | finite universes, role relations and hierarchy, semantic obligations, candidate decisions, and established/bounded/unknown/unproved claims | Exact schema, role hierarchy, candidate decisions, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
 | `formal_model.enforcement_policy` | blocking-now, blocking-next, advisory, and unproved lanes | Every formal invariant appears exactly once and its lane agrees with its enforcement stage |
 | `vocabularies.<name>.value_notes`, `deprecated_values` | per-value review notes; values slated for removal | Names must be registered values |
@@ -488,16 +633,17 @@ vocabulary key fails the smoke.
 | `dual_runtime_twins` | root and module budget | Tracked same-basename `.py`/`.ts` pair count is at or below budget; root and budget equal their code anchors (I5) |
 | `inventory_ratchets` | budgets for same-runtime fork names and definitions, conflicting names and definitions, schema-version forks, multi-value twins and forks, and the shared-vocabulary conflict and fork subsets | Inventory summary counts are at or below budget, and each budget equals its `BUDGET_ANCHOR` entry (I5, I9) |
 
-`loopx/semantics/inventory_v0.json`, `schema_version`
-`loopx_semantic_inventory_v0`, is generated by
-`scripts/generate_semantic_inventory.py` and must equal a fresh build. It
+The inventory retains `schema_version=loopx_semantic_inventory_v0`.
+The guard builds it in memory from the complete tracked `loopx/` tree, once per
+run, and uses that result for owner, scope and budget checks. No report file is
+read. `scripts/generate_semantic_inventory.py` exports the same map on demand. It
 lists Python enums, closed sets, `Literal` aliases, TypeScript `as const`
 arrays, and duplicate definitions split into cross-runtime twins, same-runtime
 forks, conflicting values, and multi-value twins and forks, one entry per line.
 Every multi-value collision carries each defining module and its value set, so
 the divergence itself is reviewable rather than only its count. Consumer counts are printed by `--report`; merge-candidate groups are available
-through `merge_candidate_groups` and not committed, so an
-ordinary consumer edit does not touch the file; merge candidates are advisory
+through `merge_candidate_groups`; all inventory output is uncommitted.
+Merge candidates are advisory
 because an equal value set is not proof of one concept. Single-module string
 constants are counted, not listed.
 
@@ -519,8 +665,8 @@ New vocabularies are added by a PR that adds the registry entry, raises the
 coverage floor, and, where a TypeScript owner exists, names its `as const`
 array. A vocabulary qualifies for curation when it is dispatched on by more
 than one module or crosses the Python/TypeScript boundary; everything else is
-mapped by the inventory without curation. Adding any carrier regenerates the
-inventory in the same PR.
+mapped by the inventory without curation. Adding a carrier is discovered
+on the next full-tree scan; genuine shared-contract changes still need review.
 
 ## 6. Alternatives and design choices
 
@@ -533,7 +679,7 @@ inventory in the same PR.
 | Grep-based lint in CI without a registry | Encodes the allowed set in the linter, which becomes a second registry with no review trail. |
 | Extend `maintainability_ratchet.py` instead of a new registry | Its subject is module metrics and dependency direction with per-module ceilings; vocabulary shape needs values, owners, and relations. The two share the ratchet idea, not the data model. Merging exception lifecycles is Q7. |
 | Put the scan regex in the registry | A regex in data can be narrowed in the same edit that widens a vocabulary; the M0 review showed the first pattern missed every TypeScript `===` site. Forms are fixed in the smoke and the suffix set is floored. |
-| Commit consumer counts in the inventory | Every consumer edit would churn the file and make the freshness check noise. Counts stay advisory via `--report`. |
+| Commit the computed inventory or consumer counts | Structural churn adds merge conflicts without new authority. Compute the full tree and expose optional reports; consumer counts remain advisory. |
 
 ## 7. Safety, privacy, and compatibility
 
@@ -541,7 +687,7 @@ inventory in the same PR.
   with the check present or absent.
 - The scanner uses `git ls-files --cached -z` and reads the indexed source paths
   from the working tree. Untracked and ignored files are excluded; stage a new
-  source path before regenerating the inventory. Tracked symlinks and invalid
+  source path before running the inventory scan. Tracked symlinks and invalid
   Python syntax fail closed. A checkout with Git metadata is required.
 - Literal and TypeScript carrier scans recognize both single and double quotes.
   They remain structural text scans, not complete parsers or data-flow analysis.
@@ -573,14 +719,14 @@ inventory in the same PR.
 | Claim | Test or evidence | Required result | Boundary / exclusions |
 | --- | --- | --- | --- |
 | Registry and inventory match the code at baseline | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` with coverage, ratchet, budget, and twin report | Proves parity for registered vocabularies and mapped carriers only |
-| Inventory is fresh | `uv run python scripts/generate_semantic_inventory.py --check` | exit 0 | Structural map only |
+| Inventory is computed on demand | `uv run python scripts/generate_semantic_inventory.py` | valid JSON on stdout, no repository writes | Full tracked tree, not only the PR diff |
 | Scanner classification rules | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass | Fixture repository; rules from this RFC, not from output |
 | A widened `effective_action` set fails closed in Python | Add an unregistered literal via `==`, membership, or conditional expression | Failure names the value and file | Mutation exercise; not a committed test |
 | A widened `effective_action` set fails closed in TypeScript | Add an unregistered literal via `===` or a ternary | Same | Same |
-| A forked constant fails closed | Redefine `TURN_ENVELOPE_SCHEMA_VERSION` or `HANDOFF_MODES` in a non-owner module, regenerate the inventory | Failure lists the extra defining module or the fork budget | Same |
+| A forked constant fails closed | Redefine `TURN_ENVELOPE_SCHEMA_VERSION` or `HANDOFF_MODES` in a non-owner module, run the smoke | Failure lists the extra defining module or the fork budget | Same |
 | Python and TypeScript owners cannot diverge | Remove one entry from a registered `as const` array, or widen a registered enum | Failure names the missing or unregistered value | Same |
 | The registry cannot be weakened by data alone | Declare a bare-module owner; drop an owner; narrow suffixes to `.py`; rename a vocabulary another relation references; add an unknown key | Each fails naming the rule | Same |
-| A new carrier is visible | Add an enum without regenerating | Failure says the inventory is stale | Same |
+| A new carrier is visible | Add a tracked enum without exporting a report | Current scan includes it; no freshness-only failure | A duplicate spanning changed and unchanged files still fails its budget |
 | Conflicting spellings cannot grow | Add a third value for an already-conflicting name, regenerate | Failure names the definitions budget | Same |
 | A multi-value collision cannot grow | Define one closed-set name in two modules with divergent values, or with equal values, and regenerate | `multi_value_forks` or `multi_value_twins` fails naming the new name | Mutation exercise; not a committed test |
 | The registry cannot relax its own ratchet | Lower any `coverage_floor` count, raise any `inventory_ratchets` budget, or raise a retirement budget, in the same diff that removes the coverage it counts | `COVERAGE_ANCHOR`, `BUDGET_ANCHOR`, or `RETIREMENT_ANCHOR` fails naming the anchored value | Mutation exercise; moving an anchor is a code edit a reviewer sees |
@@ -590,12 +736,12 @@ inventory in the same PR.
 | Measurement covers both carrier shapes and filters local naming | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass, including the collision and module-local-convention fixtures | Rules come from this RFC, not from scanner output |
 | No behavior change from the two owner fixes | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `uv run --extra test loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
 | Docs governance accepts the RFC pair | `python3 examples/docs-governance-smoke.py` | pass | Checks mirror, links, index |
-| Retirement budgets count substrings, not identifiers | `goal_boundary` counted with `in file.text` and with `\bgoal_boundary\b` | 35 vs 30 Python modules on the baseline | Known boundary; M3's zero-reader gate needs the identifier count, tracked in Section 12 |
-| The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and regenerate | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
+| Retirement budgets use standalone field tokens | `count_identifier_modules()` uses identifier boundaries for the six fields | `goal_boundary`: 30 Python modules under the new metric; the old substring metric was 35 | Conservative lexical measure; it removes compound-name false positives but does not prove semantic reader absence |
+| The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and scan | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
 | A registered value nobody produces fails (M0.5) | Run the production-form scan on the baseline | Fails naming `effective_action` and `skip`; passes after `skip` is removed or listed `compatibility_only` | First expected I12 failure; a compared-only value is not carried |
 | A producer of an unregistered value fails (M0.5) | Write `effective_action: "brand_new"` in a listed producer site | Fails naming the site and the value even though no consumer compares it | I13; production is stricter than comparison |
-| A bounded-context name leaves the fork budget only by declaration (M0.5) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | The declaration lowers `multi_value_forks` to 3; the rename alone does not | I14; the honest fix is a registry edit a reviewer sees, the rename is code without registry change |
-| An upstream merge can stale the committed inventory | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Measured cost of committing a snapshot; the handling rule is Section 10 and Section 12 Q9 |
+| A bounded-context name leaves only the semantic fork budget by declaration (M0.5a) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | Raw `multi_value_forks` stays 4, `multi_value_forks_semantic` is 3; a rename alone changes neither semantic accounting nor declaration | I14; the honest fix is a registry edit a reviewer sees, the rename is not a repair |
+| Historical committed snapshots could become stale across merges | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Historical cost motivating Q9; current checks compute the combined tree without a committed snapshot |
 | The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, candidate decision, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
 
 Known limits, stated so the check is not over-trusted:
@@ -643,19 +789,23 @@ for a diff touching `loopx/control_plane/` alone, and the fleet workflow is
 deliberately not a PR-required check. A fleet-discovered smoke is not a
 commit-time check until a required PR job collects it.
 
-**Merge-order hazard.** `inventory_v0.json` is a committed snapshot of the
-whole `loopx/` tree, and the smoke fails when the tree and the snapshot differ.
-Two pull requests that each add a carrier and each regenerate the inventory are
-both green against the `main` they were built on; whichever merges second
-leaves `main` with a snapshot missing the first one's entries, and the sweep on
-`main` is red until someone regenerates. On the last twenty merges to
-`upstream/main`, eight changed at least one carrier, so this is a weekly event,
-not a corner case. The first upstream sync of this branch reproduced it: twelve
-merged commits added one enum and three closed sets and the check failed
-until regenerated. The handling rule is Section 12 Q9; until it is decided, the
-rule is that the person who merges a PR after a red `main` regenerates the
-inventory in a follow-up commit that touches only `inventory_v0.json`, and the
-smoke's failure text names that command.
+**On-demand inventory (Q9).** The former committed snapshot imposed a second
+synchronization obligation on otherwise valid PRs. It is removed. Let `f(T)` be
+the full tracked-tree inventory and `G(f(T), R)` the existing registry, owner,
+scope and budget predicates. Checks still evaluate `G(f(T), R)`; only the extra
+condition `I_committed = f(T)` disappears. The same computed map feeds the
+checks, so stale or missing local reports cannot hide a new fork. This does not
+prove that independently valid branches cannot introduce a semantic conflict
+when combined: validate the combined tree normally. Never replace the full-tree
+scan with a diff-only scan.
+
+For inspection, run `uv run python scripts/generate_semantic_inventory.py` for
+JSON stdout or append `--output .local/semantic-inventory.json` for an optional
+report. `--output <path> --check` compares that explicit report without writing;
+`--check` alone fails with migration guidance. Reports may be attached to CI
+artifacts, but are neither committed nor required to run semantic checks.
+Bindings and the glossary remain committed generated contracts with freshness
+checks; this decision concerns only the repository census. No new CI job is added.
 
 **Interpreter and checkout.** Run the commands above from the target worktree
 with `uv run`; Python compatibility comes from `pyproject.toml` (`>=3.11`),
@@ -666,12 +816,26 @@ is compatible. See [local validation](../../development/testing-and-quality.md#l
 for setup, interpreter/source readback, and lockfile boundaries. Historical
 receipts below retain the commands actually executed.
 
+For an already provisioned environment, `bash scripts/loopx-python.sh --exec
+<python arguments>` selects a compatible installed interpreter, including
+`.venv/bin/python`, or honors `LOOPX_PYTHON`. That selector installs neither
+Python nor dependencies. Fleet and premerge child commands can retain `python3`
+because the selected project or CI environment supplies it on `PATH`.
+
+The TypeScript effective-action binding and the [glossary](../../reference/glossary.md)
+are generated with `uv run python scripts/generate_semantic_bindings.py`.
+Run it after changing the Python owner or registry. Carrier changes are scanned
+automatically; exporting an inventory report is optional. The existing drift smoke and PR pytest sweep check freshness;
+no additional required CI job is introduced. Install the locked Node dependencies
+with `npm ci --ignore-scripts` before running the TypeScript production scan.
+
 ## 11. Normative delivery plan
 
 | Milestone | Shipped behavior | Entry gate | Exit evidence | Rollback |
 | --- | --- | --- | --- | --- |
-| M0 | Registry with 26 vocabularies and 9 relations, generated inventory with `--check`, drift smoke with fixed dispatch forms and coverage floor, two owner forks removed, RFC index entry | This RFC opened | Section 9 rows green; 20 mutation classes fail closed | Delete the smoke, `loopx/semantics/`, the generator, and its test |
-| M0.5 | `scope` with `global` and `bounded_context` and per-context owners; `producers` and `compatibility_only` on `kernel` vocabularies; production-form scan with the two role checks (I12, I13); retirement budgets counted by identifier with all six anchors lowered in one diff (Q11); merge-order rule from Q9 written into Section 10 | M0 merged; Q9 decided or its interim rule accepted | Smoke green with I11 to I14 enforced; `skip` resolved; `multi_value_forks` at 3 by declaration; Section 9 role rows green; `turn_route` persistence answered for Q2 | Remove the three fields and the role checks; budgets return to the M0 anchors |
+| M0 | Registry with 26 vocabularies and 9 relations, computed inventory with optional export, drift smoke with fixed dispatch forms and coverage floor, two owner forks removed, RFC index entry | This RFC opened | Section 9 rows green; 20 mutation classes fail closed | Delete the smoke, `loopx/semantics/`, the generator, and its test |
+| M0.5a | `scope_declarations` with `bounded_context` and per-context owners; semantic fork count separated from raw inventory count | M0 merged | Smoke checks every declared context owner; raw `multi_value_forks` remains 4 and `multi_value_forks_semantic` is 3; undeclared forks still fail the budget | Remove the scope declarations and semantic-fork budget |
+| M0.5b | `producers` and `compatibility_only` on `kernel` vocabularies; production-form scan with the two role checks (I12, I13); retirement budgets counted by identifier with all six anchors lowered in one diff (Q11); merge-order rule from Q9 written into Section 10 | M0.5a complete; Q9 decided or its interim rule accepted | Smoke green with I11 to I14 enforced; `skip` resolved; Section 9 producer rows green; `turn_route` persistence answered for Q2 | Remove producer fields and role checks; budgets return to the pre-M0.5b anchors |
 | M1 | `EffectiveAction` typed enum in one owner module; the replay observation and frontier slots split off (Q6); producers and consumers import it; registry `literal_scan` tightened to the enum | M0.5 merged; owner module chosen (Q3); slot split decided (Q6) | Smoke green; zero bare `effective_action` literals outside the owner; parity fixtures for status/should-run unchanged | Revert to literals; registry keeps the set |
 | M2 | Route-to-disposition projection, the `decide_loop_disposition` decision table, and the cross-runtime sets published through a shared contract with generated Python and TypeScript bindings, following the coordination contract generator | M1 merged; Q2 and Q7 decided | Generator `--check` and smoke green; `settlement.ts` and `transaction.py` read the generated set | Regenerate from prior contract |
 | M3 | Per-field retirement of legacy should-run fields, one field per PR, budgets lowered to zero and the field removed | Field has zero external readers proven by producer/reader research | Schema-reduction record per `AGENTS.md`; Appendix B entry | Restore field from the last writer |
@@ -684,7 +848,7 @@ vocabulary property the smoke can check. Rows marked *open* wait on a Section
 
 | Surface | Baseline (`1dc6ad8d8`) | Target when this RFC closes | Reached by |
 | --- | --- | --- | --- |
-| `effective_action` values | 33 literals, no owner symbol | one enum owner; `skip`, `observe_replay`, `block_replay`, and the two `quota_action_selection_*` codes gone from the decision slot; about 28 values | M1 |
+| `effective_action` values | 33 literals, no owner symbol | one enum owner; `skip`, `observe_replay`, `block_replay`, and the two `quota_action_selection_*` codes gone from the decision slot; 32 decision values after accounting for the five previously missed producers and retiring the synthetic operator_gate value | M1 |
 | `effective_action` slots in one envelope | 3 vocabularies under one field name | 1, or a registered union if Q6 keeps the field | M1 (Q6) |
 | Turn vocabularies | 3 sets, 28 values, 21 distinct, 7 redundant spellings | 3 sets kept; projection and decision table generated and checked; spellings unchanged unless Q10 sets a merge | M2 (Q2, Q10 *open*) |
 | Same-runtime forks, semantic | 18 names | 0 | baseline PRs |
@@ -774,34 +938,37 @@ introduce a competing target state.
    `wait`), and `stop`, `terminal`, `contract_error` exist on one side only.
    The `same_concept` relations record the four shared verdicts.
    Recommendation: keep both, publish the projection in M2, revisit after the
-   managed-step consumer matures. Needed before M2. The stated reason for
-   keeping both is that merging would touch persisted Turn records; that
-   premise is unverified. Before deciding, the M0.5 production-form scan (I12,
-   Section 5) applied to `turn_route` should establish
-   whether `turn_route` is ever written to the journal or a receipt, or only
-   flows in-process; if the latter, the cost of a merge is far lower than this
-   RFC assumes and Q10 applies.
-3. **Owner module for `EffectiveAction`.** The registry declares no owner
-   today because no symbol exists; the literal scan is the only check.
-   Options: `quota/should_run_packet.py` (largest producer), a new
-   `quota/effective_action.py`, or the TypeScript `turn_envelope.ts` with a
-   Python import per the migration RFC. Recommendation: TypeScript owner with
-   generated Python binding only if M2 lands first; otherwise
-   `quota/effective_action.py`. Needed before M1.
-4. **Companion glossary.** Whether to add `docs/reference/glossary.md`
-   generated from the registry `meaning` fields and the inventory. Owner: docs
-   maintainers. Recommendation: yes, in M1, generated so it cannot drift.
+   managed-step consumer matures. The persistence premise is now established:
+   `run_loopx_turn_once` writes `plan: dict(plan)` through the TypeScript journal
+   writer, including `plan.route.kind`; `load_loopx_turn_plan_from_journal`
+   restores that route. The executor replay regression checks an actual journal
+   on disk and the resume reader. Keep the three vocabularies and publish the
+   non-injective projection in M2; any later renaming needs a persisted-plan
+   migration, not just an in-process enum refactor. This evidence does not prove
+   compatibility of every external reader or every other persisted field.
+3. **Owner module for `EffectiveAction`.** The implementation uses
+   `quota/effective_action.py`, matching the pre-generation option. Its runtime
+   callers serialize `.value` to preserve existing strings. TypeScript consumers
+   import `quota/effective_action.generated.ts`, generated from that enum with
+   member/value parity checked. M2 may generate both bindings from the shared
+   contract, retaining the existing import paths. No
+   second independent value list may be introduced into a runtime module.
+4. **Companion glossary.** `docs/reference/glossary.md` is generated from the
+   registry's curated meaning, owner, value and compatibility metadata. It covers
+   registered vocabularies; the inventory remains the wider structural map.
+   The existing smoke rejects stale output. Edit the owner/registry and regenerate
+   rather than maintaining a second prose authority. Owner: docs maintainers.
 5. **Term-family naming rule.** Whether new identifiers in the `gate`,
    `scope`, `packet`, `handoff`, `settlement` families must cite a glossary row
    in review. This is a review rule, not a smoke; recommendation is to adopt it
    in the first-review roster once the glossary exists.
-6. **Split the three `effective_action` slots.** The decision slot, the
-   `agent_scope_frontier` slot, and the replay observation slot share one field
-   name in one Turn Envelope and carry three vocabularies; `skip` is compared
-   but never produced. Options: rename the observation and frontier slots,
-   or keep one field with a registered union. Owner: Turn Envelope owner.
-   Recommendation: rename in M1 so the enum in Q3 has one meaning. Needed
-   before M1.
+6. **Action slot decision (Q6).** Keep the root should-run/Turn Envelope field
+   as the anchored, disjoint decision/frontier union. Nested frontier v1 uses
+   its existing `action`; journal replay uses its existing `observation.decision`.
+   No redundant replacement field is introduced. Preserve historical v0 signed
+   capsule fields on read; new writes use the versioned reduced shape. See the
+   M1 compatibility table and tests above. This decision does not authorize
+   unrelated legacy-field retirement or Turn outcome enum merging.
 7. **Relation to `maintainability_ratchet.py`.** Whether the inventory
    ratchets adopt its reviewed exception lifecycle (`retirement_plan`, stale
    exception detection) or stay plain budgets. Recommendation: adopt it in M2
@@ -811,30 +978,23 @@ introduce a competing target state.
    with three or more external consumer modules or a cross-runtime twin must be
    curated. Recommendation: yes as a review rule now, enforced by the smoke
    only after a quarter of inventory history exists. Owner: kernel maintainers.
-9. **Inventory freshness across merges.** The committed snapshot goes stale
-   when two carrier-adding PRs merge in sequence (Section 10, eight of the last
-   twenty upstream merges). Options: (a) branch protection requires the PR to
-   be up to date with `main`, which removes the hazard and slows every PR;
-   (b) the merger owns a regenerate-only follow-up commit, which keeps the
-   snapshot in git history and accepts a red `main` for minutes; (c) the
-   inventory is not committed and CI generates it for the PR diff only, which
-   loses `git blame` on carriers. Recommendation: (b) now, (a) if red `main`
-   exceeds once a week. Owner: repository maintainers. This is an operations
-   decision, not a code change; it belongs in the tracking issue's decision
-   list, not its task list.
+9. **Inventory freshness across merges (Q9).** Adopt on-demand full-tree
+   computation and optional untracked reports. Retire the committed census and
+   its equality obligation; preserve semantic predicates, roots, floors and
+   budgets. This supersedes regenerate-after-merge and explicitly rejects the
+   old option's diff-only scan. Section 10 defines commands and proof limits.
 10. **Target state for the Turn vocabularies.** Section 11's target table
    keeps three sets and seven redundant spellings by default because Q2
-   recommends keeping both. If the M0.5 production-form scan in Q2 shows `turn_route` is
-   not persisted, the maintainers should choose between (a) three sets with a
-   generated projection, the current plan, and (b) a two-phase merge (dual-
-   write, then retire) to one spelling per concept. Without this decision the
-   RFC has budgets but no definition of done for its headline problem.
+   recommends keeping both. Q2's writer/readback evidence shows that `turn_route`
+   is persisted. The implementation therefore retains three distinct value sets
+   and generates their projection; it does not merge spellings. A future proposal
+   to merge them must provide a dual-read/versioned migration and reader proof.
    Owner: Turn driver owner. Needed before M2 closes.
-11. **Retirement budgets by identifier.** The six legacy-field budgets count
-   `field in file.text`; `goal_boundary` matches `goal_boundary_repair`. M3's
-   zero-external-reader gate needs word-boundary counting, which lowers all six
-   anchors in one diff. Recommendation: do it before the first M3 PR.
-   Owner: kernel maintainers.
+11. **Retirement budgets by identifier.** The six legacy-field budgets now use
+   `count_identifier_modules()`, so `goal_boundary_repair` is not counted as
+   `goal_boundary`. This is a conservative lexical metric, not proof of zero
+   semantic readers; computed accesses remain an evidence gap. Owner: kernel
+   maintainers.
 
 ## Appendix A: Execution ledger (non-normative)
 
@@ -997,7 +1157,7 @@ introduce a competing target state.
 
 | Date | Decision | Owner / approval | Alternatives | Normative sections changed |
 | --- | --- | --- | --- | --- |
-| — | none recorded | — | — | — |
+| 2026-09-16 | Q9: compute the full inventory on demand; retire the committed census | Implementation for [maintainer feedback](https://github.com/huangruiteng/loopx/pull/4360#issuecomment-5692062394); PR review pending | Committed snapshot with post-merge regeneration; diff-only scan rejected | 1, I6, 3, 5, 9, 10, 12 |
 
 ## Appendix C: Evidence registry
 

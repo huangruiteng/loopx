@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..quota.effective_action import EffectiveAction
 
 import json
 from collections.abc import Mapping
@@ -96,7 +97,7 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
     if should_run:
         if not delivery_allowed or not must_attempt:
             return LoopXTurnRoute.BLOCKED
-        if effective_action == "governed_capability_intent":
+        if effective_action == EffectiveAction.GOVERNED_CAPABILITY_INTENT.value:
             intent = _mapping(action.get("capability_intent"))
             if (intent.get("schema_version") != "pending_capability_intent_projection_v0"
                 or intent.get("goal_id") != envelope.get("goal_id")

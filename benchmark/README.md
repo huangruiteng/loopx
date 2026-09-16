@@ -1,7 +1,7 @@
 # Benchmark research workspace
 
-This is LoopX's active workspace for benchmark practice and narrow runner
-examples. Its authority is the
+This is LoopX's workspace for active benchmark practice, narrow runner
+examples, and explicitly identified immutable experiment archives. Its authority is the
 [Long-Horizon Harness Benchmark and Research Program v0](../docs/architecture/rfcs/long-horizon-harness-benchmark-research-program-v0.md).
 
 The workspace follows three rules:
@@ -9,7 +9,9 @@ The workspace follows three rules:
 1. benchmark-native task, runner, verifier, and score semantics remain
    authoritative;
 2. current real-run practice outranks legacy LoopX benchmark abstractions;
-3. only generalized code and public-safe conclusions enter this directory.
+3. active work admits only generalized code and public-safe conclusions;
+   immutable historical experiment snapshots may also be stored here under
+   the archive placement rules below, without becoming active practice.
 
 Reusable product policy stays in
 [`benchmark-toolkit`](../docs/capabilities/benchmark-toolkit/README.md). The
@@ -64,6 +66,36 @@ by itself establish a C2 uplift claim.
   CLI and proves that the prompt, discovered skills, and release-snapshot CLI
   belong to one pinned product path.
 
-Legacy runners and dated packets are archived under
-[`deprecate/benchmark-legacy/`](../deprecate/benchmark-legacy/README.md). They are
-candidate evidence only, not the architecture for new work.
+## Archive placement
+
+This section owns benchmark archive placement. Two kinds of archive have
+different homes:
+
+- The retired benchmark implementation, legacy abstractions, and standalone
+  dated research packets belong under
+  [`deprecate/benchmark-legacy/`](../deprecate/benchmark-legacy/README.md).
+- A named, immutable experiment snapshot may live in a versioned directory
+  under `benchmark/` when its exact source bytes are needed to inspect a
+  historical result. This is a historical reference, not an active runner,
+  reusable implementation, or entry in the Current work list.
+
+An experiment snapshot stored here must meet all of these conditions:
+
+1. Its files are public-safe: no credentials, private configuration, raw task
+   text, trajectories, or private evidence.
+2. Companion documentation outside the frozen tree identifies its version,
+   provenance and provenance limits, runtime dependencies, and known defects.
+   Applicable withdrawn-result notices appear at the beginning of that document.
+3. A pinned content hash and a read-only check verify the preserved bytes and
+   executable modes. The check states its coverage; identity or syntax checks
+   do not prove runtime correctness or validate historical scores.
+4. The snapshot remains inert: no product imports, automatic task/model
+   execution, or active CI benchmark runs. Later execution fixes require a
+   separately identified change and must not overwrite the historical bytes
+   or inherit their result attribution.
+
+The [DeepSWE GPT xhigh v1 archive note](deepswe-gptxhigh-versions.md) registers
+`deepswe-gptxhigh-v1/` under this rule. Its original files and result table are
+preserved for inspection; the companion notice governs their current evidence
+status. Neither archive category is the architecture for new work or grants
+runner, verifier, submission, or publication authority.

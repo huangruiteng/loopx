@@ -23,7 +23,7 @@ import type { JsonObject } from "../effect_program.ts";
 import { AuthorityStoreProtocolError, canonicalAuthorityObject,
   canonicalAuthorityObjectList, requireAuthorityStoreId } from "./authority_store_codec.ts";
 import { applyAuthorityStateDelta, authorityStateCheckpointCursor, authorityStateDelta,
-  authorityStateDigest, decodeAuthorityStateDelta,
+  authorityStateDeltaReconstructs, authorityStateDigest, decodeAuthorityStateDelta,
   isAuthorityStateCheckpoint } from "./authority_state_log.ts";
 import {
   SQLITE_AUTHORITY_STORE_SCHEMA,
@@ -197,7 +197,7 @@ function executeSqliteAuthorityMigration(
         // commit: replaying the stored delta must reproduce this projection
         // byte for byte. A retained projection the new format cannot read
         // would otherwise be copied into V2 and only fail on a later read.
-        if (authorityStateDigest(applyAuthorityStateDelta(previous ?? {}, delta)) !== stateDigest) {
+        if (!authorityStateDeltaReconstructs(previous ?? {}, delta, projection)) {
           throw new AuthorityStoreProtocolError("V1 authority state delta does not reconstruct its commit");
         }
         if (isAuthorityStateCheckpoint(cursor)) {

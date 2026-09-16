@@ -2894,3 +2894,155 @@ def test_manager_explicit_audience_scope_still_requires_live_binding(tmp_path):
     assert authorized_manager_goal_ids(snapshot,session,runtime_root=tmp_path)==['goal-alpha','goal-beta']
     session['session_id']='different-session'
     assert authorized_manager_goal_ids(snapshot,session,runtime_root=tmp_path)==[]
+
+
+def _machine_selects_steward_executor(runtime_root: Path, endpoint: str = "dsh") -> None:
+    """Store one machine-level steward executor, as a machine surface would."""
+
+    from loopx.capabilities.machine_configuration.builtins import (
+        build_builtin_machine_configuration_registry,
+    )
+    from loopx.capabilities.machine_configuration.store import (
+        configure_machine_configuration,
+    )
+
+    registry = build_builtin_machine_configuration_registry()
+    configuration = {
+        "schema_version": "loopx_machine_configuration_v0",
+        "namespaces": {
+            "steward_executor": {
+                "schema_version": "steward_executor_machine_defaults_v0",
+                "executor_endpoint": endpoint,
+                "executor_model": None,
+                "executor_reasoning_effort": None,
+            }
+        },
+    }
+    preview = configure_machine_configuration(
+        runtime_root=runtime_root,
+        configuration=configuration,
+        registry=registry,
+        execute=False,
+    )
+    configure_machine_configuration(
+        runtime_root=runtime_root,
+        configuration=configuration,
+        registry=registry,
+        execute=True,
+        expected_plan_revision=str(preview["plan_revision"]),
+    )
+
+
+def test_a_manager_connection_runs_on_the_executor_this_machine_selected(
+    tmp_path: Path,
+) -> None:
+    """The machine, not the connection record, decides where the steward answers."""
+
+    kwargs, _state, bindings = _manager_fixture(tmp_path)
+    runtime_root = tmp_path / "runtime"
+    _machine_selects_steward_executor(runtime_root)
+
+    def decision() -> dict[str, Any]:
+        return decide_lark_topic_event(
+            target_payload=read_goal_channel_targets(kwargs["target_path"]),
+            binding_payloads={"goal-alpha": bindings},
+            event={
+                "chat_id": CHAT_ID,
+                "message_id": "om_manager_machine_endpoint",
+                "mentions": [{"id": APP_ID}],
+            },
+            runtime_root=runtime_root,
+        )["route"]
+
+    # The connection was created while the shipped default was still the
+    # interactive CLI endpoint, and it keeps that value on disk.
+    connection = binding_for_goal(bindings, "goal-alpha")
+    assert connection is not None
+    assert connection["routing"]["executor_endpoint_id"] == "codex"
+
+    route = decision()
+
+    assert route["executor_endpoint_id"] == "dsh"
+    assert route["executor_endpoint_source"] == "machine_configuration"
+    # A stale record cannot outrank the machine selection on a later event either.
+    assert decision()["executor_endpoint_id"] == "dsh"
+
+
+def test_a_manager_connection_write_records_the_machine_resolution(
+    tmp_path: Path,
+) -> None:
+    kwargs, _state = _upgrade_fixture(tmp_path, agent_id="agent-alpha", peers=True)
+    runtime_root = tmp_path / "runtime"
+    _machine_selects_steward_executor(runtime_root)
+
+    connected = connect_lark_goal_topic(
+        **kwargs,
+        conversation_kind="manager",
+        session_id="manager-session",
+        runtime_root=runtime_root,
+    )
+
+    assert connected["ok"] is True
+    stored = read_goal_channel_binding(kwargs["binding_path"])
+    connection = binding_for_goal(stored, "goal-alpha")
+    assert connection is not None
+    routing = stored["bindings"]["goal-alpha"]["connections"][
+        connection["connection_id"]
+    ]["routing"]
+    assert routing["executor_endpoint_id"] == "dsh"
+    assert routing["executor_endpoint_source"] == "machine_configuration"
+
+    # A caller may restate the machine selection, but it may not overrule it
+    # from a connection record the route would then have to ignore.
+    restated = connect_lark_goal_topic(
+        **kwargs,
+        conversation_kind="manager",
+        session_id="manager-session",
+        runtime_root=runtime_root,
+        executor_endpoint_id="dsh",
+    )
+    assert restated["ok"] is True
+    with pytest.raises(ValueError, match="machine steward executor setting owns"):
+        connect_lark_goal_topic(
+            **kwargs,
+            conversation_kind="manager",
+            session_id="manager-session",
+            runtime_root=runtime_root,
+            executor_endpoint_id="codex",
+        )
+
+
+def test_an_authorized_manager_session_must_run_on_the_machine_executor(
+    tmp_path: Path,
+) -> None:
+    from loopx.extensions.lark.manager_routing import authorized_manager_goal_ids
+
+    kwargs, _state, bindings = _manager_fixture(tmp_path)
+    runtime_root = tmp_path / "runtime"
+    _machine_selects_steward_executor(runtime_root)
+    targets = read_goal_channel_targets(kwargs["target_path"])
+    route = decide_lark_topic_event(
+        target_payload=targets,
+        binding_payloads={"goal-alpha": bindings},
+        event={
+            "chat_id": CHAT_ID,
+            "message_id": "om_manager_stale_session",
+            "mentions": [{"id": APP_ID}],
+        },
+        runtime_root=runtime_root,
+    )["route"]
+    snapshot = {"target_payload": targets, "binding_payloads": {"goal-alpha": bindings}}
+    bound = {
+        "session_id": "manager-session",
+        "channel_id": route["manager_channel_id"],
+    }
+
+    assert (
+        authorized_manager_goal_ids(
+            snapshot, {**bound, "agent_id": "codex"}, runtime_root=runtime_root
+        )
+        == []
+    )
+    assert authorized_manager_goal_ids(
+        snapshot, {**bound, "agent_id": "dsh"}, runtime_root=runtime_root
+    ) == ["goal-alpha"]

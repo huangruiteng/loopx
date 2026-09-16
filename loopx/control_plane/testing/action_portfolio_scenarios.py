@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from ..quota.cli_projection import compact_quota_should_run_cli_payload
+from ..quota.effective_action import EffectiveAction
 from ..quota.should_run import build_quota_should_run
 from ..work_items.interaction_contract import build_interaction_contract
 from ..quota.turn_envelope import quota_action_signature_document
@@ -347,7 +348,7 @@ def turn_scenario_source(
         "goal_id": ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID,
         "decision": "skip" if human_gate else "run",
         "should_run": not human_gate,
-        "effective_action": "operator_gate" if human_gate else "normal_run",
+        "effective_action": EffectiveAction.OPERATOR_GATE_NOTIFY.value if human_gate else EffectiveAction.NORMAL_RUN.value,
         "state": "operator_gate" if human_gate else "eligible",
         "requires_user_action": human_gate,
         "gate_prompt": ("Approve the bounded public release." if human_gate else None),

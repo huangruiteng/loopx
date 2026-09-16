@@ -32,8 +32,7 @@ from .chat_status_api import ChatStatusRequestMixin
 from .chat_runtime import ChatRuntimeController, TERMINAL_TURN_STATES
 from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, is_manager_channel,
-    manager_channel_binding, manager_channel_session, manager_workspace,
-    manager_model_config, steward_machine_defaults,
+    manager_capabilities_projection, manager_workspace,
 )
 from .chat_session_open import open_chat_session
 from .chat_ssh_source_api import SshSourceRequestMixin
@@ -1256,22 +1255,15 @@ class ChatRequestHandler(
             self._send_json({"ok": True})
             return
         if path == CHAT_CAPABILITIES_PATH:
-            # Read the machine's steward choice once and quote the same value to
-            # the model arguments and to the channel readback, so the two cannot
-            # report different executors.
-            _steward_defaults = steward_machine_defaults(
-                self.server.runtime_controller
-            )
+            # The steward section is composed by its own owner so the model
+            # arguments, the availability verdict and the readback cannot
+            # disagree about which executor and credential they describe.
             capabilities = {
                 "ok": True,
                 "schema_version": "loopx_chat_capabilities_v1",
-                "manager": manager_runtime_capability_projection(
-                    self.server.runtime_controller,
-                    manager_model_config(machine_defaults=_steward_defaults),
-                    channel_binding=manager_channel_binding(
-                        machine_defaults=_steward_defaults,
-                        session=manager_channel_session(self.server.chat_store)
-                    )),
+                "manager": manager_capabilities_projection(
+                    self.server.runtime_controller, self.server.chat_store
+                ),
                 "runtime_identity": release_runtime_identity(),
                 "agent_backend": "multi_adapter",
                 "sandbox": "read-only",

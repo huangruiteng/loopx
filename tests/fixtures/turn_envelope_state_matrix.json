@@ -104,7 +104,7 @@
       "patch": {
         "decision": "skip",
         "should_run": false,
-        "effective_action": "operator_gate",
+        "effective_action": "operator_gate_notify",
         "state": "operator_gate",
         "normal_delivery_allowed": false,
         "action_required": true,
@@ -168,7 +168,7 @@
       "expected": {
         "decision": "skip",
         "should_run": false,
-        "effective_action": "operator_gate",
+        "effective_action": "operator_gate_notify",
         "state": "operator_gate",
         "action.must_attempt": false,
       "user.action_required": true,

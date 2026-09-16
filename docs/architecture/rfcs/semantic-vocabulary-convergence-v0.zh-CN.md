@@ -1,13 +1,13 @@
 # RFC：语义词表收敛与提交期漂移检查（v0）
 
 - **RFC status：** Draft
-- **Delivery maturity：** Partial（M0 的注册表、生成清单与漂移 smoke 随本 RFC 一起交付）
+- **Delivery maturity：** Partial（M0 的注册表、计算清单与漂移 smoke 随本 RFC 一起交付）
 - **Authors / owners：** LoopX 贡献者；控制面内核维护者拥有批准权
 - **Created：** 2026-09-15
-- **Last normative revision：** 2026-09-15
+- **Last normative revision：** 2026-09-16
 - **Implementation baseline：** `1dc6ad8d8`
 - **Related contracts：** `loopx/semantics/vocabulary_v0.json`、
-  `loopx/semantics/inventory_v0.json`、
+  `loopx/semantics/inventory.py`、
   `loopx/control_plane/turn_transaction_contract.json`、
   `loopx/control_plane/coordination/coordination_state_contract_v0.json`、
   [Turn Envelope v0](../../reference/protocols/turn-envelope-v0.md)、
@@ -31,25 +31,25 @@ RFC 成熟度与交付成熟度彼此独立。带日期的进度条目不修改�
 
 ## 1. 决策摘要
 
-1. **什么成为权威。** `loopx/semantics/` 下的两份文件。策展注册表
+1. **什么成为权威。** `loopx/semantics/` 下的策展注册表与检查时计算的清单。注册表
    `vocabulary_v0.json` 为每个内核与跨运行时词表命名：允许定义它的确切
    `module::Symbol`、词表之间的关系（同一概念、共享字段名、子集）、完整投影，
-   以及仓库同意只降不升的预算。生成清单 `inventory_v0.json` 映射 `loopx/` 下
+   以及仓库同意只降不升的预算。计算得到的清单映射 `loopx/` 下
    每一个闭集载体：字符串枚举、`Literal` 别名、命名闭集、TypeScript `as const`
    数组，以及在多个模块中定义的每个常量名。一支公共 smoke
    `examples/semantic-vocabulary-drift-smoke.py` 在每个 PR 的默认 `pytest` 扫描
-   里用两份文件核对代码；premerge 与 full-public 舰队是附加表面（第 10 节）。
-   任何扩宽词表、分叉常量、新增载体或削弱注册表的
-   改动，必须在同一个 diff 里修改注册表或重新生成清单，评审者因此能把语义
-   变化当作变化看见。
-2. **什么不变。** 运行时行为、线上格式、枚举类本身。每个枚举继续住在自己的
-   owner 模块里；注册表通过 AST 与文本扫描核对代码，不生成代码，产品代码也
-   永不导入它。
+   里用注册表和当前源码的扫描结果核对代码；premerge 与 full-public 舰队是附加表面（第 10 节）。
+   扩宽词表、分叉常量或调整预算须在同一 diff 中包含必要的 owner／注册表
+   修改。普通新增载体由扫描器自动发现，无须提交生成快照（Q9）。
+2. **权威与生成。** 每个枚举住在自己的 owner 模块里；注册表通过 AST 与文本
+   扫描核对代码，产品代码永不导入它。M1 生成器核对注册表一致性后，从 Python
+   owner 派生 TypeScript effective-action 绑定。这不改变线上取值，也不把值的
+   定义权转移给注册表；M2 的共享契约生成仍属于后续里程碑。
 3. **默认与可选边界。** 检查对仓库始终开启。它没有运行时开关，因为它从不在
    产品内运行。
 4. **主要约束。** 失败即关闭、确定性、且不能仅靠改数据被削弱。任一运行时的
    未注册字面量、第二个定义模块、预算超支、注册表列出但无模块携带的值、过期
-   的清单、不带符号的 owner 声明、低于记录下限的覆盖计数，每一项都让 smoke
+   的生成绑定、不带符号的 owner 声明、低于记录下限的覆盖计数，每一项都让 smoke
    失败。扫描识别的分发形式写在 smoke 里而不在注册表里。smoke 只读已跟踪
    源码，不打印任何私有数据。
 5. **本 RFC 不批准的事。** 把三套 Turn 结果枚举合并为一套、拆分
@@ -147,8 +147,8 @@ todos、capabilities 与 TypeScript 运行时各自拥有同一想法的一种�
   模式，但有一处刻意的不同：注册表的值必须**等于**锚点。先例用 `<=` 比较，
   这会让一个已收紧到锚点以下的预算，在之后的 PR 里不改任何代码就涨回锚点。
   相等性让每次收紧都是两个文件的 diff，每次放松都是评审者可见的代码修改。
-- **I6 同 diff 可见。** 语义变化与其注册表修改或清单再生成落在同一个可评审
-  diff 里。
+- **I6 同 diff 可见。** 语义变化与必要的 owner、注册表或预算修改落在同一个可评审
+  diff 中；计算得到的清单报告是证据，不是需提交的权威。
 - **I7 确定性且公开安全。** 检查只读已跟踪源码，不需网络或凭据，失败文本只
   命名文件与值，绝不含私有数据。
 - **I8 覆盖只增。** 注册词表数、owner 符号数、投影数、关系数、schema 版本数
@@ -171,8 +171,9 @@ todos、capabilities 与 TypeScript 运行时各自拥有同一想法的一种�
   比较、序列化或展示一个值不带来任何所有权。开始写入值的解释者或透传者已经
   变成生产者，必须登记为生产者。自 M0.5 起强制。
 - **I12 每个内核值都被生产。** 对 `kernel` 词表，未列入 `compatibility_only`
-  的每个值至少有一个固定生产形式能识别的生产位点，或一条
-  `variable_sourced_values`。只被比较的值是死值或兼容值，绝不是 canonical。
+  的每个值至少有一个固定生产形式能识别的生产位点，或已登记输入解码器的
+  可执行见证。变量来源备注本身不能作为生产证据。只被比较的值是死值或兼容值，
+  绝不是 canonical。
   `effective_action` 的 `skip` 是第一个预期失败。自 M0.5 起强制；M0 的字面量
   扫描把被比较的值当作已携带。
 - **I13 生产者只写注册值。** 写入注册集合之外值的生产位点失败即关闭，与是否
@@ -189,7 +190,7 @@ todos、capabilities 与 TypeScript 运行时各自拥有同一想法的一种�
 ### 范围内
 
 - 注册表文件、其 schema，以及编辑它的所有权规则。
-- 生成清单、带 `--check` 的生成器及其单元测试。
+- 计算清单、可选报告的导出／校验命令及其测试。
 - 漂移 smoke 及其在 premerge 与 full-public 舰队中的位置。
 - M0 注册的词表：四个 Turn 内核集合（`turn_result_kind`、`turn_route`、
   `loop_disposition`、`effective_action`）、`agent_scope_frontier_action` 与
@@ -260,9 +261,9 @@ todos、capabilities 与 TypeScript 运行时各自拥有同一想法的一种�
 个案例：它在 `global_risks.py`、`global_todos.py`、`summary_all.py`、
 `pr_review.py` 的四处定义各自列出那一个 CLI 命令的数据来源，值集本来就该不
 同。它今天被计入 `multi_value_forks`，且不得用改名来"修"，因为改名只让数字
-下降、不改变代码含义。M0.5 给注册表加 `scope` 字段，至少含 `global` 与
-`bounded_context`，允许一个有界上下文名字连同其所属上下文声明一次，并把已
-声明的名字从分叉预算移出（I14、下方 schema 表与第 11 节的 M0.5 行）。在此之
+下降、不改变代码含义。M0.5 的作用域子阶段增加顶层 `scope_declarations`，至少支持 `global` 与
+`bounded_context`；有界上下文名字只声明一次并列出其 owner，同时从语义分叉预算
+中移除，原始清单计数仍保留（I14、下方 schema 表与第 11 节的 M0.5 行）。在此之
 前分叉预算是一个包含这一处已知误分类的上
 限，记在注册表 `inventory_ratchets` 的备注里。
 
@@ -296,6 +297,119 @@ M0.5 之后新增或删除值时；`cross_module` 只在晋升后（Q8）。持�
 答的属性：若某个已列生产者符号是 journal 或 receipt 的写方，该词表标为
 `persisted`，这正是 Q2 与 Q10 等待的事实。
 
+### M0.5/M1 的可执行生产证据
+
+生产者守卫与 owner 载体检查使用不同证据。定义枚举成员只能证明集合成员关系，
+不能证明生产。对带生产者元数据的词表，守卫比较观察到的结果值与 `values`，拒绝
+未登记的**函数位点**，并要求每个非兼容值存在观察到的生产者。变量来源备注不能
+替代存活证据。`return_producers` 列出其标量返回表达式属于该词表的已登记函数；
+返回整个 packet 的构建器不会因此把无关返回文字当作词表值。
+
+Python 通过 AST 解析字段赋值（含下标、属性及带注解赋值）、字典、调用关键字、
+owner 成员结果及声明函数的标量返回。导入枚举的别名只解析到已登记 owner；
+被遮蔽的名字、重复赋值及未解析调用仍为 unknown。条件表达式只检查结果分支，
+排除条件中的字面量。TypeScript 的对象写入、赋值及声明返回使用仓库的 TypeScript
+解析器。两个解析器都不执行被检查源码。这些是句法结果证据，不是可达性或全程序
+数据流证明。
+
+`uv run python examples/semantic-vocabulary-drift-smoke.py --report` 列出未解析的生产
+位置。unknown 不能补足缺失值的生产证据。生产者守卫对六个 kernel 条目使用不同证据：`effective_action`、`turn_route`、
+`loop_disposition` 和 `agent_scope_frontier_action` 使用源码见证；
+`turn_result_kind` 另有固定入口 `transaction._result_kind` 的可执行输入见证。
+真实解码器必须为每个注册输入返回相同的类型化成员，并拒绝非法探测输入。这证明
+存在允许的生产路径，不表示 Host 实际发出过全部成员或所有 Host 执行都合法。
+`input_producer` 不能从数据任意指定执行代码，验证入口固定在 smoke 中。
+
+`lease_action` 明确分类为 legacy/兼容保留：仓库运行时调用者使用分开的
+acquire/renew/transfer/release command 类。四个成员为旧的类型化
+`LeaseModeGateCommand` 输入接口保留到 M4 调用者/迁移评审；不声称存在持久化
+使用。只有每个值都带保留理由及退休里程碑时，生产者列表才能为空。新发现的
+生产者必须让原兼容声明失败。
+没有生产者元数据的 kernel 词表会明确
+报告为覆盖待完成，不能把 owner 一致性宣称为 I12/I13 完成。所有要求的词表通过
+相应验收行之前，M0.5 仍未完成。
+
+decision owner 补登记了旧字面量扫描漏掉的五个现存结果：`blocked_health`、
+`blocked_wait`、`control_plane_repair`、`operator_gate_notify` 和 `throttled_skip`。
+这些登记保留现有 quota 行为。M1 删除无生产者的 `skip` 和合成夹具使用的
+`operator_gate`。fallback 消费者改为识别实际的 `quota_skip`；允许执行的 scoped
+fallback 不能仍携带跳过动作。旧字段退休仍须单独验收。
+
+TypeScript 解析器准备命令是在仓库根目录执行 `npm ci --ignore-scripts`，使用仓库
+锁文件。扫描本身不需网络或凭据；需要 Python 3.11+ 和仓库支持的 Node 运行时。
+
+### M1 动作值域与兼容性
+
+#### 为什么需要这一阶段
+
+M1 的目标是让调用者读对字段，并使后续 PR 能区分“新增决策”与“新增诊断”。
+仅登记一个更大的字符串集合不能解决这个问题：把 `result_kind` 或任意 host
+动作复制进 quota 动作字段，会让下游将不同含义的值送入同一分发逻辑；仅看到
+枚举被比较，也不能证明系统确实产生过该值。M1 分离这些证据，并修复 scoped
+fallback 仍识别无生产者 `skip`、而实际输出为 `quota_skip` 的不一致。
+
+这里采用最小必要边界：根动作仍是可区分的 `D ⊔ F`，不为所有字符串增加
+线上标签；只登记承重生产者，不要求每个消费者登记；保留历史签名数据的读取
+契约。它能检查有限词表、已支持输出形态和生成物一致性，不能证明整个程序
+语义完备、所有分支可达或任意变量流都安全。
+
+代价是改动 owner 后要再生成绑定，本地扫描还需锁定的 TypeScript 解析器。这些检查复用已有 CI 作业，但仍会增加
+作业工作量和提交修复成本；“没有新增 required job”不等于没有新增义务。
+失败时先判断是否真的改变语义：裸动作值改为 owner 引用；新增决策补 owner、
+生产者和消费者验证；诊断留在 `error_code`，Turn 结果留在 `decision`；生成物
+过期才运行第 10 节命令。扫描误判应修扫描规则并加反例，不能通过扩宽值集、
+降低覆盖或放宽预算来消除失败。
+
+#### 输出契约与兼容边界
+
+生产证据中的 `return_paths` 指定返回对象的明确字段/索引路径；`call_producers`
+登记经过评审的 builder 输出参数，并核对已跟踪源码中的模块绑定和真实签名。
+声明与代码锚点同步修改。这是经过评审的输出契约，不是对任意 helper 函数体
+语义的自动证明。局部枚举容器和任意判定函数的参数不证明生产；选出的标量必须
+流向已观测输出。被修改或逸出的可变别名保持 unknown。代码生成采用严格枚举
+提取；包括第二个 owner 无效的情况在内，都先拒绝不支持的成员，再写任何生成物。
+selector 必须与代码拥有的映射精确相等，其他词表默认为空，因此新增 selector
+也必须修改代码锚点。同名 keyword 参数在输出角色未确认时，只保留值域/unknown
+证据，不能证明生产者存活，也不能迫使普通消费者登记为生产者。
+
+令 `D` 为 `EffectiveAction` 拥有的 32 个决策值，`F` 为
+`AgentScopeFrontierAction` 拥有的四个前沿值。根 should-run 及其 envelope 投射
+通过 `A = D ⊔ F` 保留现有动作字符串。注册表以代码锚点固定两个成员词表，检查
+`D ∩ F = ∅`，因此无需新增线上标签即可从值识别所属域。TypeScript 绑定和联合
+类型从两个 owner 派生，不另维护第三份值表。这是 Q6 的注册并集方案。一个
+union 成员不能证明另一个 owner 的生产者存活性；规范决策函数的标量返回域
+仍为 `D`。
+
+| 表面 | 当前契约 | 兼容性 |
+| --- | --- | --- |
+| 根 should-run / Turn Envelope `effective_action` | 决策/前沿并集 `A` | 保留前沿判决的语义与拼写 |
+| 嵌套 `agent_scope_frontier_v1.action` | 前沿域 `F`，只输出一个动作字段 | 读者优先读 `action`，保留旧 v0 别名兜底 |
+| 内部 journal replay observation | 使用既有 `decision=replay_legal\|replay_blocked` | 公共 inspection 与落盘 journal 形状不变 |
+| Turn-result Effect observation | Turn 判决放在 `decision`，`effective_action=null` | 有意的投射变化：通过 `decision` 读取判决，host action 字段不能生成 quota 决策 |
+| 动作选择拒绝或延迟 | `effective_action=quota_skip`，诊断放在 `error_code` | 有意的 CLI 变化：通过不变的诊断码区分原因 |
+
+新 frontier 写入删除嵌套的冗余 `effective_action`，并将嵌套 schema 升为 v1。
+历史已签名 v0 文档不在读取时归一化：envelope capsule 保留当时存在的两个旧
+键，journal 恢复原样返回落盘 plan。兼容测试在迁移前刻画旧签名，再逐字段突变
+验证签名覆盖，且使用真实文件 journal 写入者与恢复读者。新 v1 签名只因声明的
+嵌套 schema/字段缩减发生变化。该别名没有前端配置 owner；真实 quota CLI 和
+Markdown 展示已纳入测试。
+
+瞬时 `effect.interpret_turn_result` 投射以前把任意 host action 或 `result_kind`
+复制到 quota 动作字段，现在输出 JSON null，由 Python 适配为 `None`。
+TypeScript 返回类型将该动作固定为 null；quota observation 仍保留原有字符串
+动作。executor 读取结果的 `decision`，持久化规范化后的 host result 和 plan，
+不持久化这份瞬时 observation。真实 host 校验仍拒绝不支持的 action 字段；
+executor/journal 重放测试验证了不变的无消费 wait 路径。该投射变化不迁移落盘
+result、receipt 或 journal 的 schema 版本。
+
+字面量守卫使用 Python AST 与 TypeScript 编译器解析器识别有界的字段写入、
+比较、成员测试和 match/switch。即便值已注册，裸动作字面量也会失败，必须导入
+owner。条件表达式、相邻的其他字段、注释和字符串中的源码样例不计作动作值。
+这是句法边界，不是全程序数据流证明；动态键、别名与未解析表达式仍受明确的
+能力边界限制。绑定/术语表的新鲜度检查复用现有 PR pytest 与 smoke，不新增
+required CI job。
+
 ### 形式模型与证明边界
 
 注册表是更大程序语义的有限规格。令 `V` 为已注册词表集合，`L` 为源码位点集合，
@@ -323,7 +437,7 @@ R ⊆ L × V × Version               将值持久化
 6. **持久化兼容性：** 持久化词表改变时，必须保持所有读者可读，或声明带版本的迁移。
 
 这些是不同的证明义务。M0 已建立 owner 集合相等、跨运行时 parity、声明的可执行投影
-和 inventory 新鲜度。固定字面量形式与闭集载体只提供有界证据，不是全程序证明。M0.5
+和基于当前已跟踪源码树计算的清单。固定字面量形式与闭集载体只提供有界证据，不是全程序证明。M0.5
 增加有界的生产者和作用域检查。动态代码中的完整生产者发现、`same_concept` 的行为等价、
 以及持久化读者兼容性，在建模源码到结果的边之前仍然是未证明状态。注册表通过
 `formal_model` 保存这条证明边界；标记为 `unproved` 的性质是显式局限，不能被当作默认通过。
@@ -387,9 +501,10 @@ external_input | compatibility_only | unknown
 | `vocabularies.<name>.tier`、`status` | `kernel`、`cross_runtime`、`cross_module`；`canonical`、`legacy`、`merge_candidate` | 封闭枚举 |
 | `vocabularies.<name>.literal_scan` | `field`、根目录、后缀 | 固定分发形式捕获的每个字面量都已注册；每个注册值被捕获或来自变量（I2） |
 | `vocabularies.<name>.variable_sourced_values` | 值到生产者模块 | 生产者仍包含带引号的该值 |
-| `vocabularies.<name>.scope`（M0.5） | `global` 或 `bounded_context`；`bounded_context` 条目列出 `contexts`，每个含一个 owner 符号 | 封闭枚举；已声明的有界上下文名字从 `multi_value_forks` 排除；未声明的多模块名字仍是分叉（I14） |
-| `vocabularies.<name>.producers`（M0.5） | 写入该字段的 `path::Symbol` 位点，`kernel` 必填 | 每个位点只写注册值；未列入 `compatibility_only` 的每个值至少有一个位点或一条变量来源条目（I12、I13） |
-| `vocabularies.<name>.compatibility_only`（M0.5） | 为让已持久化记录的读者仍能解析而保留的值 | `values` 的子集；零生产位点；每个值带 `value_notes` 理由与退休里程碑 |
+| `scope_declarations.<name>`（M0.5a） | `bounded_context` 及上下文 ID，每个上下文含一个 `module::Symbol` owner | 每个声明名对应一个 inventory 分叉，并且一次且仅一次列出全部定义模块；只从 `multi_value_forks_semantic` 排除，未声明分叉仍可见（I14） |
+| `vocabularies.<name>.input_producer` | 固定的可执行解码入口，目前仅用于 `turn_result_kind` | 每个注册输入必须产生匹配的类型化成员，非法探测输入必须拒绝；禁止任意选择执行入口 |
+| `vocabularies.<name>.producers`（M0.5） | 写入该字段的 `path::Symbol` 位点，`kernel` 必填 | 每个位点只写注册值；未列入 `compatibility_only` 的每个值至少有一个源码生产位点或可执行输入见证（I12、I13） |
+| `vocabularies.<name>.compatibility_only`（M0.5） | 为持久化读者或旧类型化调用接口保留的值 | `values` 的子集；零生产位点；每个值带 `value_notes` 理由与退休里程碑 |
 | `formal_model` | 有限的集合、角色关系与层次、语义义务、候选决策，以及已建立/有界/unknown/未证明的声明 | 漂移 smoke 校验精确 schema、角色层次、候选决策和不变量 ID；属性实施阶段不能冒充已完成证明 |
 | `formal_model.enforcement_policy` | 当前阻断、下一阶段阻断、建议性和未证明层级 | 每个形式不变量恰好出现一次，且层级与其实施阶段一致 |
 | `vocabularies.<name>.value_notes`、`deprecated_values` | 逐值评审备注；计划删除的值 | 名字必须是已注册值 |
@@ -402,13 +517,14 @@ external_input | compatibility_only | unknown
 | `dual_runtime_twins` | 根目录与模块预算 | 同名 `.py`/`.ts` 对数不超过预算（I5） |
 | `inventory_ratchets` | 同运行时分叉的名字数与定义数、冲突的名字数与定义数、schema 版本分叉数、多值孪生与分叉数，以及共享词表冲突与分叉子集的预算 | 清单摘要计数不超过预算，且每个预算必须等于其 `BUDGET_ANCHOR` 条目（I5、I9） |
 
-`loopx/semantics/inventory_v0.json`，`schema_version` 为
-`loopx_semantic_inventory_v0`，由 `scripts/generate_semantic_inventory.py` 生成，
-必须与新鲜构建完全一致。它每行一条地列出 Python 枚举、闭集、`Literal` 别名、
+清单保留 `schema_version=loopx_semantic_inventory_v0`。守卫每次从完整的
+已跟踪 `loopx/` 源码树计算一次，在 owner、scope 与预算检查中复用，不读报告文件。
+`scripts/generate_semantic_inventory.py` 可按需导出同一份结构地图，
+报告不入库；它每行一条地列出 Python 枚举、闭集、`Literal` 别名、
 TypeScript `as const` 数组，以及拆为跨运行时孪生、同运行时分叉、冲突值、多值
 孪生与多值分叉四类的重复定义。每个多值冲突都带上全部定义模块及其值集，因此
 可评审的是分叉本身而不只是计数。消费者计数由 `--report` 打印，合并候选组通过 `merge_candidate_groups` 获取，
-两者均不提交，因此普通的消费者改动不会碰这个文件；合并候选是建议性的，因为值集
+所有清单输出均不提交；合并候选是建议性的，因为值集
 相同并不能证明是同一个概念。单模块的字符串常量只计数，不列出。
 
 值是只增的。删除一个值、字段、owner 或关系属于 schema 缩减，遵循 `AGENTS.md`
@@ -424,8 +540,8 @@ TypeScript `as const` 数组，以及拆为跨运行时孪生、同运行时分�
 
 新词表通过一个 PR 加入：新增注册表条目、提高覆盖下限，若存在 TypeScript owner
 则指名其 `as const` 数组。当一个词表被多个模块分发或跨越 Python/TypeScript
-边界时，即有资格进入策展层；其余由清单映射而不策展。新增任何载体都要在同一
-PR 中重新生成清单。
+边界时，即有资格进入策展层；其余由清单映射而不策展。新增载体会在下次全树扫描时自动发现，
+真正的共享契约变化仍需评审。
 
 ## 6. 备选方案与设计选择
 
@@ -438,13 +554,13 @@ PR 中重新生成清单。
 | CI 里不带注册表的 grep 式 lint | 把允许集合编码进 linter，变成没有评审痕迹的第二份注册表。 |
 | 扩展 `maintainability_ratchet.py` 而不新建注册表 | 它的对象是模块指标与依赖方向，按模块设上限；词表形状需要值、owner 与关系。两者共享棘轮思想而非数据模型。例外生命周期是否合并见 Q7。 |
 | 把扫描正则放进注册表 | 数据里的正则可以在扩宽词表的同一次修改中被收窄；M0 评审表明第一版模式漏掉了全部 TypeScript `===` 分发点。形式固定在 smoke 里，后缀集合设下限。 |
-| 在清单中提交消费者计数 | 每次消费者改动都会搅动文件，让新鲜度检查变成噪音。计数通过 `--report` 保持为参考信息。 |
+| 提交计算清单或消费者计数 | 结构变化会产生没有新增语义权威的合并冲突。全树计算并按需导出报告；消费者计数保持为参考信息。 |
 
 ## 7. 安全、隐私与兼容
 
 - M0 没有任何运行时路径导入注册表；检查存在与否，产品行为不变。
 - 扫描器使用 `git ls-files --cached -z` 枚举索引中的源文件路径，再读取工作树内容。
-  未跟踪与忽略文件不进入清单；新增源文件需先暂存路径，再重新生成清单。已跟踪
+  未跟踪与忽略文件不进入清单；新增源文件需先暂存路径，再运行全树扫描。已跟踪
   的符号链接与无法解析的 Python 源码使检查失败；运行时需要带 Git 元数据的检出。
 - 字面量及 TypeScript 载体扫描同时识别单引号与双引号。它们仍是结构性文本
   扫描，不是完整解析器，也不做数据流分析。
@@ -470,14 +586,14 @@ PR 中重新生成清单。
 | 声明 | 测试或证据 | 要求结果 | 边界 / 排除 |
 | --- | --- | --- | --- |
 | 基线上注册表与清单和代码一致 | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` 并输出覆盖、棘轮、预算与孪生报告 | 只证明已注册词表与已映射载体的一致性 |
-| 清单新鲜 | `uv run python scripts/generate_semantic_inventory.py --check` | 退出码 0 | 仅结构性映射 |
+| 清单按需计算 | `uv run python scripts/generate_semantic_inventory.py` | stdout 输出合法 JSON，不写仓库 | 完整已跟踪源码树，不仅是 PR diff |
 | 扫描器分类规则 | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | 通过 | 夹具仓库；规则来自本 RFC 而非输出 |
 | Python 侧扩宽 `effective_action` 时失败关闭 | 通过 `==`、成员测试或条件表达式加一个未注册字面量 | 失败文本命名该值与文件 | 突变练习；非提交测试 |
 | TypeScript 侧扩宽 `effective_action` 时失败关闭 | 通过 `===` 或三元表达式加一个未注册字面量 | 同上 | 同上 |
-| 分叉常量时失败关闭 | 在非 owner 模块重定义 `TURN_ENVELOPE_SCHEMA_VERSION` 或 `HANDOFF_MODES`，重新生成清单 | 失败列出多出的定义模块或分叉预算 | 同上 |
+| 分叉常量时失败关闭 | 在非 owner 模块重定义 `TURN_ENVELOPE_SCHEMA_VERSION` 或 `HANDOFF_MODES`，运行 smoke | 失败列出多出的定义模块或分叉预算 | 同上 |
 | Python 与 TypeScript owner 不能分叉 | 从已注册 `as const` 数组删一项，或扩宽已注册枚举 | 失败命名缺失或未注册的值 | 同上 |
 | 注册表不能仅靠改数据被削弱 | 声明裸模块 owner；删掉一个 owner；把后缀收窄为 `.py`；重命名一个被关系引用的词表；加一个未知键 | 每项都失败并点名规则 | 同上 |
-| 新载体可见 | 新增一个枚举而不重新生成 | 失败文本说清单过期 | 同上 |
+| 新载体可见 | 新增已跟踪枚举，不导出报告 | 当前扫描能看到它，不因报告新鲜度失败 | 变更与未变更文件之间的新分叉仍受预算约束 |
 | 冲突拼法不能增长 | 为已冲突名字加第三种值，重新生成 | 失败命名定义数预算 | 同上 |
 | 多值冲突不能增长 | 让一个闭集名在两个模块中以不同值集定义，或以相同值集定义，并重新生成 | `multi_value_forks` 或 `multi_value_twins` 失败并命名新名字 | 突变练习；非提交测试 |
 | 注册表不能放松自己的棘轮 | 在同一 diff 中调低任一 `coverage_floor` 计数、调高任一 `inventory_ratchets` 预算或退休预算，同时删掉它所统计的覆盖 | `COVERAGE_ANCHOR`、`BUDGET_ANCHOR` 或 `RETIREMENT_ANCHOR` 失败并命名被锚定的值 | 突变练习；挪动锚点是一次评审者可见的代码修改 |
@@ -488,11 +604,12 @@ PR 中重新生成清单。
 | 两处 owner 修正不改变行为 | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` 与 `uv run --extra test loopx canary premerge --from-git-diff` | 通过 | 在干净树上可复现的 `main` 既有环境失败除外 |
 | 文档治理接受这对 RFC | `python3 examples/docs-governance-smoke.py` | 通过 | 检查镜像、链接、索引 |
 | 退休预算按子串而非标识符计数 | 分别以 `in file.text` 与 `\bgoal_boundary\b` 统计 `goal_boundary` | 基线上 35 对 30 个 Python 模块 | 已知边界；M3 的零读者门需要标识符计数，见第 12 节 |
-| 模块局部约定过滤器是一次代码修改 | 扩宽 `inventory.py` 的 `MODULE_LOCAL_CONVENTION` 并重新生成 | `*_semantic` 预算下降而别处无代码改动 | 已知边界；正则在代码里，扩宽是可评审的 diff，未过滤总数仍在预算内 || 无人生产的注册值失败（M0.5） | 在基线上运行生产形式扫描 | 失败并点名 `effective_action` 与 `skip`；删除 `skip` 或列入 `compatibility_only` 后通过 | 第一个预期的 I12 失败；只被比较的值不算已携带 |
+| 模块局部约定过滤器是一次代码修改 | 扩宽 `inventory.py` 的 `MODULE_LOCAL_CONVENTION` 并重新生成 | `*_semantic` 预算下降而别处无代码改动 | 已知边界；正则在代码里，扩宽是可评审的 diff，未过滤总数仍在预算内 |
+| 无人生产的注册值失败（M0.5） | 在基线上运行生产形式扫描 | 失败并点名 `effective_action` 与 `skip`；删除 `skip` 或列入 `compatibility_only` 后通过 | 第一个预期的 I12 失败；只被比较的值不算已携带 |
 | 生产未注册值失败（M0.5） | 在某个已列生产位点写 `effective_action: "brand_new"` | 即使无消费者比较它也失败，并点名位点与值 | I13；生产比比较更严 |
-| 有界上下文名字只能靠声明离开分叉预算（M0.5） | 为 `SOURCE_SURFACES` 声明四个上下文；另行只改名其中一处定义而不声明 | 声明把 `multi_value_forks` 降到 3；单独改名不降 | I14；诚实的修法是评审者看得见的注册表修改，改名是不碰注册表的代码改动 |
+| 有界上下文名字只能靠声明离开语义分叉预算（M0.5a） | 为 `SOURCE_SURFACES` 声明四个上下文；另行只改名其中一处定义而不声明 | 原始 `multi_value_forks` 保持 4，`multi_value_forks_semantic` 为 3；单独改名既不改变语义计数，也不构成声明 | I14；诚实的修法是评审者看得见的注册表修改，改名不是修复 |
 
-| 上游合并会让已提交清单过期 | 对 `upstream/main` 最近二十个合并提交，在第一父提交与合并结果之间重放扫描器 | 20 次合并中 8 次至少改变一个载体 | 提交快照的实测成本；处理规则见第 10 节与第 12 节 Q9 |
+| 历史上的已提交清单会因上游合并而过期 | 对 `upstream/main` 最近二十个合并提交，在第一父提交与合并结果之间重放扫描器 | 20 次合并中 8 次至少改变一个载体 | Q9 的历史动机；当前检查直接计算合并后的全树，不再依赖提交快照 |
 | 形式模型不能静默丢失证明义务 | 从 `formal_model` 删除不变量、角色、候选决策、关系或证明边界分类 | 漂移 smoke 针对形式模型结构失败 | 该模型是有限契约和证明账本，本身不等于这些性质已经被证明 |
 
 已知边界，写明是为了不让这个检查被过度信任：
@@ -532,15 +649,19 @@ heartbeat/quota 覆盖。quick 与 deep 档位的上限不变。
 工作流被刻意设为非 PR 必需检查。舰队能发现的 smoke 不是提交时检查，除非某个
 必需的 PR 作业收集它。
 
-**合并序风险。** `inventory_v0.json` 是整个 `loopx/` 树的已提交快照，树与快照
-不一致时 smoke 失败。两个各自新增载体、各自正确再生成清单的 PR，对着它们
-各自基于的 `main` 都是绿的；后合并的那个会让 `main` 的快照缺少先合并者的
-条目，`main` 上的扫描在有人再生成之前是红的。对 `upstream/main` 最近二十次
-合并的重放显示有八次至少改变一个载体，所以这是每周会发生的事，不是边角。
-本分支第一次同步上游就复现了它：合入的十二个提交新增一个枚举与三个闭集，
-检查失败直到重新生成。处理规则是第 12 节 Q9；在其决定之前的规则是：在
-`main` 变红之后合并 PR 的人负责跟一个只改 `inventory_v0.json` 的再生成提交，
-smoke 的失败文本会点名那条命令。
+**按需清单（Q9）。** 原来的已提交快照为本来合法的 PR 增加了额外同步义务，
+现予以取消。设 `f(T)` 为完整已跟踪源码树的清单，`G(f(T), R)` 为既有注册表、
+owner、scope 与预算谓词，检查仍执行 `G(f(T), R)`，只去掉附加条件
+`I_committed = f(T)`。所有相关守卫复用本次扫描结果，缺失或过期的本地报告
+不能掩盖新分叉。这不证明独立合法的分支合并后不会产生语义冲突；仍须验证
+合并后的源码树。不得用只扫描 PR diff 代替全树扫描。
+
+查看清单用 `uv run python scripts/generate_semantic_inventory.py`，默认向
+stdout 输出 JSON；追加 `--output .local/semantic-inventory.json` 可导出报告。
+`--output <path> --check` 只核对指定报告，不修改它；单独 `--check` 会给出
+迁移提示。报告可以作为 CI artifact，但不入库，也不是运行守卫的前置条件。
+绑定与术语表继续提交并检查新鲜度；本决策只移除仓库结构清单的提交义务，
+不增加 CI 作业。
 
 **解释器与源码。** 在目标 worktree 根目录通过 `uv run` 执行上面的命令。
 Python 兼容范围来自 `pyproject.toml`（`>=3.11`），导入的 LoopX 必须来自当前源码。
@@ -549,12 +670,24 @@ Canary 将显示为 `python3` 的命令转换为启动 LoopX 的 `sys.executable
 边界见[本地验证环境](../../development/testing-and-quality.md#local-validation-environment--本地验证环境)。
 下方历史证据保留实际执行过的命令。
 
+已有完整环境时，也可以用 `bash scripts/loopx-python.sh --exec <Python 参数>`
+自动选择已安装的兼容解释器，包括 `.venv/bin/python`，或通过 `LOOPX_PYTHON`
+指定。该选择器不会安装 Python 和依赖。舰队与 premerge 的子命令仍可使用
+`python3`，由选定的项目或 CI 环境提供 `PATH`。
+
+TypeScript effective-action 绑定与[术语表](../../reference/glossary.md)通过
+`uv run python scripts/generate_semantic_bindings.py` 生成。修改 Python owner
+或注册表后运行该命令；载体变化会自动扫描，清单报告只按需导出。现有漂移 smoke 与 PR pytest
+检查生成物新鲜度，不新增 required CI job。运行 TypeScript 生产者扫描之前，
+先用 `npm ci --ignore-scripts` 安装锁定的 Node 依赖。
+
 ## 11. 规范性交付计划
 
 | 里程碑 | 交付行为 | 进入门 | 退出证据 | 回滚 |
 | --- | --- | --- | --- | --- |
-| M0 | 含 26 个词表与 9 条关系的注册表、带 `--check` 的生成清单、带固定分发形式与覆盖下限的漂移 smoke、删除两处 owner 分叉、RFC 索引条目 | 本 RFC 开启 | 第 9 节各行全绿；20 类突变失败关闭 | 删除 smoke、`loopx/semantics/`、生成器及其测试 |
-| M0.5 | 含 `global` 与 `bounded_context` 及每上下文 owner 的 `scope`；`kernel` 词表上的 `producers` 与 `compatibility_only`；带两条角色检查（I12、I13）的生产形式扫描；退休预算改按标识符计数并在一个 diff 里调低全部六个锚点（Q11）；Q9 的合并序规则写入第 10 节 | M0 合入；Q9 已决或其临时规则被接受 | smoke 在 I11 到 I14 强制下全绿；`skip` 已处理；`multi_value_forks` 靠声明降到 3；第 9 节角色行全绿；为 Q2 回答 `turn_route` 是否持久化 | 删除三个字段与角色检查；预算回到 M0 锚点 |
+| M0 | 含 26 个词表与 9 条关系的注册表、可选导出的计算清单、带固定分发形式与覆盖下限的漂移 smoke、删除两处 owner 分叉、RFC 索引条目 | 本 RFC 开启 | 第 9 节各行全绿；20 类突变失败关闭 | 删除 smoke、`loopx/semantics/`、生成器及其测试 |
+| M0.5a | `scope_declarations` 的 `bounded_context` 与每上下文 owner；把语义分叉计数与原始清单计数分开 | M0 合入 | smoke 校验每个声明的上下文 owner；原始 `multi_value_forks` 仍为 4，`multi_value_forks_semantic` 为 3；未声明分叉仍受预算约束 | 删除作用域声明和语义分叉预算 |
+| M0.5b | `kernel` 词表的 `producers` 与 `compatibility_only`；带两条角色检查（I12、I13）的生产形式扫描；退休预算改按标识符计数并在一个 diff 里调整六个锚点（Q11）；Q9 的合并序规则写入第 10 节 | M0.5a 完成；Q9 已决或其临时规则被接受 | smoke 在 I11 到 I14 强制下全绿；`skip` 已处理；第 9 节生产者行全绿；为 Q2 回答 `turn_route` 是否持久化 | 删除生产者字段和角色检查；预算回到 M0.5b 前的锚点 |
 | M1 | 单一 owner 模块中的 `EffectiveAction` 类型化枚举；replay observation 与 frontier 槽位拆出（Q6）；生产者与消费者 import 它；注册表 `literal_scan` 收紧到枚举 | M0.5 合入；owner 模块已定（Q3）；槽位拆分已决（Q6） | smoke 绿；owner 之外零裸 `effective_action` 字面量；status/should-run 的 parity fixture 不变 | 回退为字面量；注册表保留集合 |
 | M2 | route 到 disposition 的投影、`decide_loop_disposition` 决策表与跨运行时集合通过共享契约发布，生成 Python 与 TypeScript 绑定，效仿协调契约生成器 | M1 合入；Q2 与 Q7 已决 | 生成器 `--check` 与 smoke 绿；`settlement.ts` 与 `transaction.py` 读取生成集合 | 从上一版契约重新生成 |
 | M3 | 逐字段退休旧 should-run 字段，每个 PR 一个字段，预算降到零并删除字段 | 经生产者/读者调研证明该字段外部读者为零 | 按 `AGENTS.md` 的 schema 缩减记录；附录 B 条目 | 从最后一个写方恢复字段 |
@@ -566,7 +699,7 @@ Canary 将显示为 `python3` 的命令转换为启动 LoopX 的 `sys.executable
 
 | 表面 | 基线（`1dc6ad8d8`） | 本 RFC 关闭时的目标 | 由谁达成 |
 | --- | --- | --- | --- |
-| `effective_action` 取值 | 33 个字面量，无 owner 符号 | 一个枚举 owner；`skip`、`observe_replay`、`block_replay` 与两个 `quota_action_selection_*` 码从判定槽位移出；约 28 值 | M1 |
+| `effective_action` 取值 | 33 个字面量，无 owner 符号 | 一个枚举 owner；`skip`、`observe_replay`、`block_replay` 与两个 `quota_action_selection_*` 码从判定槽位移出；计入五个此前漏记的生产值并移除合成 operator_gate 后，共 32 个决策值 | M1 |
 | 同一 envelope 里的 `effective_action` 槽位 | 一个字段名下 3 套词表 | 1，或在 Q6 保留字段时为一个已注册并集 | M1（Q6） |
 | Turn 词表 | 3 套、28 值、21 个不同值、7 个冗余拼法 | 保留 3 套；投影与决策表生成并校验；拼法不变，除非 Q10 决定合并 | M2（Q2、Q10 *未决*） |
 | 同运行时分叉（语义） | 18 个名字 | 0 | 基线窄 PR |
@@ -638,26 +771,30 @@ PR review 保留这些层级。普通改动记录检查范围和理由，无共�
    投影覆盖全部输入但非单射（`blocked` 与 `wait` 都映到 `wait`），而 `stop`、
    `terminal`、`contract_error` 只在一侧存在。`same_concept` 关系记录了四个共享
    裁决。建议：两者都保留，M2 发布投影，待 managed-step 消费者成熟后再议。
-   M2 前需定。保留两者的理由是合并会触及已持久化的 Turn 记录；这个前提尚未
-   核实。决定之前应先用 M0.5 的生产形式扫描（I12，第 5 节）确认 `turn_route`
-   是否曾写入 journal 或
-   receipt，还是只在进程内流转；若是后者，合并的代价远低于本 RFC 的假设，
-   适用 Q10。
-3. **`EffectiveAction` 的 owner 模块。** 注册表今天不声明 owner，因为不存在任何
-   符号；字面量扫描是唯一检查。选项：`quota/should_run_packet.py`（最大生产者）、
-   新建 `quota/effective_action.py`，或按迁移 RFC 以 TypeScript `turn_envelope.ts`
-   为 owner 并生成 Python 绑定。建议：若 M2 先落地则以 TypeScript 为 owner 并
-   生成 Python 绑定；否则新建 `quota/effective_action.py`。M1 前需定。
-4. **伴随术语表。** 是否新增 `docs/reference/glossary.md`，从注册表的 `meaning`
-   字段与清单生成。Owner：文档维护者。建议：是，在 M1 生成以免漂移。
+   持久化前提已有实现证据：`run_loopx_turn_once` 经 TypeScript journal writer
+   写入完整的 `plan: dict(plan)`，其中包含 `plan.route.kind`；
+   `load_loopx_turn_plan_from_journal` 会恢复这个 route。执行器的回放回归用例
+   检查实际落盘的 journal 及恢复读者。因此保留三套词表，在 M2 发布非单射投影；
+   后续若改名，必须迁移持久化 plan，不能只做进程内枚举重构。此证据不等于全部
+   外部读者或其他持久化字段的兼容性证明。
+3. **`EffectiveAction` 的 owner 模块。** 实现选择 `quota/effective_action.py`，
+   对应生成阶段之前的选项。运行时调用者通过 `.value` 保留现有字符串。
+   TypeScript 消费者导入从该 Python 枚举生成的
+   `quota/effective_action.generated.ts`，测试核对成员名与值的一致性。M2 可以
+   从共享契约生成两种绑定，并保留现有 import 路径；不得在运行时模块另写一份
+   独立维护的值表。
+4. **伴随术语表。** `docs/reference/glossary.md` 从注册表的语义、owner、值及
+   兼容性元数据生成，只覆盖已注册词表；清单仍是更广的结构地图。现有 smoke
+   拒绝过期生成物。应修改 owner/注册表并重新生成，避免维护第二份文字权威。
+   Owner：文档维护者。
 5. **词族命名规则。** `gate`、`scope`、`packet`、`handoff`、`settlement` 词族中的
    新标识符是否必须在评审中引用术语表条目。这是评审规则而非 smoke；建议在
    术语表存在后纳入 first-review roster。
-6. **拆分 `effective_action` 的三个槽位。** decision 槽位、`agent_scope_frontier`
-   槽位与 replay observation 槽位在同一个 Turn Envelope 里共用一个字段名、承载
-   三套词表；`skip` 被比较却从未被生产。选项：重命名 observation 与 frontier
-   槽位，或保留一个字段并注册其并集。Owner：Turn Envelope owner。建议：在 M1
-   重命名，让 Q3 的枚举只有一种含义。M1 前需定。
+6. **动作槽位决策（Q6）。** 根 should-run/Turn Envelope 字段保留为代码锚点
+   固定、互不相交的决策/前沿并集。嵌套 frontier v1 使用既有 `action`，journal
+   replay 使用既有 `observation.decision`，不新增另一份冗余字段。读取历史 v0
+   capsule 时保留已签名的旧字段，新写入使用版本化的缩减形状。见上文 M1
+   兼容表与测试；这不授权其他旧字段退休或 Turn 结果枚举合并。
 7. **与 `maintainability_ratchet.py` 的关系。** 清单棘轮是否采用它的评审化例外
    生命周期（`retirement_plan`、过期例外检测），还是保持为纯预算。建议：在 M2
    生成落地时采用，让有书面理由的分叉可以被例外而非被预算。Owner：canary
@@ -665,22 +802,18 @@ PR review 保留这些层级。普通改动记录检查范围和理由，无共�
 8. **从清单到注册表的晋升规则。** 外部消费者模块不少于三个或存在跨运行时孪生
    的已映射载体是否必须策展。建议：现在作为评审规则采用，待清单积累一个季度
    历史后再由 smoke 强制。Owner：内核维护者。
-9. **跨合并的清单新鲜度。** 两个新增载体的 PR 先后合并时，已提交快照会过期
-   （第 10 节；上游最近二十次合并中八次）。选项：(a) 分支保护要求 PR 与
-   `main` 同步，根除风险但拖慢所有 PR；(b) 合并者负责一个只再生成的后续提交，
-   快照留在 git 历史里，接受 `main` 红几分钟；(c) 清单不入库，CI 只对 PR diff
-   生成，失去对载体的 `git blame`。建议：现在用 (b)，若 `main` 变红超过每周
-   一次则改 (a)。Owner：仓库维护者。这是运维决策不是代码改动；应放在跟踪
-   issue 的决策清单里，而不是任务清单里。
+9. **跨合并的清单新鲜度（Q9）。** 采用全树按需计算与可选的不入库报告。
+   删除已提交清单及其逐字新鲜度义务，保留语义谓词、扫描范围、覆盖下限与预算。
+   这取代合并后另补再生成提交的建议，也不采用旧选项中只扫描 PR diff 的部分。
+   第 10 节规定命令和证明边界。
 10. **Turn 词表的终态。** 第 11 节的目标表默认保留三套与七个冗余拼法，因为
-   Q2 建议保留两者。若 Q2 的 M0.5 生产形式扫描表明 `turn_route` 未被持久化，维护者
-   应在 (a) 三套加生成投影（现行计划）与 (b) 两阶段合并（先双写、后退休）到
-   每个概念一种拼法之间选择。没有这个决定，RFC 对其标题问题只有预算、没有
-   完成定义。Owner：Turn driver owner。M2 关闭前需定。
-11. **退休预算按标识符计数。** 六个旧字段预算用 `field in file.text` 统计；
-   `goal_boundary` 会匹配 `goal_boundary_repair`。M3 的零外部读者门需要词边界
-   计数，这会在一个 diff 里调低全部六个锚点。建议：在第一个 M3 PR 之前做。
-   Owner：内核维护者。
+   Q2 建议保留两者。Q2 的实际写入及读回证据证明 `turn_route` 已持久化，因此
+   实现保留三套不同值集并生成投影，不合并拼法。未来合并提案须提供双读或带版本
+   的迁移及读者证据。Owner：Turn driver owner。
+11. **退休预算使用独立字段 token。** 六个旧字段预算现在使用
+   `count_identifier_modules()`，因此 `goal_boundary_repair` 不会被算作
+   `goal_boundary`。这是保守的词法指标，不等于证明不存在语义读者；计算式访问
+   仍然是证据缺口。Owner：内核维护者。
 
 ## 附录 A：执行账本（非规范）
 
@@ -812,7 +945,7 @@ PR review 保留这些层级。普通改动记录检查范围和理由，无共�
 
 | 日期 | 决策 | Owner / 批准 | 备选 | 变更的规范章节 |
 | --- | --- | --- | --- | --- |
-| — | 尚无记录 | — | — | — |
+| 2026-09-16 | Q9：全树按需计算；移除已提交结构清单 | 根据[维护者反馈](https://github.com/huangruiteng/loopx/pull/4360#issuecomment-5692062394)实现，PR 评审待完成 | 取代合并后补再生成；拒绝只扫描 diff | 1、I6、3、5、9、10、12 |
 
 ## 附录 C：证据登记
 

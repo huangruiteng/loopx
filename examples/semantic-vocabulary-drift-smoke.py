@@ -3,11 +3,11 @@
 
 ``loopx/semantics/vocabulary_v0.json`` names each kernel and cross-runtime
 vocabulary, the exact ``module::Symbol`` allowed to define it, how vocabularies
-relate, and the budgets the repository ratchets down. ``inventory_v0.json`` is
-the generated map of every closed-set carrier under ``loopx/``. This smoke
-checks code against both so a PR that widens a vocabulary, forks a constant,
-adds an unmapped carrier, or weakens the registry itself must show that change
-in the same diff. It reads tracked sources only and prints no private data.
+relate, and the budgets the repository ratchets down. The inventory is computed
+from the complete tracked tree on each run, never loaded from a report file.
+Vocabulary changes, forks and registry weakening remain checked; ordinary
+carrier edits require no generated snapshot commit. Only tracked sources are
+read, and no private data is printed.
 """
 
 from __future__ import annotations
@@ -29,24 +29,40 @@ from loopx.semantics.inventory import (  # noqa: E402
     collect_string_constants,
     load_sources,
     python_facts,
-    render_inventory,
     string_constant_definitions,
     typescript_facts,
 )
 
+from loopx.semantics.production import (  # noqa: E402
+    collect_production, validate_production, probe_turn_result_input_domain, quota_action_domain, collect_literal_uses,
+)
+from loopx.semantics.python_production import scan_python_production  # noqa: E402
+from scripts.generate_semantic_bindings import build_artifacts  # noqa: E402
+
 REGISTRY_PATH = REPO_ROOT / "loopx" / "semantics" / "vocabulary_v0.json"
 REGISTRY_SCHEMA_VERSION = "loopx_semantic_vocabulary_v0"
 VALUE_SHAPE = re.compile(r"^[a-z][a-z0-9_]*$")
+SYMBOL_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 OWNER_SHAPE = re.compile(r"^[A-Za-z0-9_./-]+\.(py|ts)::[A-Za-z_][A-Za-z0-9_]*$")
-QUOTED = re.compile(r'''["']([^"']*)["']''')
 
 REGISTRY_KEYS = {
-    "schema_version", "rfc", "inventory", "policy", "coverage_floor", "vocabularies", "relations",
+    "schema_version", "rfc", "policy", "coverage_floor", "vocabularies", "relations",
     "projections", "schema_versions", "retirement_ledger", "dual_runtime_twins", "inventory_ratchets",
-    "formal_model",
+    "formal_model", "scope_declarations",
 }
 VOCABULARY_KEYS = {"meaning", "tier", "status", "owners", "values"}
-VOCABULARY_OPTIONAL_KEYS = {"literal_scan", "variable_sourced_values", "value_notes", "deprecated_values"}
+VOCABULARY_OPTIONAL_KEYS = {
+    "literal_scan",
+    "variable_sourced_values",
+    "value_notes",
+    "deprecated_values",
+    "producers",
+    "compatibility_only",
+    "return_producers",
+    "return_paths",
+    "call_producers",
+    "input_producer",
+}
 TIERS = {"kernel", "cross_runtime", "cross_module"}
 STATUSES = {"canonical", "legacy", "merge_candidate"}
 FORMAL_MODEL_KEYS = {
@@ -87,7 +103,7 @@ FORMAL_CANDIDATE_DECISIONS = {
 # silently; that is the gap the anchor exists to close.
 COVERAGE_ANCHOR = {
     "vocabularies": 26,
-    "owner_symbols": 46,
+    "owner_symbols": 49,
     "literal_scan_fields": 1,
     "projections": 1,
     "relations": 9,
@@ -95,6 +111,30 @@ COVERAGE_ANCHOR = {
 }
 COVERAGE_SUFFIX_ANCHOR = (".py", ".ts")
 LITERAL_SCAN_ROOTS = ["loopx"]
+PRODUCER_VOCABULARY_ANCHOR = {
+    "effective_action", "turn_route", "loop_disposition", "agent_scope_frontier_action", "turn_result_kind", "lease_action",
+}
+RETURN_PRODUCER_ANCHOR = {
+    "turn_route": {"loopx/control_plane/turn_driver/driver.py::_typed_route", "loopx/control_plane/turn_driver/loop_controller.py::_envelope_route", "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan"},
+    "loop_disposition": {"loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition"},
+    "effective_action": {"loopx/control_plane/quota/decision_summary.py::quota_effective_action", "loopx/control_plane/quota/decision_summary.py::_task_orchestration_effective_action"},
+    "turn_result_kind": {"loopx/control_plane/turn_driver/executor.py::_task_validation_receipt"},
+}
+# Reviewed output arguments/paths replace the old any-enum-use heuristic. These
+# anchors retain that coverage if registry metadata is accidentally removed.
+CALL_PRODUCER_ANCHOR = {
+    "loop_disposition": {"loopx/control_plane/turn_driver/loop_controller.py::_disposition": ["disposition"]},
+    "agent_scope_frontier_action": {"loopx/control_plane/agents/agent_scope_frontier.py::build_agent_scope_frontier_payload": ["action"]},
+    "turn_result_kind": {
+        "loopx/control_plane/turn_driver/executor.py::_host_failure": ["kind"],
+        "loopx/control_plane/turn_driver/executor.py::_task_validation_receipt": ["recovery_kind"],
+    },
+}
+RETURN_PATH_ANCHOR = {
+    "effective_action": {"loopx/control_plane/quota/decision_summary.py::_task_orchestration_effective_action": [0]},
+    "turn_route": {"loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan": ["route", "kind"]},
+    "turn_result_kind": {"loopx/control_plane/turn_driver/executor.py::_task_validation_receipt": ["recovery_kind"]},
+}
 TWIN_ROOT_ANCHOR = "loopx/control_plane"
 TWIN_BUDGET_ANCHOR = 43
 BUDGET_ANCHOR = {
@@ -105,6 +145,7 @@ BUDGET_ANCHOR = {
     "schema_version_same_runtime_forks": 7,
     "multi_value_twins": 19,
     "multi_value_forks": 4,
+    "multi_value_forks_semantic": 3,
     "multi_value_fork_definitions": 10,
     "same_runtime_forks_semantic": 18,
     "conflicting_values_semantic": 2,
@@ -112,12 +153,12 @@ BUDGET_ANCHOR = {
 # Budgets for the legacy should-run decision fields, anchored the same way so a
 # single diff cannot widen a retirement budget to keep a field alive.
 RETIREMENT_ANCHOR = {
-    "execution_obligation": (21, 1),
-    "heartbeat_recommendation": (18, 1),
-    "work_lane_contract": (32, 3),
-    "external_evidence_observation": (11, 1),
-    "goal_boundary": (35, 2),
-    "protocol_action_packet": (7, 2),
+    "execution_obligation": (20, 1),
+    "heartbeat_recommendation": (17, 1),
+    "work_lane_contract": (29, 3),
+    "external_evidence_observation": (8, 1),
+    "goal_boundary": (30, 2),
+    "protocol_action_packet": (5, 2),
 }
 RATCHET_KEYS = (
     "same_runtime_forks",
@@ -127,26 +168,12 @@ RATCHET_KEYS = (
     "schema_version_same_runtime_forks",
     "multi_value_twins",
     "multi_value_forks",
+    "multi_value_forks_semantic",
     "multi_value_fork_definitions",
     "same_runtime_forks_semantic",
     "conflicting_values_semantic",
 )
 
-# Dispatch forms the literal scan recognises. Fixed here, not in the registry, so
-# the registry cannot narrow what the scan sees. ``{f}`` is the field name.
-DISPATCH_FORMS = (
-    # Python/TypeScript comparisons, including wrapped field reads.
-    r"""{f}\b[^\n]*?(?:===|!==|==|!=)\s*["']([^"']*)["']""",
-    # Assignment or object/dict key.
-    r"""{f}["\'\]\)]*\s*(?::|=|\bis)\s*["']([^"']*)["']""",
-    # TypeScript conditional expression.
-    r"""{f}\b[^"\n]*?\?\s*["']([^"']*)["']\s*:\s*["']([^"']*)["']""",
-    # Membership in an inline collection.
-    r"""{f}["\'\]\)]*[^"\n]*?\bin\s*[\(\[\{{]([^\)\]\}}]*)[\)\]\}}]""",
-    # Python conditional expression.
-    r"""{f}\b[^"\n]*?=\s*["']([^"']*)["']\s+if\b[^"\n]*?\belse\s+["']([^"']*)["']""",
-)
-MEMBERSHIP_FORM_INDEX = 3
 
 
 class Drift(AssertionError):
@@ -167,7 +194,6 @@ def load_registry() -> dict[str, Any]:
     require(registry["schema_version"] == REGISTRY_SCHEMA_VERSION, f"registry schema_version must be {REGISTRY_SCHEMA_VERSION}")
     check_formal_model(registry["formal_model"])
     require((REPO_ROOT / registry["rfc"]).is_file(), f"registry must point at an existing RFC: {registry['rfc']}")
-    require((REPO_ROOT / registry["inventory"]).is_file(), f"registry must point at an existing inventory: {registry['inventory']}")
     for name, vocabulary in registry["vocabularies"].items():
         require(VALUE_SHAPE.match(name) is not None, f"vocabulary name must be lower snake_case: {name}")
         keys = set(vocabulary)
@@ -192,6 +218,33 @@ def load_registry() -> dict[str, Any]:
             extra = set(vocabulary.get(key, {})) - set(values)
             require(not extra, f"{name}: {key} names unregistered values {sorted(extra)}")
         require(set(vocabulary.get("deprecated_values", [])) <= set(values), f"{name}: deprecated_values must be a subset of values")
+        producers = vocabulary.get("producers")
+        if producers is not None:
+            require(isinstance(producers, list), f"{name}: producers must be a list")
+            require(bool(producers) or set(vocabulary.get('compatibility_only', {})) == set(values), f"{name}: empty producers require every value to be compatibility-only")
+            require(all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in producers), f"{name}: producers must be module::Symbol sites")
+        if 'input_producer' in vocabulary:
+            require(name == 'turn_result_kind', f"{name}: no executable input producer verifier is implemented")
+            require(vocabulary['input_producer'] == 'loopx/control_plane/turn_driver/transaction.py::_result_kind', f"{name}: unrecognised input producer")
+        returns = vocabulary.get("return_producers", [])
+        require(isinstance(returns, list) and all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in returns), f"{name}: return_producers must be module::Symbol sites")
+        require(set(returns) <= set(producers or []), f"{name}: return_producers must also be registered producers")
+        paths = vocabulary.get('return_paths', {})
+        require(isinstance(paths, dict) and set(paths) <= set(returns), f"{name}: return_paths must name declared return producers")
+        require(all(isinstance(path, list) and path and all(type(key) in (str, int) for key in path)
+                    for path in paths.values()), f"{name}: return_paths must select literal fields or tuple indexes")
+        calls = vocabulary.get('call_producers', {})
+        require(isinstance(calls, dict), f"{name}: call_producers must be a builder-to-parameters object")
+        require(all(isinstance(site, str) and OWNER_SHAPE.match(site) and isinstance(names, list) and names
+                    and all(isinstance(arg, str) and arg.isidentifier() for arg in names)
+                    and len(names) == len(set(names)) for site, names in calls.items()),
+                f"{name}: call_producers must name qualified builders and distinct parameters")
+        compatibility = vocabulary.get("compatibility_only")
+        if compatibility is not None:
+            require(isinstance(compatibility, dict), f"{name}: compatibility_only must be an object")
+            for value, metadata in compatibility.items():
+                require(isinstance(metadata, dict) and set(metadata) == {"reason", "retirement"}, f"{name}: compatibility_only.{value} needs reason and retirement")
+                require(all(isinstance(item, str) and item.strip() for item in metadata.values()), f"{name}: compatibility_only.{value} metadata must be non-empty text")
         scan = vocabulary.get("literal_scan")
         if scan is not None:
             require(set(scan) == {"field", "roots", "suffixes"}, f"{name}: literal_scan keys must be field, roots, suffixes")
@@ -256,6 +309,23 @@ def check_formal_model(model: dict[str, Any]) -> None:
 
 
 def check_coverage_floor(registry: dict[str, Any]) -> str:
+    try:
+        quota_action_domain(registry)
+    except ValueError as error:
+        raise Drift(str(error)) from error
+    require(
+        registry['vocabularies']['turn_result_kind'].get('input_producer') == 'loopx/control_plane/turn_driver/transaction.py::_result_kind',
+        'turn_result_kind: input producer coverage must retain the anchored decoder',
+    )
+    for name in PRODUCER_VOCABULARY_ANCHOR:
+        require("producers" in registry["vocabularies"][name], f"{name}: producer coverage dropped below PRODUCER_VOCABULARY_ANCHOR")
+    for name, required in RETURN_PRODUCER_ANCHOR.items():
+        actual_returns = set(registry['vocabularies'][name].get('return_producers', []))
+        require(required <= actual_returns, f"{name}: return producer coverage dropped below RETURN_PRODUCER_ANCHOR")
+    for metadata, anchor in (("call_producers", CALL_PRODUCER_ANCHOR), ("return_paths", RETURN_PATH_ANCHOR)):
+        for name, vocabulary in registry['vocabularies'].items():
+            require(vocabulary.get(metadata, {}) == anchor.get(name, {}),
+                    f"{name}: {metadata} must retain anchored output evidence exactly (default empty)")
     for vocabulary in registry["vocabularies"].values():
         if scan := vocabulary.get("literal_scan"):
             require(scan["roots"] == LITERAL_SCAN_ROOTS, "literal_scan roots must cover loopx")
@@ -336,20 +406,9 @@ def check_owned_vocabularies(registry: dict[str, Any], inventory: dict[str, Any]
 
 
 def scan_literals(field: str, roots: list[str], suffixes: list[str], sources: list[SourceFile]) -> dict[str, set[str]]:
-    observed: dict[str, set[str]] = {}
-    forms = [re.compile(form.format(f=re.escape(field))) for form in DISPATCH_FORMS]
-    for root in roots:
-        for file in sources:
-            if file.suffix not in suffixes or not file.path.startswith(root.rstrip("/") + "/"):
-                continue
-            for index, form in enumerate(forms):
-                for match in form.finditer(file.text):
-                    tokens = QUOTED.findall(match.group(1)) if index == MEMBERSHIP_FORM_INDEX else list(match.groups())
-                    for token in tokens:
-                        if token == "":
-                            continue  # ``?? ""`` and ``or ""`` clear the field; not a value
-                        observed.setdefault(token, set()).add(file.path)
-    return observed
+    selected = [source for source in sources if source.suffix in suffixes
+                and any(source.path.startswith(root.rstrip('/') + '/') for root in roots)]
+    return collect_literal_uses(REPO_ROOT, field, selected)
 
 
 def check_literal_vocabularies(registry: dict[str, Any], sources: list[SourceFile]) -> None:
@@ -358,15 +417,56 @@ def check_literal_vocabularies(registry: dict[str, Any], sources: list[SourceFil
         if not scan:
             continue
         observed = scan_literals(scan["field"], scan["roots"], scan["suffixes"], sources)
-        expected = set(vocabulary["values"])
+        expected = quota_action_domain(registry) if name == 'effective_action' else set(vocabulary["values"])
         unregistered = {value: sorted(files) for value, files in observed.items() if value not in expected}
         require(not unregistered, f"{name}: literals not in the registry (register them or use a registered value): {unregistered}")
+        if name == 'effective_action':
+            require(not observed,
+                    f"{name}: bare action literals outside the owner: "
+                    f"{ {value: sorted(paths) for value, paths in observed.items()} }; "
+                    "import EffectiveAction or AgentScopeFrontierAction instead")
         variable_sourced = vocabulary.get("variable_sourced_values", {})
         for value, producer in variable_sourced.items():
             text = (REPO_ROOT / producer).read_text(encoding="utf-8", errors="replace")
             require(f'"{value}"' in text, f"{name}: variable-sourced value {value} is no longer produced by {producer}")
-        unused = sorted(expected - set(observed) - set(variable_sourced))
+        owner_values_seen = {
+            value
+            for owner in vocabulary["owners"].values()
+            if owner
+            for value in owner_values(owner)
+        }
+        unused = sorted(
+            set(vocabulary['values']) - set(observed) - set(variable_sourced) - owner_values_seen
+        )
         require(not unused, f"{name}: registry lists values no module carries: {unused}")
+
+
+# --- bounded producer scan ----------------------------------------------------------
+
+
+def _producer_literals(field: str, source: SourceFile) -> set[str]:
+    # Compatibility helper for direct-form mutation fixtures. No enum definitions
+    # are supplied, so these tests cannot accidentally count owners as producers.
+    if source.suffix != '.py':
+        return set()
+    rows = scan_python_production(source, field=field, enums={})
+    return set().union(*(row.values for row in rows))
+
+
+def check_producers(registry: dict[str, Any], sources: list[SourceFile]) -> list[str]:
+    unknown: list[str] = []
+    for name, vocabulary in registry['vocabularies'].items():
+        if 'producers' not in vocabulary:
+            continue  # Other kernel families retain an explicit M0.5 coverage gap.
+        try:
+            rows = collect_production(REPO_ROOT, vocabulary, sources)
+            if name == 'turn_result_kind':
+                rows.extend(probe_turn_result_input_domain(vocabulary))
+            field_domain = quota_action_domain(registry) if name == 'effective_action' else None
+            unknown.extend(validate_production(name, vocabulary, rows, field_domain=field_domain))
+        except ValueError as error:
+            raise Drift(str(error)) from error
+    return sorted(set(unknown))
 
 
 # --- relations, projections, schema versions ----------------------------------------
@@ -386,7 +486,11 @@ def check_relations(registry: dict[str, Any]) -> None:
             resolve(member)
     for shared in registry["relations"]["shared_field_names"]:
         for slot in shared["slots"]:
-            if "vocabulary" in slot:
+            if "vocabularies" in slot:
+                require(shared['field'] == 'effective_action' and slot['slot'] == 'should_run.effective_action',
+                        'only the anchored should-run field has a composed action domain')
+                quota_action_domain(registry)
+            elif "vocabulary" in slot:
                 require(slot["vocabulary"] in vocabularies, f"shared field slot names unknown vocabulary {slot['vocabulary']}")
             else:
                 for value in slot["values"]:
@@ -429,6 +533,47 @@ def check_schema_version_owners(registry: dict[str, Any], sources: list[SourceFi
         require(values == {entry["value"]}, f"schema version {name} carries {sorted(values)}; registry says {entry['value']}")
 
 
+def check_scope_declarations(registry: dict[str, Any], inventory: dict[str, Any]) -> int:
+    """Validate explicit bounded-context exceptions and return semantic fork count.
+
+    The raw inventory remains unchanged. A declaration can remove a known,
+    reviewed bounded-context reuse from the semantic budget only when every
+    defining module is named explicitly. Spelling or directory proximity never
+    infers a scope.
+    """
+    declarations = registry["scope_declarations"]
+    forks = {entry["name"]: entry for entry in inventory["duplicate_definitions"]["multi_value_forks"]}
+    for name, declaration in declarations.items():
+        require(SYMBOL_NAME.match(name) is not None, f"scope declaration name must be an identifier: {name}")
+        require(set(declaration) == {"kind", "contexts"}, f"{name}: scope declaration keys must be kind and contexts")
+        require(declaration["kind"] == "bounded_context", f"{name}: only bounded_context is supported")
+        require(name in forks, f"{name}: scope declaration does not resolve to a multi-value fork")
+        contexts = declaration["contexts"]
+        require(isinstance(contexts, list) and contexts, f"{name}: contexts must be a non-empty list")
+        context_ids: set[str] = set()
+        owner_modules: set[str] = set()
+        for context in contexts:
+            require(set(context) == {"id", "owner"}, f"{name}: each context must have id and owner")
+            context_id = context["id"]
+            require(isinstance(context_id, str) and VALUE_SHAPE.match(context_id) is not None,
+                    f"{name}: context id must be lower snake_case: {context_id!r}")
+            require(context_id not in context_ids, f"{name}: duplicate context id {context_id}")
+            context_ids.add(context_id)
+            owner = context["owner"]
+            require(isinstance(owner, str) and OWNER_SHAPE.match(owner) is not None,
+                    f"{name}: context owner must be module::Symbol: {owner!r}")
+            module, symbol = owner.split("::")
+            require(symbol == name, f"{name}: context owner symbol must be {name}, got {symbol}")
+            owner_modules.add(module)
+        require(len(owner_modules) == len(contexts), f"{name}: each context must have a distinct owner module")
+        defining_modules = {item["module"] for item in forks[name]["definitions"]}
+        require(owner_modules == defining_modules,
+                f"{name}: contexts must name every defining module exactly once; "
+                f"declared={sorted(owner_modules)} actual={sorted(defining_modules)}")
+    undeclared = set(forks) - set(declarations)
+    return len(undeclared)
+
+
 # --- ratchets -----------------------------------------------------------------------
 
 
@@ -441,7 +586,7 @@ def check_retirement_budgets(registry: dict[str, Any], sources: list[SourceFile]
             (".py", "python_module_budget", RETIREMENT_ANCHOR[field][0]),
             (".ts", "typescript_module_budget", RETIREMENT_ANCHOR[field][1]),
         ):
-            actual = sum(1 for file in sources if file.suffix == suffix and field in file.text)
+            actual = count_identifier_modules(field, suffix, sources)
             require(actual <= budgets[key], f"legacy field {field} grew to {actual} {suffix} modules; budget is {budgets[key]}")
             require(
                 budgets[key] == anchored,
@@ -450,6 +595,23 @@ def check_retirement_budgets(registry: dict[str, Any], sources: list[SourceFile]
             )
             report.append(f"{field}{suffix}={actual}/{budgets[key]}")
     return report
+
+
+def count_identifier_modules(field: str, suffix: str, sources: list[SourceFile]) -> int:
+    """Count modules containing the standalone field token.
+
+    This is intentionally a conservative lexical metric. It removes the known
+    ``goal_boundary_repair`` false positive without claiming to prove that every
+    remaining occurrence is a reader or that computed accesses are absent.
+    """
+    pattern = re.compile(
+        rf"(?<![A-Za-z0-9_]){re.escape(field)}(?![A-Za-z0-9_])"
+    )
+    return sum(
+        1
+        for file in sources
+        if file.suffix == suffix and pattern.search(file.text)
+    )
 
 
 def check_dual_runtime_twins(registry: dict[str, Any]) -> str:
@@ -463,22 +625,21 @@ def check_dual_runtime_twins(registry: dict[str, Any]) -> str:
 
 
 def check_inventory(registry: dict[str, Any], sources: list[SourceFile]) -> tuple[dict[str, Any], str]:
-    inventory_path = REPO_ROOT / registry["inventory"]
-    committed = inventory_path.read_text(encoding="utf-8")
     inventory = build_inventory(REPO_ROOT, sources=sources)
     require(inventory["schema_version"] == INVENTORY_SCHEMA_VERSION, "inventory schema drift")
-    require(render_inventory(inventory) == committed, f"{registry['inventory']} is stale; from the repository root run uv run python scripts/generate_semantic_inventory.py and commit the result")
+    semantic_multi_value_forks = check_scope_declarations(registry, inventory)
     ratchets = registry["inventory_ratchets"]
     summary = inventory["summary"]
     parts = []
     for key in RATCHET_KEYS:
-        require(summary[key] <= ratchets[key], f"inventory {key} grew to {summary[key]}; budget is {ratchets[key]}")
+        actual = semantic_multi_value_forks if key == "multi_value_forks_semantic" else summary[key]
+        require(actual <= ratchets[key], f"inventory {key} grew to {actual}; budget is {ratchets[key]}")
         require(
             ratchets[key] == BUDGET_ANCHOR[key],
             f"inventory {key} budget is {ratchets[key]} but BUDGET_ANCHOR pins {BUDGET_ANCHOR[key]}; "
             "the registry and the anchor move together in one diff (see BUDGET_ANCHOR in this smoke)",
         )
-        parts.append(f"{key}={summary[key]}/{ratchets[key]}")
+        parts.append(f"{key}={actual}/{ratchets[key]}")
     return inventory, " ".join(parts)
 
 
@@ -488,7 +649,14 @@ def main() -> int:
     sources = load_sources(REPO_ROOT)
     inventory, ratchets = check_inventory(registry, sources)
     check_owned_vocabularies(registry, inventory)
+    for path, expected in build_artifacts().items():
+        require(
+            path.is_file() and path.read_text(encoding="utf-8") == expected,
+            f"{path.relative_to(REPO_ROOT)} is stale; "
+            "run uv run python scripts/generate_semantic_bindings.py and commit the result",
+        )
     check_literal_vocabularies(registry, sources)
+    unknown_producers = check_producers(registry, sources)
     check_relations(registry)
     check_projections(registry)
     check_schema_version_owners(registry, sources)
@@ -499,6 +667,12 @@ def main() -> int:
     print("  " + ratchets)
     print("  " + " ".join(budgets))
     print("  " + twins)
+    print(f"  unresolved_producer_sites={len(unknown_producers)} (not proven safe)")
+    uncovered = [name for name, v in registry['vocabularies'].items() if v['tier'] == 'kernel' and 'producers' not in v]
+    print(f"  kernel_producer_coverage_pending={','.join(uncovered)}")
+    if '--report' in sys.argv[1:]:
+        for site in unknown_producers:
+            print(f"  unknown_producer: {site}")
     return 0
 
 

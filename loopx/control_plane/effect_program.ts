@@ -44,10 +44,13 @@ export interface EffectInterpretation {
   cadence_class: string | null;
 }
 
-export interface EffectObservation<Decision extends string> {
+export interface EffectObservation<
+  Decision extends string,
+  Action extends string | null = string,
+> {
   decision: Decision;
   should_run: boolean;
-  effective_action: string;
+  effective_action: Action;
   recommended_action: string;
   action_portfolio: JsonObject | null;
   planning_horizon: JsonObject | null;
@@ -63,10 +66,14 @@ export interface EffectNext {
   failure_cli_args: readonly string[];
 }
 
-export interface EffectTurn<Context, Decision extends string> {
+export interface EffectTurn<
+  Context,
+  Decision extends string,
+  Action extends string | null = string,
+> {
   request: EffectRequest<Context>;
   interpretation: EffectInterpretation;
-  observation: EffectObservation<Decision>;
+  observation: EffectObservation<Decision, Action>;
   next_effect: EffectNext;
 }
 
@@ -343,7 +350,7 @@ export function interpretTurnResultPacket(
     agent_id?: string | null;
     capabilities?: readonly string[];
   } = {},
-): EffectTurn<JsonObject, string> {
+): EffectTurn<JsonObject, string, null> {
   const packet = asObject(packetValue);
   const scheduler = asObject(packet.scheduler_hint);
   const codexApp = asObject(scheduler.codex_app);
@@ -376,7 +383,9 @@ export function interpretTurnResultPacket(
     observation: {
       decision: resultKind,
       should_run: false,
-      effective_action: truthyString(packet.effective_action) || resultKind,
+      // A host result carries a verdict, not a new quota decision. Ignore any
+      // host-supplied action and keep the no-action wire representation explicit.
+      effective_action: null,
       recommended_action:
         truthyString(packet.recommended_action) || "settle the turn receipt",
       action_portfolio: null,

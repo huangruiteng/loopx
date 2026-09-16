@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Generate or check the repository-wide semantic inventory.
+"""Compute the full tracked-tree inventory; optionally export a local report.
 
 Usage:
-  uv run python scripts/generate_semantic_inventory.py            # rewrite inventory_v0.json
-  uv run python scripts/generate_semantic_inventory.py --check    # exit 1 when the file is stale
-  uv run python scripts/generate_semantic_inventory.py --report   # print advisory consumer ranking
+  uv run python scripts/generate_semantic_inventory.py             # JSON to stdout, no writes
+  uv run python scripts/generate_semantic_inventory.py --output .local/inventory.json
+  uv run python scripts/generate_semantic_inventory.py --output .local/inventory.json --check
+  uv run python scripts/generate_semantic_inventory.py --report    # advisory consumer ranking
 """
 
 from __future__ import annotations
@@ -25,38 +26,41 @@ from loopx.semantics.inventory import (  # noqa: E402
     render_inventory,
 )
 
-INVENTORY_PATH = ROOT / "loopx" / "semantics" / "inventory_v0.json"
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="fail when the committed inventory is stale")
-    parser.add_argument("--report", action="store_true", help="print the advisory consumer ranking")
+    destination = parser.add_mutually_exclusive_group()
+    destination.add_argument("--output", type=Path, help="write an optional report to this path instead of stdout")
+    destination.add_argument("--report", action="store_true", help="print the advisory consumer ranking")
+    parser.add_argument("--check", action="store_true", help="compare an explicit --output report without writing")
     parser.add_argument("--top", type=int, default=25, help="rows to print with --report")
     args = parser.parse_args()
+    if args.check and args.output is None:
+        parser.error("--check requires --output; inventories are no longer committed. "
+                     "Run examples/semantic-vocabulary-drift-smoke.py for semantic validation.")
 
     inventory = build_inventory(ROOT)
     content = render_inventory(inventory)
     if args.report:
         rows = consumer_ranking(inventory, load_sources(ROOT))[: args.top]
-        width = max(len(row["name"]) for row in rows)
+        width = max((len(row["name"]) for row in rows), default=0)
         print("external_consumer_modules  values  name  module")
         for row in rows:
             print(f"{row['external_consumer_modules']:>25}  {row['values']:>6}  {row['name']:<{width}}  {row['module']}")
         return 0
-    current = INVENTORY_PATH.read_text(encoding="utf-8") if INVENTORY_PATH.exists() else None
-    if current == content:
-        print(f"semantic inventory up to date: {INVENTORY_PATH.relative_to(ROOT)}")
+    if args.output is None:
+        print(content, end="")
         return 0
     if args.check:
-        print(
-            f"stale semantic inventory: {INVENTORY_PATH.relative_to(ROOT)}; "
-            "from the repository root run uv run python scripts/generate_semantic_inventory.py and commit the result",
-            file=sys.stderr,
-        )
-        return 1
-    INVENTORY_PATH.write_text(content, encoding="utf-8")
-    print(f"generated {INVENTORY_PATH.relative_to(ROOT)}")
+        current = args.output.read_text(encoding="utf-8") if args.output.exists() else None
+        if current != content:
+            print(f"stale or missing semantic inventory report: {args.output}; "
+                  "rerun with the same --output path without --check", file=sys.stderr)
+            return 1
+        print(f"semantic inventory report up to date: {args.output}")
+        return 0
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(content, encoding="utf-8")
+    print(f"generated semantic inventory report: {args.output}")
     print(json.dumps(inventory["summary"], indent=2))
     return 0
 

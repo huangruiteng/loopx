@@ -10,6 +10,11 @@ from .control_plane.operator_credential import (
     env_text,
     operator_credential_configured,
 )
+from .control_plane.operator_provider import (
+    operator_credential_source,
+    operator_provider_environ,
+    operator_provider_host_credential,
+)
 from .control_plane.turn_driver.execution_profile import (
     REASONING_EFFORTS,
     managed_execution_profile,
@@ -19,6 +24,7 @@ from .control_plane.turn_driver.host_binding import (
     MANAGED_TURN_HOST,
     managed_executor_binding,
 )
+from .capabilities.steward_executor import load_effective_steward_executor_defaults
 from .chat_store import (
     CHAT_SESSION_MODE_ATTACHED,
     CHAT_SESSION_MODE_MANAGED,
@@ -195,6 +201,73 @@ def steward_machine_defaults(controller: Any) -> Mapping[str, Any] | None:
     return resolved if isinstance(resolved, Mapping) else None
 
 
+def controller_runtime_root(controller: Any) -> Path | None:
+    """Return the runtime root a channel owner reads machine settings from."""
+
+    store = getattr(controller, "store", None)
+    root = getattr(store, "root", None)
+    return root.parent if isinstance(root, Path) else None
+
+
+def operator_credential_resolution(controller: Any) -> dict[str, Any]:
+    """Return the credential-resolved environment and source for one owner.
+
+    A key stored from a product surface lives under the runtime root the
+    controller owns, so the same owner that resolves the machine's steward
+    defaults resolves where the credential came from and what it resolved to. A
+    controller without that owner -- a transport outside the Dashboard, or a
+    test double -- resolves to an unread environment, which lets the channel
+    read the service environment exactly as it did before this machine had a
+    credential store.
+    """
+
+    runtime_root = controller_runtime_root(controller)
+    if runtime_root is None:
+        return {"environ": None, "source": "not_read"}
+    return {
+        "environ": operator_provider_environ(runtime_root),
+        "source": operator_credential_source(runtime_root),
+    }
+
+
+def operator_credential_pair(controller: Any) -> dict[str, str]:
+    """Return the credential pair a managed child host of this owner needs."""
+
+    runtime_root = controller_runtime_root(controller)
+    if runtime_root is None:
+        return {}
+    return operator_provider_host_credential(runtime_root)
+
+
+def manager_capabilities_projection(controller: Any, store: Any) -> dict[str, Any]:
+    """Compose the steward section of the shared chat capabilities payload.
+
+    Every steward entry point resolves the same three things -- this machine's
+    ``steward_executor`` defaults, the operator credential that authenticates
+    the selected executor, and the Session the channel would resume -- so they
+    are composed here once. A caller cannot publish a model argument, an
+    availability verdict and a readback that disagree about which executor and
+    which credential they describe.
+    """
+
+    from .capabilities.manager_runtime import manager_runtime_capability_projection
+
+    machine_defaults = steward_machine_defaults(controller)
+    credential = operator_credential_resolution(controller)
+    return manager_runtime_capability_projection(
+        controller,
+        manager_model_config(
+            credential["environ"], machine_defaults=machine_defaults
+        ),
+        channel_binding=manager_channel_binding(
+            environ=credential["environ"],
+            machine_defaults=machine_defaults,
+            credential_source=credential["source"],
+            session=manager_channel_session(store),
+        ),
+    )
+
+
 def _machine_default_text(
     machine_defaults: Mapping[str, Any] | None, field: str
 ) -> str:
@@ -270,6 +343,32 @@ def manager_executor_endpoint_default(
     return selected_manager_executor_endpoint(
         environ, machine_defaults=machine_defaults
     )[0]
+
+
+def manager_connection_executor_endpoint(
+    runtime_root: Path | str | None,
+    *,
+    environ: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    """Return the endpoint a manager connection runs on, and the source of it.
+
+    A manager conversation is one machine-level channel, so the machine owns
+    which executor answers there. A connection record therefore stores this
+    resolution as an observation instead of a decision that would outlive the
+    machine setting that made it: reading the connection's endpoint back as
+    authority is what let a machine that had selected a managed executor keep
+    answering on the interactive CLI endpoint that was the default when the
+    connection was created.
+    """
+
+    machine_defaults = (
+        load_effective_steward_executor_defaults(Path(runtime_root))
+        if runtime_root is not None
+        else None
+    )
+    return selected_manager_executor_endpoint(
+        environ, machine_defaults=machine_defaults
+    )
 
 
 # The channel's readback quotes the mode and the status of the Session it is an
@@ -350,6 +449,7 @@ def manager_channel_binding(
     *,
     session: Mapping[str, Any] | None = None,
     machine_defaults: Mapping[str, Any] | None = None,
+    credential_source: str | None = None,
 ) -> dict[str, Any]:
     """Project the steward channel's resolved executor, model, and their source.
 
@@ -413,6 +513,12 @@ def manager_channel_binding(
         "executor_kind": executor_kind,
         "credential_env_var": credential_env,
         "operator_credential_configured": operator_credential_configured(environ),
+        # Where the credential that authenticates the resolved executor came
+        # from. A key stored from a product surface and a key exported by the
+        # service readback the same value but a different source, and an
+        # operator who has to edit a launch file to change one is owed the
+        # difference between them.
+        "operator_credential_source": credential_source or "not_read",
         "execution_profile": execution_profile,
         "available": available,
         "unavailable_reason": unavailable_reason,

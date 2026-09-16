@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...state_projection import actions_are_projection_aligned
+from ..agents.agent_scope_frontier import read_frontier_action
 from ..todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -258,11 +259,7 @@ def build_goal_route_hint(
             route_decision = "run_current_agent_lane"
             reason = "quota selected a runnable current-agent lane todo"
     elif isinstance(agent_scope_frontier, dict):
-        route_decision = str(
-            agent_scope_frontier.get("effective_action")
-            or agent_scope_frontier.get("action")
-            or "agent_scope_frontier"
-        )
+        route_decision = read_frontier_action(agent_scope_frontier) or "agent_scope_frontier"
         reason = str(agent_scope_frontier.get("reason") or "agent-scope frontier blocks delivery")
     elif blocking_handoff_gates or other_agent_actions:
         route_decision = "wait_or_reassign_other_agent_lane"

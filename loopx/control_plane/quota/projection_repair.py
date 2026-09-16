@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 import fnmatch
 from typing import Any
@@ -108,7 +109,7 @@ def build_state_projection_gap_repair_hint(
         "source": "quota.should-run",
         "trigger": "state_projection_gap",
         "recommended_mode": "repair_state_projection_gap",
-        "effective_action": "state_projection_gap_repair",
+        "effective_action": EffectiveAction.STATE_PROJECTION_GAP_REPAIR.value,
         "allowed": True,
         "notify": "DONT_NOTIFY",
         "reason": (
@@ -204,7 +205,7 @@ def build_boundary_projection_repair_hint(
         "source": "quota.should-run",
         "trigger": "required_write_scope_missing_from_goal_boundary",
         "recommended_mode": "repair_boundary_projection",
-        "effective_action": "boundary_projection_repair",
+        "effective_action": EffectiveAction.BOUNDARY_PROJECTION_REPAIR.value,
         "blocked_action_scope": "boundary_projection",
         "allowed": True,
         "notify": "DONT_NOTIFY",

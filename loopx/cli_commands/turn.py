@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..control_plane.quota.effective_action import EffectiveAction
 
 import argparse
 import json
@@ -51,6 +52,7 @@ from ..control_plane.turn_driver import (
     selected_turn_todo,
 )
 from ..control_plane.turn_driver.host_binding import managed_executor_binding
+from ..control_plane.operator_provider import operator_provider_environ
 from ..quota import spend_quota_slot
 from ..state_refresh import refresh_state_run
 from ..todos import resolve_todo_state_path
@@ -163,7 +165,7 @@ def handle_turn_command(
             args.turn_command == "run-once"
             and args.host == "codex-cli"
             and not resume_requested
-            and turn_envelope.get("effective_action") != "governed_capability_intent"
+            and turn_envelope.get("effective_action") != EffectiveAction.GOVERNED_CAPABILITY_INTENT.value
         ):
             session_binding = codex_cli_session_binding(runtime_root, turn_envelope)
         payload = build_loopx_turn_plan(
@@ -181,6 +183,11 @@ def handle_turn_command(
         # fact only this command layer knows.
         payload["managed_executor"] = managed_executor_binding(
             args.host,
+            # The credential a managed Turn authenticates with is this
+            # machine's resolved pair, not whatever the invoking shell happens
+            # to export: the readback above the launch and the launch itself
+            # have to name the same credential.
+            environ=operator_provider_environ(runtime_root),
             dsh_runner_configured=bool(getattr(args, "dsh_runner", None)),
             provider=getattr(args, "dsh_provider", None),
             model=getattr(args, "dsh_model", None),

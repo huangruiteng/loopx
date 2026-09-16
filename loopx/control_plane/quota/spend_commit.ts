@@ -1,3 +1,4 @@
+import { EffectiveAction, type EffectiveActionValue } from "./effective_action.generated.ts";
 import { createHash } from "node:crypto";
 import { basename, isAbsolute, join } from "node:path";
 
@@ -44,12 +45,12 @@ export const QUOTA_SPEND_SOURCES = [
 ] as const;
 export type QuotaSpendSource = (typeof QUOTA_SPEND_SOURCES)[number];
 
-const SELF_REPAIR_SPEND_ACTIONS = new Set([
-  "control_plane_health_repair",
-  "control_plane_projection_repair",
-  "state_projection_gap_repair",
-  "boundary_projection_repair",
-  "todo_decision_scope_projection_repair",
+const SELF_REPAIR_SPEND_ACTIONS: ReadonlySet<string> = new Set<EffectiveActionValue>([
+  EffectiveAction.CONTROL_PLANE_HEALTH_REPAIR,
+  EffectiveAction.CONTROL_PLANE_PROJECTION_REPAIR,
+  EffectiveAction.STATE_PROJECTION_GAP_REPAIR,
+  EffectiveAction.BOUNDARY_PROJECTION_REPAIR,
+  EffectiveAction.TODO_DECISION_SCOPE_PROJECTION_REPAIR,
 ]);
 
 type QuotaSpendCommitStatus =
@@ -364,25 +365,25 @@ function spendDisposition(request: QuotaSpendCommitRequest): SpendDisposition {
     action !== null && SELF_REPAIR_SPEND_ACTIONS.has(action) &&
     request.before.self_repair_allowed;
   const capabilityRepairSpend = request.before.should_run &&
-    action === "capability_bridge_repair" &&
+    action === EffectiveAction.CAPABILITY_BRIDGE_REPAIR &&
     request.before.capability_repair_allowed;
   const eligibleSpend = request.before.should_run &&
     request.before.state === "eligible" &&
-    action !== "external_evidence_observe" &&
+    action !== EffectiveAction.EXTERNAL_EVIDENCE_OBSERVE &&
     !selfRepairSpend && !capabilityRepairSpend &&
     !request.before.workspace_repair_allowed && !deliveryCompletionSpend;
   const safeBypassSpend = request.preview.safe_bypass_spend === true &&
     (
       request.before.state === "operator_gate" ||
       request.before.recovery_delivery_allowed ||
-      action === "outcome_floor_recovery"
+      action === EffectiveAction.OUTCOME_FLOOR_RECOVERY
     ) && request.before.safe_bypass_allowed;
   // A recovered settlement describes work that already happened. The current
   // frontier may now ask for capability or control-plane repair, but that later
   // projection cannot rewrite the attribution of the completed delivery.
   if (deliveryCompletionSpend) return "delivery_completion";
   if (eligibleSpend) return "eligible";
-  if (safeBypassSpend && action === "outcome_floor_recovery") {
+  if (safeBypassSpend && action === EffectiveAction.OUTCOME_FLOOR_RECOVERY) {
     return "outcome_floor_recovery";
   }
   if (selfRepairSpend) return "control_plane_self_repair";
