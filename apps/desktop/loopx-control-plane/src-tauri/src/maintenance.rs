@@ -603,6 +603,16 @@ fn pairing_details(bundled: &Value, installed: Option<&Value>, app_version: &str
 // Shared App/runtime pairing gate for both release startup entrances: the
 // journal-absent path and the start that just discarded a stale journal may
 // connect only when the installed runtime pairs with the bundled snapshot.
+// A runtime state that already published its own phase must not be relabelled
+// by the supervisor's generic error publication: the boot surface renders the
+// repair guidance and the operator decision by their own rules.
+fn runtime_state_publishes_own_phase(error: &str) -> bool {
+    matches!(
+        error,
+        "runtime_setup_required" | "runtime_pairing_required"
+    )
+}
+
 fn require_paired_runtime(state: &Maintenance, app: &AppHandle) -> Result<(), String> {
     let bundled = bundled_runtime::identity(app)?;
     let installed =
@@ -728,7 +738,12 @@ pub fn start_services(app: &AppHandle) -> Result<Option<crate::services::Service
         .get_or_init(Instant::now);
     app.state::<Maintenance>().reconcile_services(|| {
         if let Err(error) = resume_runtime(app) {
-            if error != "runtime_setup_required" {
+            // Runtime states publish the phase that explains them before they
+            // return: a missing runtime is the repair guidance, and a different
+            // installed runtime is the operator decision. Relabelling either as
+            // a generic error would replace the surface that offers the next
+            // step with a failure notice.
+            if !runtime_state_publishes_own_phase(&error) {
                 app.state::<Maintenance>()
                     .publish("error", json!({"code":error}));
             }
@@ -1192,6 +1207,26 @@ mod tests {
             state.snapshot.lock().unwrap()["phase"],
             "runtime_pairing_required"
         );
+    }
+
+    #[test]
+    fn supervisor_keeps_the_phase_that_explains_a_runtime_state() {
+        // Both runtime states publish their own phase before resume_runtime
+        // returns. A generic error publication here would replace the repair
+        // guidance or the operator decision with a failure notice -- the
+        // decision would stop rendering its two choices entirely.
+        for owned in ["runtime_setup_required", "runtime_pairing_required"] {
+            assert!(runtime_state_publishes_own_phase(owned), "{owned}");
+        }
+        for relabelled in [
+            "runtime_identity_mismatch",
+            "runtime_install_exit_1",
+            "runtime_install_timeout",
+            "update_state_invalid",
+            "service_start_failed",
+        ] {
+            assert!(!runtime_state_publishes_own_phase(relabelled), "{relabelled}");
+        }
     }
 
     #[test]
