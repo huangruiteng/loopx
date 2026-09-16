@@ -507,6 +507,41 @@ class ChatActionNormalizationMixin:
             if operation == "edit" and len(result) == 3:
                 raise ValueError("heartbeat edit requires a configuration change")
             return result
+        if action_kind == "team.plan":
+            from .control_plane.todos.contract import (
+                TODO_ACTION_KIND_ADVANCEMENT_VALUES,
+            )
+            from .control_plane.work_items.governed_transition_proposal import (
+                validate_steward_team_plan_preview,
+            )
+
+            values = self._allowed_parameters(
+                parameters,
+                allowed={"goal_id", "plan", "requested_by"},
+            )
+            goal_id = _opaque(values.get("goal_id"), field="goal_id")
+            goal = self._goal(goal_id)
+            plan = values.get("plan")
+            if not isinstance(plan, Mapping):
+                raise ValueError("team.plan requires the validated plan object")
+            if str(plan.get("goal_id") or "") != goal_id:
+                raise ValueError("team.plan Goal must match the plan's own Goal")
+            # The plan is validated here against this Goal's registered Agents
+            # and the host's shipped action kinds, and the apply re-validates the
+            # same payload with the host's own facts before it creates anything,
+            # so the stored parameters are never the thing that authorizes work.
+            validate_steward_team_plan_preview(
+                plan,
+                registered_agent_ids=registered_agent_ids_for_goal(goal),
+                supported_action_kinds=sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
+            )
+            return {
+                "goal_id": goal_id,
+                "plan": dict(plan),
+                "requested_by": _opaque(
+                    values.get("requested_by") or "owner", field="requested_by"
+                ),
+            }
         if action_kind == "monitor.create":
             values = self._allowed_parameters(
                 parameters,

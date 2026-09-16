@@ -543,17 +543,23 @@ Shipped enforcement, in delivery order:
    Goal, an external manager channel resolves only the Goals it is bound to, and
    a Goal the registry does not know - or one outside that channel's scope -
    drops the preview instead of validating it against another Goal's Agents.
+5. **Confirmed apply from Chat.** The typed Chat action surface owns a
+   `team.plan` action. Its preview validates the plan against that Goal's
+   registered Agents and the host's advancement action kinds, and its apply
+   re-validates the same payload through the governed transition owner at
+   `PRE_SETTLEMENT`, so one owner confirmation creates each ready lane's first
+   bounded Todo and returns the lane readback. A registration change between
+   preview and apply makes the proposal stale rather than applying a plan whose
+   staffing has drifted.
 
-What is still missing is the effect, not the preview: a confirmed plan has no
-Chat-side apply path yet, because the apply entry point today is a governed
-capability execution journal, so an owner's confirmation has nowhere to land,
-and a multi-lane preview has no frontend confirmation surface. A materialized
-lane Todo also does not yet carry the canonical intent revision it is meant to
-advance. The readback is no longer one of those gaps: the apply publishes every
-lane Todo it ensured under a bounded `lane_todo_ids` field, that field is the one
-additive exception to the closed, persisted receipt field set so a receipt
-written before it still validates, and a team-plan receipt carries no monitor key
-because a plan is not a monitor.
+What is still missing is the surface that sends that confirmation and the
+traceability behind it: a multi-lane preview has no frontend confirmation
+surface yet, and a materialized lane Todo does not carry the canonical intent
+revision it is meant to advance. The readback is no longer one of those gaps: the
+apply publishes every lane Todo it ensured under a bounded `lane_todo_ids` field,
+that field is the one additive exception to the closed, persisted receipt field
+set so a receipt written before it still validates, and a team-plan receipt
+carries no monitor key because a plan is not a monitor.
 
 ### Relationship to the multi-agent and shared-authority contracts
 

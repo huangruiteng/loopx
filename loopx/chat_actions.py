@@ -42,6 +42,7 @@ SUPPORTED_ACTION_KINDS = {
     "monitor.update",
     "gate.resolve",
     "operation.execute",
+    "team.plan",
 }
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
 # Runtime Endpoint ids and durable Goal agent ids are chosen independently, so
@@ -929,6 +930,68 @@ class ChatActionService(
         )
         return {"proposal": stored, "turn": None}
 
+    def _apply_team_plan(
+        self, proposal_id: str, proposal: dict[str, Any], parameters: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create each ready lane's first bounded Todo through the Todo owner."""
+
+        from .control_plane.work_items.governed_transition_proposal import (
+            GovernedTransitionSettlementPhase,
+            settle_governed_transition_proposals,
+        )
+
+        current_fingerprint = self._registry_fingerprint()
+        if current_fingerprint != proposal.get("expected_state_fingerprint"):
+            stale = self.store.apply(
+                proposal_id,
+                current_state_fingerprint=current_fingerprint,
+                receipt={},
+            )
+            return {"proposal": stale, "turn": None}
+        goal_id = str(parameters["goal_id"])
+        plan = parameters.get("plan")
+        if not isinstance(plan, Mapping):
+            raise ValueError("team plan proposal is malformed")
+        # The governed transition owner re-validates the plan with the host's own
+        # facts and owns the settlement phase, so this action never becomes a
+        # second writer of lanes.
+        settlements = settle_governed_transition_proposals(
+            registry_path=self.registry_path,
+            goal_id=goal_id,
+            agent_id=str(parameters.get("requested_by") or "owner"),
+            effect_id=proposal_id,
+            proposals=[{**dict(plan), "proposal_id": proposal_id}],
+            existing_receipts=[],
+            checkpoint=lambda _receipts: None,
+            phase=GovernedTransitionSettlementPhase.PRE_SETTLEMENT,
+        )
+        settlement = settlements[0]
+        lane_todo_ids = [str(item) for item in (settlement.get("lane_todo_ids") or [])]
+        receipt = {
+            "receipt_id": _digest(
+                {
+                    "proposal_id": proposal_id,
+                    "goal_id": goal_id,
+                    "lane_todo_ids": lane_todo_ids,
+                }
+            )[:32],
+            "outcome": (
+                "team_plan_applied"
+                if settlement.get("action") == "created"
+                else "team_plan_lanes_already_present"
+            ),
+            "projection_verified": True,
+            "resource_ids": {
+                "goal_id": goal_id,
+                "todo_id": str(settlement.get("todo_id") or ""),
+                "lane_todo_ids": lane_todo_ids,
+            },
+        }
+        stored = self.store.apply(
+            proposal_id, current_state_fingerprint=current_fingerprint, receipt=receipt
+        )
+        return {"proposal": stored, "turn": None}
+
     def preview(self, request: Mapping[str, Any]) -> dict[str, Any]:
         unknown = set(request) - {
             "action_kind",
@@ -980,6 +1043,15 @@ class ChatActionService(
             )
             evidence = ["The recoverable Goal and Agent Chat Session is available."]
             permission = "scoped_correction"
+        elif action_kind == "team.plan":
+            # A plan staffs registered Agents, so the registration facts it was
+            # validated against are the state that can make this preview stale.
+            fingerprint = self._registry_fingerprint()
+            evidence = [
+                "The plan was validated against this Goal's registered Agents and the host's advancement action kinds.",
+                "Applying it creates the first bounded Todo of each ready lane, through the canonical Todo owner.",
+            ]
+            permission = "durable_write"
         elif action_kind in {"todo.update", "monitor.update"}:
             if action_kind == "todo.update":
                 canonical_preview = self._run_todo_update(normalized, dry_run=True)
@@ -1147,6 +1219,8 @@ class ChatActionService(
             raise self._heartbeat_gate(parameters)
         if action_kind == "monitor.create":
             return self._apply_monitor_create(proposal_id, proposal, parameters)
+        if action_kind == "team.plan":
+            return self._apply_team_plan(proposal_id, proposal, parameters)
         if action_kind == "todo.update":
             return self._apply_todo_update(proposal_id, proposal, parameters)
         if action_kind == "monitor.update":
