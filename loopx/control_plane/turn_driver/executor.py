@@ -70,10 +70,10 @@ from .transaction import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     STOP_RESULT_KINDS as STOP_HOST_RESULT_KINDS,
     TRANSACTION_PHASES,
-    LoopXTurnResultKind,
     build_loopx_turn_transaction_plan,
     validate_loopx_turn_receipt,
 )
+from .turn_contract_generated import LoopXTurnResultKind
 
 __all__ = [
     "build_loopx_turn_command_validator",
