@@ -126,7 +126,8 @@ def _typescript_scan(
                 and isinstance(error.get('line'), int) and error['line'] > 0):
             raise ValueError(f"{error['path']}:{error['line']}: invalid TypeScript source; repair syntax before semantic scanning")
         raise ValueError('TypeScript production parser failed; run npm ci --ignore-scripts and check the Node runtime')
-    rows.extend(Production(r['site'], r['line'], r['form'], frozenset(r['values']), r['unresolved'])
+    rows.extend(Production(r['site'], r['line'], r['form'], frozenset(r['values']), r['unresolved'],
+                           'typescript_dynamic' if r['unresolved'] else None)
                 for r in json.loads(completed.stdout))
     return rows
 
@@ -191,7 +192,10 @@ def validate_production(
     undeclared = sorted({row.site for row in outputs if row.values and row.site not in declared})
     if undeclared:
         raise ValueError(f'{name}: undeclared producer sites: {undeclared}')
-    return sorted({f'{row.site}:{row.line}' for row in rows if row.unresolved})
+    # The label says why the unknown stayed unknown, so the count is actionable:
+    # `argument_name_only` and `annotation_only` can never become evidence.
+    return sorted({f'{row.site}:{row.line} [{row.blocker or "other"}]'
+                   for row in rows if row.unresolved})
 
 
 def probe_turn_result_input_domain(vocabulary: dict[str, Any]) -> list[Production]:

@@ -463,6 +463,21 @@ def _producer_literals(field: str, source: SourceFile) -> set[str]:
     return set().union(*(row.values for row in rows))
 
 
+def summarise_blockers(sites: list[str]) -> str:
+    """Count reported sites by blocker so the total is actionable, not opaque.
+
+    `argument_name_only` and `annotation_only` can never become evidence: the
+    first is a field-named keyword argument, the second a bare declaration.
+    Counting them with resolvable paths would make the total look reducible.
+    """
+
+    counts: dict[str, int] = {}
+    for site in sites:
+        label = site.rpartition('[')[2].rstrip(']') or 'other'
+        counts[label] = counts.get(label, 0) + 1
+    return ','.join(f"{label}={counts[label]}" for label in sorted(counts))
+
+
 def check_producers(registry: dict[str, Any], sources: list[SourceFile]) -> list[str]:
     unknown: list[str] = []
     for name, vocabulary in registry['vocabularies'].items():
@@ -710,6 +725,7 @@ def main() -> int:
     print("  " + " ".join(budgets))
     print("  " + twins)
     print(f"  unresolved_producer_sites={len(unknown_producers)} (not proven safe)")
+    print("  unresolved_producer_blockers=" + summarise_blockers(unknown_producers))
     uncovered = [name for name, v in registry['vocabularies'].items() if v['tier'] == 'kernel' and 'producers' not in v]
     print(f"  kernel_producer_coverage_pending={','.join(uncovered)}")
     if '--report' in sys.argv[1:]:

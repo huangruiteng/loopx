@@ -21,6 +21,18 @@ class Production:
     form: str
     values: frozenset[str]
     unresolved: bool
+    blocker: str | None = None
+    """Why the unknown portion stayed unknown; ``None`` when fully resolved.
+
+    ``argument_name_only`` a field-named keyword argument, which never proves an
+    output role. ``unstable_local`` a parameter, reassignment or shadowed name.
+    ``call_result`` the value comes back from a call. ``dynamic_key`` a computed
+    or non-literal subscript. ``serialized_value`` a string where an enum object
+    was required. ``annotation_only`` a bare annotation that declares the field
+    without a value. ``attribute_read`` an attribute of an unresolved object.
+    ``typescript_dynamic`` the TypeScript scanner could not resolve the write.
+    ``other`` anything else; it keeps the site visible.
+    """
 
 
 def _module(path: str) -> str:
@@ -373,29 +385,35 @@ def scan_python_production(
         def lookup(container: ast.AST | None, key: str | int | None) -> tuple[list[ast.AST], bool]:
             if isinstance(container, (ast.Tuple, ast.List)):
                 if type(key) is int:
-                    return ([container.elts[key]], False) if -len(container.elts) <= key < len(container.elts) else ([], True)
+                    return ([container.elts[key]], False) if -len(container.elts) <= key < len(container.elts) else ([], blocked('dynamic_key'))
                 if key is not None:
-                    return [], True
-                return list(container.elts), True
+                    return [], blocked('dynamic_key')
+                return list(container.elts), blocked('dynamic_key')
             if isinstance(container, ast.Dict):
                 keys = [index_value(k) if k is not None else None for k in container.keys]
                 if key is not None and all(k is not None for k in keys):
                     # Python dict construction keeps the last duplicate key.
                     found = [v for k, v in zip(keys, container.values, strict=True) if k == key]
-                    return ([found[-1]], False) if found else ([], True)
-                return list(container.values), True
-            return [], True
+                    return ([found[-1]], False) if found else ([], blocked('dynamic_key'))
+                return list(container.values), blocked('dynamic_key')
+            return [], blocked('unstable_local' if isinstance(container, ast.Name) else 'other')
+
+        blockers: list[str] = []
+
+        def blocked(label: str) -> bool:
+            blockers.append(label)
+            return True
 
         def resolve(node: ast.AST | None, seen: frozenset[str] = frozenset(), *, enum_only: bool = False) -> tuple[set[str], bool]:
             node, seen = bound(node, seen)
             if isinstance(node, ast.Constant):
                 if isinstance(node.value, str):
                     return ({node.value} if node.value and not enum_only else set()), False
-                return set(), node.value is not None
+                return set(), node.value is not None and blocked('other')
             if isinstance(node, ast.Subscript):
                 if isinstance(node.slice, ast.Slice) or (isinstance(node.slice, ast.Constant)
                         and type(node.slice.value) not in (str, int)):
-                    return set(), True
+                    return set(), blocked('dynamic_key')
                 container, visited = bound(node.value, seen)
                 choices, unknown = lookup(container, index_value(node.slice))
                 known: set[str] = set()
@@ -422,7 +440,14 @@ def scan_python_production(
                         return {members[member.attr]}, False
                 if node.attr == 'value' and isinstance(node.value, ast.Name):
                     return enum_object_value(node.value, seen)
-            return set(), True
+                return set(), blocked('attribute_read')
+            if isinstance(node, ast.Call):
+                return set(), blocked('call_result')
+            if isinstance(node, ast.Name):
+                return set(), blocked('unstable_local')
+            if node is None:
+                return set(), blocked('other')
+            return set(), blocked('other')
 
         def enum_object_value(node: ast.AST, seen: frozenset[str]) -> tuple[set[str], bool]:
             node, seen = bound(node, seen)
@@ -433,7 +458,7 @@ def scan_python_production(
                 return resolve(node, seen, enum_only=True)
             # A serialized string (including Action.RUN.value) is not an enum
             # object with another .value attribute.
-            return set(), True
+            return set(), blocked('serialized_value')
 
         def returned(node: ast.AST | None, path: tuple[str | int, ...], seen: frozenset[str] = frozenset()) -> tuple[set[str], bool]:
             if not path:
@@ -444,10 +469,17 @@ def scan_python_production(
             return set().union(*(v for v, _ in parts)), unknown or any(u for _, u in parts)
 
         def record(node: ast.AST | None, form: str, location: ast.AST) -> None:
+            blockers.clear()
             values, unknown = (returned(node, return_paths.get(scope, ())) if form == 'return' else resolve(node))
+            blocker = blockers[0] if blockers else None
+            if node is None and form == 'assignment':
+                # A bare annotation declares the field; there is no value to resolve.
+                blocker = 'annotation_only'
             if form == 'keyword_unproved':
-                unknown = True  # Argument name alone does not prove an output role.
-            result.append(Production(f'{source.path}::{scope}', location.lineno, form, frozenset(values), unknown))
+                # Argument name alone does not prove an output role.
+                unknown, blocker = True, 'argument_name_only'
+            result.append(Production(f'{source.path}::{scope}', location.lineno, form,
+                                     frozenset(values), unknown, blocker if unknown else None))
 
         for node in nodes:
             if isinstance(node, ast.Assign):

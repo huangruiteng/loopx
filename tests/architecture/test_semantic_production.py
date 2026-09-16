@@ -288,3 +288,23 @@ def test_input_witness_runs_only_for_the_anchored_site():
     rows = collect_production(ROOT, anchored, [])
     assert {r.form for r in rows} == {'input_witness'}
     assert set().union(*(r.values for r in rows)) == set(values)
+
+
+def test_reported_sites_carry_a_blocker_label_and_summarise():
+    import runpy
+
+    from loopx.semantics.inventory import load_sources
+
+    smoke = runpy.run_path(str(ROOT / 'examples/semantic-vocabulary-drift-smoke.py'),
+                           run_name='not_main')
+    registry = smoke['load_registry']()
+    sites = smoke['check_producers'](registry, load_sources(ROOT))
+    assert sites, 'the repository still has unresolved producer sites to describe'
+    assert all(site.endswith(']') and ' [' in site for site in sites)
+    summary = smoke['summarise_blockers'](sites)
+    counted = sum(int(part.split('=')[1]) for part in summary.split(','))
+    assert counted == len(sites)
+    # These two can never become evidence, so they must stay separable from the
+    # paths a future slice could still resolve.
+    assert 'argument_name_only=' in summary
+    assert 'annotation_only=' in summary

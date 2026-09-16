@@ -317,3 +317,40 @@ def test_second_reexport_hop_and_untracked_module_stay_unknown():
     assert known(rows) == set() and all(r.unresolved for r in rows)
     rows = scan('from .compat import Action\ndef emit():\n return Action.RUN.value\n', returns=['emit'], modules={})
     assert known(rows) == set() and all(r.unresolved for r in rows)
+
+
+def blockers(rows):
+    return {r.blocker for r in rows if r.unresolved}
+
+
+@pytest.mark.parametrize('text, expected', [
+    # a field-named keyword argument never proves an output role
+    ('from .owner import Action\ndef emit(p):\n return Packet(action=p)\n', 'argument_name_only'),
+    # a bare annotation declares the field; there is no value to resolve
+    ('class Packet:\n action: str\n', 'annotation_only'),
+    # a parameter cannot borrow owner values
+    ('def emit(action):\n p = {"action": action}\n return p\n', 'unstable_local'),
+    # the value comes back from a call
+    ('def emit():\n return {"action": compute()}\n', 'call_result'),
+    # a computed subscript is not a literal key
+    ('def emit(key, table):\n return {"action": table[key]}\n', 'unstable_local'),
+])
+def test_unresolved_rows_say_why_they_stayed_unknown(text, expected):
+    rows = scan(text)
+    assert expected in blockers(rows), (expected, [(r.form, r.blocker) for r in rows])
+
+
+def test_resolved_rows_carry_no_blocker():
+    rows = scan('from .owner import Action\ndef emit():\n return {"action": Action.RUN.value}\n')
+    assert rows and all(r.blocker is None for r in rows if not r.unresolved)
+
+
+def test_every_unresolved_row_is_labelled():
+    """An unlabelled unknown would be invisible in the report breakdown."""
+
+    rows = scan('from .owner import Action\ndef emit(p, table, key):\n'
+                ' a = {"action": p}\n'
+                ' b = {"action": table[key]}\n'
+                ' c = Packet(action=compute())\n'
+                ' return [a, b, c]\n')
+    assert all(r.blocker for r in rows if r.unresolved)
