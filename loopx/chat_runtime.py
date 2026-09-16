@@ -394,8 +394,8 @@ class ChatRuntimeController:
                     if manager_profile is not None
                     else None
                 ),
-                # The steward channel's executor, model and effort come from the
-                # machine configuration this controller owns.
+                # The steward channel's executor, model and effort come from this
+                # controller's machine configuration.
                 **(
                     manager_model_config(
                         machine_defaults=self.steward_executor_defaults()
