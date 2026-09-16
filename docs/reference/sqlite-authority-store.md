@@ -310,13 +310,20 @@ The shipped version-1 database keeps one full projection per retained row, so it
 cannot be read by the version-2 provider. `sqlite_authority_migration.ts`
 migrates one Goal database in place: it reads the frozen version-1 rows, proves
 every stored commit digest, writes the checkpoint/delta log, proves that each
-written delta reconstructs its projection, requires the commit count to match,
-swaps tables and updates the schema version inside a single
+written delta reconstructs its projection, reads the not-yet-swapped tables back
+and replays them through the store's own delta decoder, requires the commit
+count to match, swaps tables and updates the schema version inside a single
 `BEGIN IMMEDIATE` transaction. Any failure rolls back and leaves version 1
 untouched; a second run reports `already_current`; a rewritten proof, a
 mismatched goal/incarnation or an existing swap target fails closed. Cursors,
 operation IDs, commit digests, provider revisions, receipts, events and scan
 pages are byte-identical after the migration.
+
+Retained projections keep every JSON object key the version-1 provider accepted,
+including an empty key and a `__proto__` key: a database the previous provider
+could read must not become one the version-2 provider cannot. The replay proof
+is what keeps that promise honest, because identical identity and digest columns
+alone would not show that a migrated state log is unreadable.
 
 A version-1 database that published only its schema and metadata — the state a
 goal leaves behind when it selected the provider and never committed — migrates
@@ -390,4 +397,8 @@ delta”：活跃头读取只用自己的行、对应提交和游标连续性自
 才写入，`--expected-identity` 可拒绝并非操作者所指的 incarnation，失败保持 v1
 原样）。只发布过 schema 与 metadata、从未提交的 v1 库会迁移成同样为空的 v2 库，
 不会让操作者落在两个 provider 都不接受的状态。迁移不改 cursor、operation id、
-commit digest、provider revision、receipt、event 或 scan 页面字节。
+commit digest、provider revision、receipt、event 或 scan 页面字节。迁移在提交前
+还会把刚写入的表读回来、用 store 自己的 delta 解码器重放一遍：只核对搬过去的
+标识与摘要无法证明新的状态日志可读。v1 能接受的 JSON key（包括空字符串和
+`__proto__`）在 v2 中保持同样的数据语义，迁移不会把原本可读的库变成读不出来的
+状态。

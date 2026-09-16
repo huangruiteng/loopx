@@ -246,9 +246,14 @@ def _run_turn(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-steward-managed-chat-") as directory:
         root = Path(directory)
         store = ChatSessionStore(root / "store")
+        # A real registry keeps this on the collected path the steward actually
+        # runs, instead of the registry-unavailable envelope.
+        registry = root / "registry.global.json"
+        registry.write_text(json.dumps({"goals": []}), encoding="utf-8")
         runtime = ChatRuntimeController(
             store=store,
             codex_bin="fixture-codex",
+            registry_path=registry,
             hard_timeout_sec=args.timeout_seconds,
         )
         try:
@@ -305,9 +310,19 @@ def _run_turn(args: argparse.Namespace) -> int:
             "manager_evidence_window_v0" in evidence_text
             and '"applies_to": "recent_delivery_history"' in evidence_text
             and '"receipt_detail_policy": "latest_full_per_goal"' in evidence_text
+            and '"days_source": "product_default"' in evidence_text
+            and '"days_bounds"' in evidence_text
+            and '"remote_read": "inline_in_prompt"' in evidence_text
             and '"sources"' in evidence_text
             and '"declared_unread_sources"' in evidence_text,
             "the prompt-only segment must receive the bounded window and declared sources",
+        )
+        _assert(
+            "manager_remote_evidence_v0" in evidence_text
+            and '"read_status": "not_read"' in evidence_text
+            and '"declared_source_count": 0' in evidence_text,
+            "a prompt-only segment must receive the declared source read, and this "
+            "fixture registers no host so the read stays empty instead of dialling",
         )
         payloads = [
             json.loads(item["body"])

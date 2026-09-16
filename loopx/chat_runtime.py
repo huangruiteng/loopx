@@ -1079,6 +1079,10 @@ class ChatRuntimeController:
                 context = collect_manager_turn_context(
                     self.registry_path, session, self.store.root.parent, self.manager_scope_resolver,
                     **({"include_details": False} if isinstance(adapter, CodexAppServerAdapter) else {}),
+                    # An interactive endpoint reads the declared sources on
+                    # demand, but a prompt-only segment can only receive them,
+                    # so it gets the bounded read inline.
+                    remote_evidence=not isinstance(adapter, CodexAppServerAdapter),
                 )
                 self.store.append_event(session_id, turn_id, kind="manager.context", payload=context)
                 if session.get("channel_id") != "manager":

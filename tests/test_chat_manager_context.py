@@ -2,6 +2,8 @@
 
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -169,6 +171,177 @@ def test_turn_context_reads_a_bounded_window_and_declares_sources(
         for source in window["sources"]
         if source["status"] != "available"
     ]
+
+
+def test_evidence_window_is_a_selected_bounded_decision():
+    # The window is an explicit operator choice, bounded, and declared with its
+    # source: it never follows a discovered environment fact silently.
+    assert context.resolve_evidence_window_days({}) == (
+        context.MANAGER_EVIDENCE_WINDOW_DAYS,
+        context.MANAGER_EVIDENCE_WINDOW_SOURCE_PRODUCT_DEFAULT,
+        "",
+    )
+    assert context.resolve_evidence_window_days(
+        {context.MANAGER_EVIDENCE_WINDOW_ENV_VAR: "14"}
+    ) == (14, context.MANAGER_EVIDENCE_WINDOW_SOURCE_EXPLICIT_CONFIG, "")
+    for rejected in ("0", "31", "-3", "seven", "7.5"):
+        days, source, reason = context.resolve_evidence_window_days(
+            {context.MANAGER_EVIDENCE_WINDOW_ENV_VAR: rejected}
+        )
+        # A rejected value keeps the shipped default and names the reason, so a
+        # bad setting can neither widen the prompt nor answer a narrower window.
+        assert days == context.MANAGER_EVIDENCE_WINDOW_DAYS
+        assert source == context.MANAGER_EVIDENCE_WINDOW_SOURCE_PRODUCT_DEFAULT
+        assert reason == context.MANAGER_EVIDENCE_WINDOW_REASON_INVALID_EXPLICIT
+    with pytest.raises(ValueError):
+        context.manager_turn_context(
+            Path("/nonexistent/registry.json"),
+            {"channel_id": "manager"},
+            Path("/nonexistent/runtime"),
+            evidence_window_days=31,
+        )
+
+
+def test_window_declares_its_source_and_bounds(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        context,
+        "build_goal_portfolio",
+        lambda **_: {"goals": [], "coverage": {"discovered": 0}},
+    )
+    monkeypatch.setenv(context.MANAGER_EVIDENCE_WINDOW_ENV_VAR, "21")
+    result = context.manager_turn_context(
+        tmp_path / "registry.json", {"channel_id": "manager"}, tmp_path
+    )
+    window = result["evidence_window"]
+    assert window["days"] == 21
+    assert window["days_source"] == context.MANAGER_EVIDENCE_WINDOW_SOURCE_EXPLICIT_CONFIG
+    assert window["days_reason"] == ""
+    assert window["days_default"] == context.MANAGER_EVIDENCE_WINDOW_DAYS
+    assert window["days_env_var"] == context.MANAGER_EVIDENCE_WINDOW_ENV_VAR
+    assert window["days_bounds"] == {"min": 1, "max": context.MANAGER_EVIDENCE_MAX_WINDOW_DAYS}
+    # An interactive Turn declares that the sources were not read for it.
+    assert window["remote_read"] == context.MANAGER_REMOTE_READ_ON_DEMAND
+    assert "remote_evidence" not in result
+
+
+def test_prompt_only_turn_reads_declared_sources_once_and_declares_freshness(
+    monkeypatch, tmp_path
+):
+    from loopx.capabilities.manager_context.ssh_evidence import configure
+
+    config = tmp_path / "ssh_config"
+    config.write_text("Host research-host\n  HostName research-host.invalid\n")
+    configure(
+        tmp_path,
+        channel="manager.external." + "e" * 24,
+        host="research-host",
+        goal_ids=["remote-goal"],
+        execute=True,
+        config_path=config,
+    )
+    monkeypatch.setattr(
+        context,
+        "build_goal_portfolio",
+        lambda **_: {"goals": [], "coverage": {"discovered": 0}},
+    )
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "schema_version": "manager_evidence_page_v1",
+                    "ok": True,
+                    "rows": [{"goal_id": "remote-goal", "quality": "stale"}],
+                    "source": {"coverage": {"discovered": 1}},
+                }
+            ),
+        )
+
+    result = context.manager_turn_context(
+        tmp_path / "registry.json",
+        {"channel_id": "manager"},
+        tmp_path,
+        remote_evidence=True,
+        remote_runner=run,
+        remote_config_path=config,
+    )
+    window = result["evidence_window"]
+    assert window["remote_read"] == context.MANAGER_REMOTE_READ_INLINE
+    # One packet, one SSH config: the declaration reads the same config the
+    # source read used, so it cannot call a host unconfigured and read it.
+    declared = {source["source_id"]: source for source in window["sources"]}
+    assert declared["ssh:research-host"]["status"] == "not_read"
+    remote = result["remote_evidence"]
+    assert remote["schema_version"] == "manager_remote_evidence_v0"
+    assert remote["window_days"] == context.MANAGER_EVIDENCE_WINDOW_DAYS
+    assert remote["read_status"] == "read"
+    assert remote["sources"][0]["source_id"] == "ssh:research-host"
+    assert remote["sources"][0]["fresh"] is True
+    assert remote["declared_source_count"] == 1
+    assert remote["rows"][0]["goal_id"] == "remote-goal"
+    assert remote["rows"][0]["source_freshness"] == "current"
+    assert remote["rows"][0]["source_host"] == "research-host"
+    assert remote["budget"]["total_seconds"] == 10
+    assert len(calls) == 1
+    # The next Turn inside the TTL reuses the read instead of dialling again.
+    again = context.manager_turn_context(
+        tmp_path / "registry.json",
+        {"channel_id": "manager"},
+        tmp_path,
+        remote_evidence=True,
+        remote_runner=run,
+        remote_config_path=config,
+    )
+    assert len(calls) == 1
+    assert again["remote_evidence"]["sources"][0]["status"] == "cached"
+    assert again["remote_evidence"]["rows"] == remote["rows"]
+
+
+def test_prompt_only_transport_receives_the_source_read_instead_of_a_tool(
+    monkeypatch, tmp_path
+):
+    """A segment without a read tool is handed the sources by the Turn owner."""
+
+    store = ChatSessionStore(tmp_path / "runtime")
+    runtime = ChatRuntimeController(store=store, codex_bin="codex")
+    collected = []
+
+    def collect(*args, **kwargs):
+        collected.append(kwargs)
+        return {
+            "schema_version": "manager_turn_context_v1",
+            "coverage": {"discovered": 0},
+            "goals": [],
+        }
+
+    monkeypatch.setattr(context, "collect_manager_turn_context", collect)
+    monkeypatch.setattr(runtime, "_start_adapter", lambda **kwargs: Adapter())
+    session = store.create_session(
+        goal_id=MANAGER_AGENT_GOAL_ID,
+        agent_id="dsh",
+        adapter_kind="dsh_segment",
+        upstream_thread_id="dsh-segment-fixture",
+        channel_id="manager",
+        upstream_mode="chat",
+    )
+    runtime.adapters[session["session_id"]] = Adapter()
+    turn, _ = runtime.submit_turn(
+        session_id=session["session_id"],
+        client_turn_id="prompt-only",
+        message="What did my hosts do?",
+        work_dir=tmp_path,
+        objective="manager",
+    )
+    done = runtime.wait_for_turn(
+        session_id=session["session_id"], turn_id=turn["turn_id"], timeout_sec=10
+    )
+    assert done["status"] == "completed", done
+    # No include_details override: a prompt-only segment receives the details
+    # and the declared source read inline.
+    assert collected == [{"remote_evidence": True}]
 
 
 def test_unread_window_keeps_its_bounds_and_unchanged_seam_default(
@@ -611,7 +784,7 @@ def test_changed_external_scope_rotates_upstream_before_model_call(
     monkeypatch.setattr(
         context,
         "collect_manager_turn_context",
-        lambda *_args: {
+        lambda *_args, **_kwargs: {
             "schema_version": "manager_turn_context_v1",
             "authorization_scope_id": context.manager_authorization_scope_id(
                 ["newly-authorized"]

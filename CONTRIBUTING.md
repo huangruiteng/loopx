@@ -79,26 +79,20 @@ Before adding or consolidating a public smoke, use the bilingual
 [good smoke guide](docs/development/good-smokes.md) to define its durable
 invariant, independent oracle, cadence, and public-safe fixture boundary.
 
-Install and verify the checkout:
+For source development, run commands from the repository or dedicated worktree
+root with `uv`. It manages a compatible Python and installs the current checkout
+in the project environment, keeping checks separate from a globally installed
+LoopX release. See the [local validation commands](docs/development/testing-and-quality.md#local-validation-environment--本地验证环境)
+for environment, lockfile, and CI boundaries.
 
 ```bash
-git clone https://github.com/huangruiteng/loopx ~/loopx
-~/loopx/scripts/install-local.sh
-export PATH="$HOME/.local/bin:$PATH"
-loopx doctor
-loopx demo
-```
-
-Common focused checks:
-
-```bash
-python -m pip install -e ".[test]"
-python -m ruff check tests loopx/canary loopx/control_plane loopx/domain_packs loopx/presentation
-python -m mypy
-python examples/control_plane/cli-output-budget-regression-smoke.py
-python -m pytest -q
-loopx canary premerge --from-git-diff
-loopx check --scan-path loopx/ --scan-path tests/ --scan-path examples/ --scan-path docs/
+uv sync --extra test
+uv run --extra test python -m ruff check tests loopx/canary loopx/control_plane loopx/domain_packs loopx/presentation
+uv run --extra test python -m mypy
+uv run --extra test python examples/control_plane/cli-output-budget-regression-smoke.py
+uv run --extra test python -m pytest -q
+uv run --extra test loopx canary premerge --from-git-diff
+uv run --extra test loopx check --scan-path loopx/ --scan-path tests/ --scan-path examples/ --scan-path docs/
 git diff --check
 ```
 

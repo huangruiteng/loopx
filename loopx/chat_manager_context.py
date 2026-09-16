@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
+import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -26,15 +27,69 @@ MANAGER_EVIDENCE_TOTAL_LIMIT = 48
 MANAGER_RECEIPT_DETAIL_POLICY = "latest_full_per_goal"
 MANAGER_EVIDENCE_WINDOW_SCHEMA = "manager_evidence_window_v0"
 MANAGER_EVIDENCE_MAX_WINDOW_DAYS = 30
+# The window is an explicit operator decision, not a discovered fact: a wider
+# window is a deliberate trade of prompt size for reach, so it is selected,
+# bounded, and declared with its source instead of following an environment
+# fact the operator never chose.
+MANAGER_EVIDENCE_WINDOW_ENV_VAR = "LOOPX_MANAGER_EVIDENCE_WINDOW_DAYS"
+MANAGER_EVIDENCE_WINDOW_SOURCE_PRODUCT_DEFAULT = "product_default"
+MANAGER_EVIDENCE_WINDOW_SOURCE_EXPLICIT_CONFIG = "explicit_config"
+MANAGER_EVIDENCE_WINDOW_SOURCE_EXPLICIT_ARGUMENT = "explicit_argument"
+MANAGER_EVIDENCE_WINDOW_REASON_INVALID_EXPLICIT = "explicit_window_out_of_bounds"
+# How the declared sources reach the model: an interactive endpoint reads them
+# on demand through the read tool, a prompt-only segment can only receive them.
+MANAGER_REMOTE_READ_INLINE = "inline_in_prompt"
+MANAGER_REMOTE_READ_ON_DEMAND = "on_demand_tool"
 
 
-def _declared_sources(runtime_root, channel_id, owner_scope) -> list[dict[str, Any]]:
-    """Declare the evidence sources; declaring a source never reads it."""
+def resolve_evidence_window_days(environ=None) -> tuple[int, str, str]:
+    """Return the selected window, its source and a typed rejection reason.
+
+    An explicit in-bounds value selects the window. A missing value keeps the
+    shipped default, and an out-of-bounds or unreadable explicit value keeps the
+    shipped default too while naming the reason, so a bad setting can never
+    widen the prompt or silently answer a narrower question than declared.
+    """
+
+    values = os.environ if environ is None else environ
+    raw = str(values.get(MANAGER_EVIDENCE_WINDOW_ENV_VAR, "") or "").strip()
+    if not raw:
+        return (
+            MANAGER_EVIDENCE_WINDOW_DAYS,
+            MANAGER_EVIDENCE_WINDOW_SOURCE_PRODUCT_DEFAULT,
+            "",
+        )
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = None
+    if value is None or not 1 <= value <= MANAGER_EVIDENCE_MAX_WINDOW_DAYS:
+        return (
+            MANAGER_EVIDENCE_WINDOW_DAYS,
+            MANAGER_EVIDENCE_WINDOW_SOURCE_PRODUCT_DEFAULT,
+            MANAGER_EVIDENCE_WINDOW_REASON_INVALID_EXPLICIT,
+        )
+    return (
+        value,
+        MANAGER_EVIDENCE_WINDOW_SOURCE_EXPLICIT_CONFIG,
+        "",
+    )
+
+
+def _declared_sources(
+    runtime_root, channel_id, owner_scope, config_path=None
+) -> list[dict[str, Any]]:
+    """Declare the evidence sources; declaring a source never reads it.
+
+    The declaration reads the same SSH config the Turn-time source read uses,
+    so one packet cannot declare a host unconfigured and read it in the same
+    Turn.
+    """
     local = [{"source_id": "local", "source_host": "local", "status": "available"}]
     try:
         from .capabilities.manager_context.ssh_evidence import sources
 
-        declared = sources(runtime_root, channel_id, owner_scope)
+        declared = sources(runtime_root, channel_id, owner_scope, config_path)
     except (OSError, ValueError, TypeError, RuntimeError, ImportError):
         return local
     return declared or local
@@ -81,6 +136,11 @@ def _evidence_window(
     owner_scope: bool,
     days: int,
     include_details: bool,
+    *,
+    days_source: str = MANAGER_EVIDENCE_WINDOW_SOURCE_PRODUCT_DEFAULT,
+    days_reason: str = "",
+    remote_read: str = MANAGER_REMOTE_READ_ON_DEMAND,
+    config_path=None,
 ) -> dict[str, Any]:
     """Declare exactly what the per-turn evidence read covered."""
     matched_by_day: dict[str, int] = {}
@@ -128,15 +188,27 @@ def _evidence_window(
     else:
         read_status = "not_read"
     sources = _declared_sources(
-        runtime_root, str(session.get("channel_id") or "manager"), owner_scope
+        runtime_root,
+        str(session.get("channel_id") or "manager"),
+        owner_scope,
+        config_path,
     )
     return {
         "schema_version": MANAGER_EVIDENCE_WINDOW_SCHEMA,
         "days": days,
+        "days_source": days_source,
+        "days_default": MANAGER_EVIDENCE_WINDOW_DAYS,
+        "days_env_var": MANAGER_EVIDENCE_WINDOW_ENV_VAR,
+        "days_reason": days_reason,
+        "days_bounds": {
+            "min": 1,
+            "max": MANAGER_EVIDENCE_MAX_WINDOW_DAYS,
+        },
         "window_start": window_start,
         "window_end": window_end,
         "observed_at": observed_at or datetime.now(timezone.utc).isoformat(),
         "applies_to": "recent_delivery_history",
+        "remote_read": remote_read,
         "read_status": read_status,
         "per_day_limit": MANAGER_EVIDENCE_PER_DAY_LIMIT,
         "total_limit": MANAGER_EVIDENCE_TOTAL_LIMIT,
@@ -155,6 +227,52 @@ def _evidence_window(
         ],
         "limitations": limitations,
     }
+
+
+def _remote_evidence(
+    runtime_root: Path,
+    session: dict[str, Any],
+    owner_scope: bool,
+    window_days: int,
+    *,
+    runner=None,
+    scope_valid: Callable[[], bool] | None = None,
+    config_path=None,
+) -> dict[str, Any]:
+    """Read the declared sources inside one Turn budget; never fail the Turn."""
+
+    from .capabilities.manager_context.ssh_evidence import (
+        MANAGER_REMOTE_EVIDENCE_SCHEMA,
+        remote_evidence,
+    )
+
+    kwargs: dict[str, Any] = {}
+    if runner is not None:
+        kwargs["runner"] = runner
+    if config_path is not None:
+        kwargs["config_path"] = config_path
+    try:
+        return remote_evidence(
+            runtime_root,
+            str(session.get("channel_id") or "manager"),
+            owner_scope,
+            window_days=window_days,
+            scope_valid=scope_valid or (lambda: True),
+            **kwargs,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError, ImportError):
+        # A failed source read is a declared coverage gap, never a Turn failure
+        # and never evidence that a remote Goal made no progress.
+        return {
+            "schema_version": MANAGER_REMOTE_EVIDENCE_SCHEMA,
+            "applies_to": "declared_ssh_sources",
+            "window_days": window_days,
+            "read_status": "unavailable",
+            "sources": [],
+            "rows": [],
+            "stale_rows_included": False,
+            "limitations": ["remote_source_read_failed"],
+        }
 
 
 def manager_authorization_scope_id(goal_ids: list[str], *, runtime_root=None, channel_id=None) -> str:
@@ -177,29 +295,62 @@ def manager_turn_context(
     *,
     authorized_goal_ids: list[str] | None = None,
     include_details: bool = True,
-    evidence_window_days: int = MANAGER_EVIDENCE_WINDOW_DAYS,
+    evidence_window_days: int | None = None,
+    remote_evidence: bool = False,
+    remote_runner=None,
+    remote_scope_valid: Callable[[], bool] | None = None,
+    remote_config_path=None,
 ) -> dict[str, Any]:
-    if (
-        type(evidence_window_days) is not int
-        or not 1 <= evidence_window_days <= MANAGER_EVIDENCE_MAX_WINDOW_DAYS
+    if evidence_window_days is None:
+        evidence_window_days, days_source, days_reason = resolve_evidence_window_days()
+    elif (
+        type(evidence_window_days) is int
+        and 1 <= evidence_window_days <= MANAGER_EVIDENCE_MAX_WINDOW_DAYS
     ):
+        days_source, days_reason = (
+            MANAGER_EVIDENCE_WINDOW_SOURCE_EXPLICIT_ARGUMENT,
+            "",
+        )
+    else:
         raise ValueError(
             f"evidence_window_days must be 1..{MANAGER_EVIDENCE_MAX_WINDOW_DAYS}"
         )
+    window_kwargs = {
+        "days_source": days_source,
+        "days_reason": days_reason,
+        "remote_read": (
+            MANAGER_REMOTE_READ_INLINE if remote_evidence else MANAGER_REMOTE_READ_ON_DEMAND
+        ),
+        # One SSH config path for the whole packet: the declaration and the
+        # source read must not disagree about which hosts exist.
+        "config_path": remote_config_path,
+    }
     owner_scope = session.get("channel_id") == "manager"
     scope = None if owner_scope else authorized_goal_ids
     if not owner_scope and not scope:
         return unavailable_manager_context(
             "external_authorization_unavailable",
             evidence_window=_evidence_window(
-                [], runtime_root, session, owner_scope, evidence_window_days, False
+                [],
+                runtime_root,
+                session,
+                owner_scope,
+                evidence_window_days,
+                False,
+                **window_kwargs,
             ),
         )
     if registry_path is None:
         return unavailable_manager_context(
             "registry_unavailable",
             evidence_window=_evidence_window(
-                [], runtime_root, session, owner_scope, evidence_window_days, False
+                [],
+                runtime_root,
+                session,
+                owner_scope,
+                evidence_window_days,
+                False,
+                **window_kwargs,
             ),
         )
     portfolio = build_goal_portfolio(
@@ -289,9 +440,25 @@ def manager_turn_context(
         "warnings": portfolio.get("warnings", []),
         "limitations": portfolio.get("limitations", []),
         "evidence_window": _evidence_window(
-            rows, runtime_root, session, owner_scope, evidence_window_days, include_details
+            rows,
+            runtime_root,
+            session,
+            owner_scope,
+            evidence_window_days,
+            include_details,
+            **window_kwargs,
         ),
     }
+    if remote_evidence:
+        result["remote_evidence"] = _remote_evidence(
+            runtime_root,
+            session,
+            owner_scope,
+            evidence_window_days,
+            runner=remote_runner,
+            scope_valid=remote_scope_valid,
+            config_path=remote_config_path,
+        )
     result["portfolio_snapshot_id"] = result["snapshot_id"]
     result["collection_completed_at"] = datetime.now(timezone.utc).isoformat()
     result["snapshot_id"] = "sha256:" + hashlib.sha256(
@@ -319,10 +486,20 @@ def collect_manager_turn_context(
     session: dict[str, Any],
     runtime_root: Path,
     scope_resolver: Callable[[dict[str, Any]], list[str] | None] | None = None,
-    *, include_details: bool = True,
+    *,
+    include_details: bool = True,
+    remote_evidence: bool = False,
+    remote_runner=None,
 ) -> dict[str, Any]:
     if session.get("channel_id") == "manager":
-        return manager_turn_context(registry_path, session, runtime_root, include_details=include_details)
+        return manager_turn_context(
+            registry_path,
+            session,
+            runtime_root,
+            include_details=include_details,
+            remote_evidence=remote_evidence,
+            remote_runner=remote_runner,
+        )
 
     def resolve() -> list[str] | None:
         try:
@@ -342,6 +519,11 @@ def collect_manager_turn_context(
         runtime_root,
         authorized_goal_ids=before,
         include_details=include_details,
+        remote_evidence=remote_evidence,
+        remote_runner=remote_runner,
+        # The Turn owner already re-resolves the external scope after the local
+        # collection; the source read checks the same exact scope around it.
+        remote_scope_valid=lambda: before == resolve(),
     )
     if before != resolve():
         return unavailable_manager_context("external_authorization_changed")

@@ -9,7 +9,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from loopx.capabilities.manager_context.ssh_evidence import configure, grants
+from loopx.capabilities.manager_context.ssh_evidence import (
+    MANAGER_REMOTE_EVIDENCE_TTL_SECONDS,
+    configure,
+    grants,
+    remote_evidence,
+    sources,
+)
 from loopx.capabilities.manager_context.inspection import ManagerInspection, TOOL_NAME
 from loopx.capabilities.manager_context.evidence_export import export_page
 from loopx.chat_manager_context import manager_authorization_scope_id
@@ -278,3 +284,244 @@ def test_sources_paginate_and_malformed_remote_output_is_unknown(remote):
     assert not tool.read(
         TOOL_NAME, {"view": "portfolio", "source_id": "ssh:research-host"}
     )["ok"]
+
+
+def _evidence_root(tmp_path, *, registered=("research-host",), aliases=None):
+    """One runtime root with a registered evidence host and an SSH config."""
+
+    config = tmp_path / "ssh_config"
+    names = list(aliases if aliases is not None else registered) + ["github.com"]
+    config.write_text(
+        "".join(f"Host {name}\n  HostName {name}.invalid\n" for name in names)
+    )
+    channel = "manager.external." + "d" * 24
+    for host in registered:
+        configure(
+            tmp_path,
+            channel=channel,
+            host=host,
+            goal_ids=["remote-goal"],
+            execute=True,
+            config_path=config,
+        )
+    return config, channel
+
+
+def _packet_runner(calls, *, goal_ids=("remote-goal",)):
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "schema_version": "manager_evidence_page_v1",
+                    "ok": True,
+                    "rows": [
+                        {
+                            "goal_id": goal_id,
+                            "activation_state": "active",
+                            "quality": "stale",
+                            "progress": "unknown",
+                            "source": {"latest_recorded_at": "2026-09-14T00:00:00+08:00"},
+                            "warnings": ["latest_run_projection_stale"],
+                        }
+                        for goal_id in goal_ids
+                    ],
+                    "source": {"coverage": {"discovered": len(goal_ids)}},
+                    "next_offset": None,
+                }
+            ),
+        )
+
+    return run
+
+
+def test_only_registered_evidence_hosts_are_declared(tmp_path):
+    # Owner scope used to declare every configured alias, which put hosts with
+    # no LoopX state (github.com) in front of the model as if they were sources.
+    config, _ = _evidence_root(tmp_path)
+    assert [row["source_id"] for row in sources(tmp_path, "manager", True, config)] == [
+        "local",
+        "ssh:research-host",
+    ]
+    assert [row["source_id"] for row in sources(tmp_path, "manager", False, config)] == [
+        "local"
+    ]
+    # A registered host that lost its alias is drift the answer must name.
+    config.write_text("Host github.com\n  HostName github.com\n")
+    drift = sources(tmp_path, "manager", True, config)[1]
+    assert drift["status"] == "not_configured"
+    assert drift["reason"] == "ssh_alias_not_configured"
+
+
+def test_registered_source_is_read_once_then_served_from_the_cache(tmp_path):
+    config, channel = _evidence_root(tmp_path)
+    calls = []
+    runner = _packet_runner(calls)
+
+    first = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+    assert first["read_status"] == "read"
+    assert first["sources"][0]["status"] == "read"
+    assert first["sources"][0]["fresh"] is True
+    assert [row["goal_id"] for row in first["rows"]] == ["remote-goal"]
+    assert first["rows"][0]["source_freshness"] == "current"
+    assert len(calls) == 1
+
+    second = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+    # A second Turn inside the TTL reuses the read instead of dialling again.
+    assert len(calls) == 1
+    assert second["sources"][0]["status"] == "cached"
+    assert second["rows"] == first["rows"]
+
+    expired = datetime.now(timezone.utc) + timedelta(
+        seconds=MANAGER_REMOTE_EVIDENCE_TTL_SECONDS + 1
+    )
+    third = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+        now=expired,
+    )
+    assert len(calls) == 2 and third["sources"][0]["status"] == "read"
+    argv, opts = calls[-1]
+    assert argv[-2] == "research-host" and opts["timeout"] <= 9
+    assert "--manager-view portfolio" in argv[-1] and "--days 7" in argv[-1]
+    assert "--goal-id remote-goal" in argv[-1]
+    assert calls[-1][0][0] == "ssh"
+
+
+def test_failed_source_read_is_typed_and_never_claims_no_progress(tmp_path):
+    config, channel = _evidence_root(tmp_path)
+    calls = []
+    working = _packet_runner(calls)
+    remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=working,
+    )
+
+    def failing(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=255, stdout="")
+
+    later = datetime.now(timezone.utc) + timedelta(
+        seconds=MANAGER_REMOTE_EVIDENCE_TTL_SECONDS + 1
+    )
+    result = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=failing,
+        now=later,
+    )
+    assert result["read_status"] == "unavailable"
+    source = result["sources"][0]
+    assert source["status"] == "unavailable"
+    assert source["reason"] == "remote_evidence_unavailable_or_upgrade_required"
+    assert source["last_success_at"] and source["stale_rows_included"] is True
+    assert source["coverage_effect"] == "remote_goals_may_be_outdated_not_absent"
+    assert result["stale_rows_included"] is True
+    assert "remote_source_rows_are_stale" in result["limitations"]
+    assert result["rows"][0]["source_freshness"] == "stale"
+
+
+def test_one_dial_per_turn_defers_the_other_declared_source(tmp_path):
+    config, channel = _evidence_root(
+        tmp_path, registered=("research-host", "second-host")
+    )
+    calls = []
+    result = remote_evidence(
+        tmp_path,
+        channel,
+        True,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=_packet_runner(calls),
+    )
+    assert len(calls) == 1
+    statuses = {row["source_id"]: row["status"] for row in result["sources"]}
+    assert sorted(statuses) == ["ssh:research-host", "ssh:second-host"]
+    assert "deferred_budget" in statuses.values()
+    assert result["read_status"] in {"read", "partial"}
+    assert "remote_source_deferred_to_next_turn" in result["limitations"]
+
+
+def test_grant_change_invalidates_the_cached_source_read(tmp_path):
+    config, channel = _evidence_root(tmp_path)
+    calls = []
+    runner = _packet_runner(calls)
+    remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+    configure(
+        tmp_path,
+        channel=channel,
+        host="research-host",
+        goal_ids=["remote-goal", "second-goal"],
+        execute=True,
+        config_path=config,
+    )
+    result = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: True,
+        config_path=config,
+        runner=runner,
+    )
+    # A widened grant must not be answered from the narrower cached read.
+    assert len(calls) == 2 and result["sources"][0]["status"] == "read"
+
+
+def test_scope_change_between_reads_refuses_the_packet(tmp_path):
+    config, channel = _evidence_root(tmp_path)
+    calls = []
+    result = remote_evidence(
+        tmp_path,
+        channel,
+        False,
+        window_days=7,
+        scope_valid=lambda: False,
+        config_path=config,
+        runner=_packet_runner(calls),
+    )
+    # An invalid scope refuses before the dial, not after reading remote rows.
+    assert not calls
+    assert result["sources"][0]["status"] == "unavailable"
+    assert result["sources"][0]["reason"] == "source_outside_available_scope"
+    assert result["read_status"] == "unavailable"

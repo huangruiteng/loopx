@@ -298,25 +298,26 @@ M0.5 之后新增或删除值时；`cross_module` 只在晋升后（Q8）。持�
 
 ### 形式模型与证明边界
 
-注册表是更大程序语义的有限规格。令 `V` 为已注册词表集合，`Val(v)` 为词表
-`v` 允许的值集合，`S` 为源码位点集合。模型记录的是关系，而不只是名称：
+注册表是更大程序语义的有限规格。令 `V` 为已注册词表集合，`L` 为源码位点集合，
+`U(v)` 为词表 `v` 的环境运行时值空间，`S(v)` 为注册允许集合。生产与消费先在
+`U(v)` 上定义，再验证是否属于允许集合。模型记录的是关系，而不只是名称：
 
 ```text
-D ⊆ S × V                         定义词表
-P ⊆ S × V × Val(v)                生产值
-C ⊆ S × V × Val(v)                消费或据值分支
-I ⊆ S × V × V                     将一个词表解释为另一个词表
-T ⊆ S × V                         不改变含义地透传
-G ⊆ V × V × (Val ⇀ Val ∪ {reject}) 做投影
-R ⊆ S × V × Version               将值持久化
+D ⊆ L × V                         定义词表
+P ⊆ L × V × U(v)                  生产值
+C ⊆ L × V × U(v)                  消费或据值分支
+I ⊆ L × V × V                     将一个词表解释为另一个词表
+T ⊆ L × V                         不改变含义地透传
+G ⊆ V × V × (S(v_source) ⇀ S(v_target) ∪ {reject}) 做投影
+R ⊆ L × V × Version               将值持久化
 ```
 
 最低语义义务如下：
 
-1. **生产闭包：** `Produced(v) ⊆ Val(v)`。被识别的生产者不能写入注册集合之外的值。
+1. **生产闭包：** `Produced(v) ⊆ S(v) ⊆ U(v)`。被识别的生产者不能写入注册集合之外的值。
 2. **规范值存活：** `Canonical(v) ⊆ Produced(v) ∪ CompatibilityOnly(v)`。只被比较、
    没有生产来源的值是死值或兼容值，不能是 canonical。
-3. **消费者定义域闭包：** `Accepted(c) ⊆ Val(v)`，除非消费者显式声明外部定义域或部分定义域。
+3. **消费者定义域闭包：** `Accepted(c) ⊆ S(v)`，除非消费者显式声明外部定义域或部分定义域。
 4. **作用域分离：** 只有声明作用域相交时，同名冲突才是语义冲突。拼写本身不能证明等价。
 5. **投影全性：** 每个源值都必须映射到目标值，或显式映射为 `reject`。
 6. **持久化兼容性：** 持久化词表改变时，必须保持所有读者可读，或声明带版本的迁移。
@@ -327,6 +328,51 @@ R ⊆ S × V × Version               将值持久化
 以及持久化读者兼容性，在建模源码到结果的边之前仍然是未证明状态。注册表通过
 `formal_model` 保存这条证明边界；标记为 `unproved` 的性质是显式局限，不能被当作默认通过。
 
+
+### 健全性、相对完备性与候选决策
+
+这里的“完备”必须带范围。令 `U(v)` 为词表的运行时完整值域，`S(v)` 为注册表允许
+的值集合，`P(v)` 为实际产生的值集合，`O(v)` 为扫描器观察到的值集合。生产义务
+只有在完整值域上定义时才有意义：
+
+```text
+P(v) ⊆ S(v) ⊆ U(v)
+```
+
+如果预先把 `P(v)` 定义成 `S(v)` 的子集，第一个包含关系就变成恒真命题。M0 当前
+只对 `O(v)` 和已登记的结构载体建立有界结论。
+
+对一个受限语法片段 `L0` 和精确分析器 `A0`，定义：
+
+```text
+Sound(A0, property, L0)    := A0 接受 c ⇒ property(c)
+Complete(A0, property, L0) := property(c) ⇒ A0 接受 c
+```
+
+M0 守卫可以对固定载体和固定分发形式追求这两个性质，但不能对任意动态 Python 或
+TypeScript 宣称它们成立。值如果经过别名、配置、反射、外部输入或未识别语法流动，
+在有界分析覆盖它之前都属于 `unknown`。Unknown 是证据结果，不是“不存在”的证明。
+
+建议性的候选分类使用一个有限决策：
+
+```text
+reuse_existing | extend_vocabulary | create_vocabulary | local_only
+external_input | compatibility_only | unknown
+```
+
+这样可以让“流程分类”完备，即使程序分析本身不完备。`reuse_existing` 要求槽位相同、
+作用域兼容、契约等价。`extend_vocabulary` 要求给出反例，证明复用旧值会把两个需要
+不同处理的状态压成一个。`create_vocabulary` 要求出现新的语义定义域或独立 owner 与
+生命周期。如果证据不足以在这些情况之间做决定，默认就是 `unknown`；Agent 不能把
+未解析候选静默当成复用旧词。
+
+任意程序的行为等价通常不可判定，因此这个 schema 不会把 `same_concept` 自动提升为
+定理。只有当输入、输出、状态转换、持久化版本和有限测试域都明确时，行为等价才可
+在受限契约内成为阻断条件。这就是可用的证明骨架与“全程序语义收敛已被证明”之间的
+边界。
+
+候选处置在此仅为建议性元数据。注册表只保存允许标签与默认值，不存储逐候选决策，
+也不在产品代码中强制执行候选处理；漂移 smoke 只验证标签合同。
 
 ### 状态模型与 schema
 
@@ -344,7 +390,7 @@ R ⊆ S × V × Version               将值持久化
 | `vocabularies.<name>.scope`（M0.5） | `global` 或 `bounded_context`；`bounded_context` 条目列出 `contexts`，每个含一个 owner 符号 | 封闭枚举；已声明的有界上下文名字从 `multi_value_forks` 排除；未声明的多模块名字仍是分叉（I14） |
 | `vocabularies.<name>.producers`（M0.5） | 写入该字段的 `path::Symbol` 位点，`kernel` 必填 | 每个位点只写注册值；未列入 `compatibility_only` 的每个值至少有一个位点或一条变量来源条目（I12、I13） |
 | `vocabularies.<name>.compatibility_only`（M0.5） | 为让已持久化记录的读者仍能解析而保留的值 | `values` 的子集；零生产位点；每个值带 `value_notes` 理由与退休里程碑 |
-| `formal_model` | 有限的集合、角色关系与层次、语义义务，以及已建立/有界/未证明的声明 | 漂移 smoke 校验精确 schema、角色层次和不变量 ID；属性实施阶段不能冒充已完成证明 |
+| `formal_model` | 有限的集合、角色关系与层次、语义义务、候选决策，以及已建立/有界/unknown/未证明的声明 | 漂移 smoke 校验精确 schema、角色层次、候选决策和不变量 ID；属性实施阶段不能冒充已完成证明 |
 | `formal_model.enforcement_policy` | 当前阻断、下一阶段阻断、建议性和未证明层级 | 每个形式不变量恰好出现一次，且层级与其实施阶段一致 |
 | `vocabularies.<name>.value_notes`、`deprecated_values` | 逐值评审备注；计划删除的值 | 名字必须是已注册值 |
 | `relations.same_concept` | `vocabulary.value` 成员组 | 每个成员可解析 |
@@ -423,9 +469,9 @@ PR 中重新生成清单。
 
 | 声明 | 测试或证据 | 要求结果 | 边界 / 排除 |
 | --- | --- | --- | --- |
-| 基线上注册表与清单和代码一致 | `python3.11 examples/semantic-vocabulary-drift-smoke.py` | `ok` 并输出覆盖、棘轮、预算与孪生报告 | 只证明已注册词表与已映射载体的一致性 |
-| 清单新鲜 | `python3.11 scripts/generate_semantic_inventory.py --check` | 退出码 0 | 仅结构性映射 |
-| 扫描器分类规则 | `pytest tests/architecture/test_semantic_inventory.py` | 通过 | 夹具仓库；规则来自本 RFC 而非输出 |
+| 基线上注册表与清单和代码一致 | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` 并输出覆盖、棘轮、预算与孪生报告 | 只证明已注册词表与已映射载体的一致性 |
+| 清单新鲜 | `uv run python scripts/generate_semantic_inventory.py --check` | 退出码 0 | 仅结构性映射 |
+| 扫描器分类规则 | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | 通过 | 夹具仓库；规则来自本 RFC 而非输出 |
 | Python 侧扩宽 `effective_action` 时失败关闭 | 通过 `==`、成员测试或条件表达式加一个未注册字面量 | 失败文本命名该值与文件 | 突变练习；非提交测试 |
 | TypeScript 侧扩宽 `effective_action` 时失败关闭 | 通过 `===` 或三元表达式加一个未注册字面量 | 同上 | 同上 |
 | 分叉常量时失败关闭 | 在非 owner 模块重定义 `TURN_ENVELOPE_SCHEMA_VERSION` 或 `HANDOFF_MODES`，重新生成清单 | 失败列出多出的定义模块或分叉预算 | 同上 |
@@ -436,10 +482,10 @@ PR 中重新生成清单。
 | 多值冲突不能增长 | 让一个闭集名在两个模块中以不同值集定义，或以相同值集定义，并重新生成 | `multi_value_forks` 或 `multi_value_twins` 失败并命名新名字 | 突变练习；非提交测试 |
 | 注册表不能放松自己的棘轮 | 在同一 diff 中调低任一 `coverage_floor` 计数、调高任一 `inventory_ratchets` 预算或退休预算，同时删掉它所统计的覆盖 | `COVERAGE_ANCHOR`、`BUDGET_ANCHOR` 或 `RETIREMENT_ANCHOR` 失败并命名被锚定的值 | 突变练习；挪动锚点是一次评审者可见的代码修改 |
 | 已收紧的预算不能漂回过期锚点 | 只调低注册表预算而不动锚点 | 失败文本指出注册表值与锚点不等 | 用相等而非 `<=`；修法是同 diff 调低锚点 |
-| smoke 在 PR 路径上 | `pytest tests/architecture/test_semantic_vocabulary_drift.py` | 通过；该测试被 `python-tests.yml` 的默认 `pytest -q` 扫描收集 | 舰队与 premerge 表面不是义务（I10） |
-| premerge 会为 `loopx/` 的 diff 选中该 smoke | `loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | 计划在 `repo-architecture-budget` 下列出 `examples/semantic-vocabulary-drift-smoke.py` | 选择靠触发词；pytest 包装才是保证 |
-| 度量覆盖两种载体形状并过滤局部命名 | `pytest tests/architecture/test_semantic_inventory.py` | 通过，含冲突与模块局部约定两组夹具 | 规则来自本 RFC 而非扫描输出 |
-| 两处 owner 修正不改变行为 | `pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` 与 `loopx canary premerge --from-git-diff` | 通过 | 在干净树上可复现的 `main` 既有环境失败除外 |
+| smoke 在 PR 路径上 | `uv run --extra test python -m pytest tests/architecture/test_semantic_vocabulary_drift.py` | 通过；该测试被 `python-tests.yml` 的默认 `pytest -q` 扫描收集 | 舰队与 premerge 表面不是义务（I10） |
+| premerge 会为 `loopx/` 的 diff 选中该 smoke | `uv run --extra test loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | 计划在 `repo-architecture-budget` 下列出 `examples/semantic-vocabulary-drift-smoke.py` | 选择靠触发词；pytest 包装才是保证 |
+| 度量覆盖两种载体形状并过滤局部命名 | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | 通过，含冲突与模块局部约定两组夹具 | 规则来自本 RFC 而非扫描输出 |
+| 两处 owner 修正不改变行为 | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` 与 `uv run --extra test loopx canary premerge --from-git-diff` | 通过 | 在干净树上可复现的 `main` 既有环境失败除外 |
 | 文档治理接受这对 RFC | `python3 examples/docs-governance-smoke.py` | 通过 | 检查镜像、链接、索引 |
 | 退休预算按子串而非标识符计数 | 分别以 `in file.text` 与 `\bgoal_boundary\b` 统计 `goal_boundary` | 基线上 35 对 30 个 Python 模块 | 已知边界；M3 的零读者门需要标识符计数，见第 12 节 |
 | 模块局部约定过滤器是一次代码修改 | 扩宽 `inventory.py` 的 `MODULE_LOCAL_CONVENTION` 并重新生成 | `*_semantic` 预算下降而别处无代码改动 | 已知边界；正则在代码里，扩宽是可评审的 diff，未过滤总数仍在预算内 || 无人生产的注册值失败（M0.5） | 在基线上运行生产形式扫描 | 失败并点名 `effective_action` 与 `skip`；删除 `skip` 或列入 `compatibility_only` 后通过 | 第一个预期的 I12 失败；只被比较的值不算已携带 |
@@ -447,7 +493,7 @@ PR 中重新生成清单。
 | 有界上下文名字只能靠声明离开分叉预算（M0.5） | 为 `SOURCE_SURFACES` 声明四个上下文；另行只改名其中一处定义而不声明 | 声明把 `multi_value_forks` 降到 3；单独改名不降 | I14；诚实的修法是评审者看得见的注册表修改，改名是不碰注册表的代码改动 |
 
 | 上游合并会让已提交清单过期 | 对 `upstream/main` 最近二十个合并提交，在第一父提交与合并结果之间重放扫描器 | 20 次合并中 8 次至少改变一个载体 | 提交快照的实测成本；处理规则见第 10 节与第 12 节 Q9 |
-| 形式模型不能静默丢失证明义务 | 从 `formal_model` 删除不变量、角色、关系或证明边界分类 | 漂移 smoke 针对形式模型结构失败 | 该模型是有限契约和证明账本，本身不等于这些性质已经被证明 |
+| 形式模型不能静默丢失证明义务 | 从 `formal_model` 删除不变量、角色、候选决策、关系或证明边界分类 | 漂移 smoke 针对形式模型结构失败 | 该模型是有限契约和证明账本，本身不等于这些性质已经被证明 |
 
 已知边界，写明是为了不让这个检查被过度信任：
 
@@ -496,11 +542,12 @@ heartbeat/quota 覆盖。quick 与 deep 档位的上限不变。
 `main` 变红之后合并 PR 的人负责跟一个只改 `inventory_v0.json` 的再生成提交，
 smoke 的失败文本会点名那条命令。
 
-**解释器。** smoke、生成器与扫描器要求项目声明的 Python（`pyproject.toml`
-中 `>=3.11`）；`zip(strict=True)` 在 3.9 上失败。舰队与 premerge 的命令按仓库
-约定写作 `python3`，在 CI 解释器下运行。macOS 系统 `python3` 是 3.9，本地
-premerge 需要 `PATH` 上有 3.11 环境；文档因此把直接命令写成 `python3.11`，
-planner 条目则有意保留 `python3`。
+**解释器与源码。** 在目标 worktree 根目录通过 `uv run` 执行上面的命令。
+Python 兼容范围来自 `pyproject.toml`（`>=3.11`），导入的 LoopX 必须来自当前源码。
+Canary 将显示为 `python3` 的命令转换为启动 LoopX 的 `sys.executable`；全局安装
+即使 Python 版本兼容，也可能扫描另一份发布快照。安装、解释器／源码读回及锁文件
+边界见[本地验证环境](../../development/testing-and-quality.md#local-validation-environment--本地验证环境)。
+下方历史证据保留实际执行过的命令。
 
 ## 11. 规范性交付计划
 
@@ -559,6 +606,15 @@ planner 条目则有意保留 `python3`。
 分析存在之后，性质才可从 `unproved` 移到 `advisory`；只有记录误报/漏报边界并用突变
 测试覆盖已识别形式后，才可移到阻断层。这样既严格防止静默破坏，也允许不完整的分析
 为无关改动提供信息而不阻断它们。
+
+PR review 保留这些层级。普通改动记录检查范围和理由，无共享契约影响就结束语义
+审查。详细证据只针对受影响契约，可以引用已有审查证据。扫描器盲区仅作建议性
+报告；本次修改影响的契约缺少必需验证，或存在明确违规，才以契约、触发修改、
+观察证据、最小修复和复验命令阻断批准。F6 的全局证明缺口本身不阻断无关改动，
+也不能用来豁免被修改契约要求的兼容性检查。可执行的结论结构见
+[review 证据契约](../../../loopx/capabilities/pr_review_queue/README.md#semantic-alignment-and-ci-constraint-recovery)。
+模型表现仍需实测：固定任务、模型与预算，比较 token、耗时、独立验收成功率、
+误阻塞和漏检，之后才能声称带来收益。
 
 阶段顺序如下：
 
@@ -627,6 +683,14 @@ planner 条目则有意保留 `python3`。
    Owner：内核维护者。
 
 ## 附录 A：执行账本（非规范）
+
+### 2026-09-16 — 评审一致性修复
+
+- 每种语言只保留一个候选决策小节。
+- 注册表与叙述统一使用源码位点 `L`、环境值空间 `U(v)` 和允许集合 `S(v)`，
+  不把生产值预先定义为合法值。
+- 明确候选处置为建议性元数据；本 schema 不交付逐候选运行时存储或执行门禁。
+
 
 ### 2026-09-15 — 随 RFC 开启 M0
 
