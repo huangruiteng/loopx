@@ -531,7 +531,8 @@ Shipped enforcement, in delivery order:
    the first bounded Todo of each *ready* lane through the canonical Todo owner,
    creates nothing for a gap lane, and refuses an unknown Goal before any write.
    The receipt records the proposal digest, so a replayed settlement reuses the
-   same lane Todo instead of adding a second row.
+   same lane Todo instead of adding a second row, and the receipt names every
+   lane Todo the settlement ensured.
 
 The intake is still inert in production, and this section does not claim
 otherwise. Nothing yet supplies `team_plan_context`, so a model-authored preview
@@ -540,11 +541,12 @@ that supplies the admission facts and the settlement that re-derives them must
 stay one contract rather than two; and the apply entry point today is a governed
 capability execution journal, so a confirmed Chat preview needs that bridge
 before an owner confirmation can materialize lanes. Two further gaps belong with
-this work: the published receipt carries the first lane Todo's identity rather
-than the identity of every lane it created (the apply result computes the full
-`lane_todo_ids` set, and the receipt field set is closed and persisted, so
-publishing it is a bounded compatibility change), and a multi-lane preview has
-no frontend confirmation surface yet.
+this work: a confirmed plan has no Chat-side apply path yet, and a multi-lane
+preview has no frontend confirmation surface. The readback is no longer one of
+those gaps: the apply publishes every lane Todo it ensured under a bounded
+`lane_todo_ids` field, that field is the one additive exception to the closed,
+persisted receipt field set so a receipt written before it still validates, and
+a team-plan receipt carries no monitor key because a plan is not a monitor.
 
 ### Relationship to the multi-agent contracts
 

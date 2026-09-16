@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from enum import StrEnum
@@ -39,6 +40,13 @@ _RECEIPT_FIELDS = {
     "status",
     "target_key",
 }
+# Receipts are persisted in the settlement journal, so the field set stays
+# closed and a new field is admitted only as an explicitly bounded addition
+# that an older receipt may still omit. `lane_todo_ids` is the readback of a
+# team plan: every lane Todo the settlement ensured, not just the first one.
+_OPTIONAL_RECEIPT_FIELDS = {"lane_todo_ids"}
+_LANE_TODO_ID_LIMIT = 8
+_LANE_TODO_ID = re.compile(r"^todo_[A-Za-z0-9]{1,40}$")
 
 
 TransitionCheckpoint = Callable[[list[dict[str, Any]]], None]
@@ -87,7 +95,11 @@ def validate_governed_transition_receipts(
     proposal_ids: set[str] = set()
     for index, raw in enumerate(value):
         receipt = _mapping(raw, f"governed transition receipt[{index}]")
-        if set(receipt) != _RECEIPT_FIELDS:
+        # An older receipt may omit the bounded readback field; nothing else may
+        # be added, so a receipt can never carry a field it did not mean to.
+        if not _RECEIPT_FIELDS <= set(receipt) <= (
+            _RECEIPT_FIELDS | _OPTIONAL_RECEIPT_FIELDS
+        ):
             raise ValueError("governed transition proposal receipt fields are invalid")
         if receipt.get("schema_version") != GOVERNED_TRANSITION_RECEIPT_SCHEMA_VERSION:
             raise ValueError("governed transition proposal receipt schema is invalid")
@@ -103,21 +115,42 @@ def validate_governed_transition_receipts(
             raise ValueError("governed transition proposal receipt kind is invalid")
         if receipt.get("status") != "committed":
             raise ValueError("governed transition proposal receipt status is invalid")
-        for field in (
-            "proposal_digest",
-            "monitor_key",
-            "action",
-            "todo_id",
-        ):
+        for field in ("proposal_digest", "action", "todo_id"):
             if not isinstance(receipt.get(field), str) or not receipt[field]:
                 raise ValueError(
                     f"governed transition proposal receipt {field} is invalid"
                 )
+        # A monitor transition is identified by its monitor key, so that key is
+        # required there. A team plan is not a monitor and must not invent one,
+        # so its key is explicitly absent rather than an empty string.
+        monitor_key = receipt.get("monitor_key")
+        if receipt.get("kind") == STEWARD_TEAM_PLAN_PREVIEW_KIND:
+            if monitor_key is not None:
+                raise ValueError(
+                    "governed transition proposal receipt monitor_key is invalid"
+                )
+        elif not isinstance(monitor_key, str) or not monitor_key:
+            raise ValueError(
+                "governed transition proposal receipt monitor_key is invalid"
+            )
         if receipt.get("target_key") is not None and not isinstance(
             receipt.get("target_key"), str
         ):
             raise ValueError(
                 "governed transition proposal receipt target_key is invalid"
+            )
+        lane_todo_ids = receipt.get("lane_todo_ids")
+        if lane_todo_ids is not None and (
+            not isinstance(lane_todo_ids, list)
+            or not 1 <= len(lane_todo_ids) <= _LANE_TODO_ID_LIMIT
+            or len(set(lane_todo_ids)) != len(lane_todo_ids)
+            or any(
+                not isinstance(item, str) or not _LANE_TODO_ID.fullmatch(item)
+                for item in lane_todo_ids
+            )
+        ):
+            raise ValueError(
+                "governed transition proposal receipt lane_todo_ids is invalid"
             )
         validate_public_safe_value(receipt, path=f"transition_receipts[{index}]")
         receipts.append(receipt)
@@ -413,6 +446,11 @@ def settle_governed_transition_proposals(
             "status": "committed",
             "target_key": result.get("target_key"),
         }
+        lane_todo_ids = result.get("lane_todo_ids")
+        if lane_todo_ids:
+            # The apply ensured every ready lane's first Todo; a receipt that
+            # named only the first one could not be read as "what exists now".
+            receipt["lane_todo_ids"] = [str(item) for item in lane_todo_ids]
         validate_public_safe_value(receipt, path="transition_receipt")
         receipts.append(receipt)
         by_proposal_id[proposal_id] = receipt

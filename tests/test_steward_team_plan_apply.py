@@ -10,13 +10,16 @@ import pytest
 from loopx.control_plane.work_items.governed_transition_proposal import (
     GovernedTransitionSettlementPhase,
     settle_governed_transition_proposals,
+    validate_governed_transition_receipts,
 )
 
 GOAL_ID = "team-plan-apply-fixture"
 AGENT_ID = "agent-alpha"
 
 
-def _fixture(tmp_path: Path) -> tuple[Path, Path]:
+def _fixture(
+    tmp_path: Path, *, agents: tuple[str, ...] = (AGENT_ID,)
+) -> tuple[Path, Path]:
     project = tmp_path / "project"
     runtime = tmp_path / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
@@ -55,7 +58,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path]:
                             "status": "connected-read-only",
                         },
                         "coordination": {
-                            "registered_agents": [AGENT_ID],
+                            "registered_agents": list(agents),
                             "agent_model": "peer_v1",
                         },
                     }
@@ -180,3 +183,100 @@ def test_an_unknown_goal_is_refused_before_any_todo(tmp_path: Path) -> None:
         )
 
     assert "loopx:todo " not in _todos(project)
+
+
+def _second_lane() -> dict:
+    return {
+        "lane_id": "lane-beta",
+        "agent_id": "agent-beta",
+        "acceptance": "The second lane's first Todo is delivered with evidence",
+        "first_todo": {
+            "text": "Read back the second lane's bounded first turn",
+            "priority": "P2",
+            "task_class": "advancement_task",
+            "action_kind": "implement",
+        },
+    }
+
+
+def test_the_receipt_names_every_lane_todo_it_created(tmp_path: Path) -> None:
+    """One readback has to say what exists now, not only where it started."""
+
+    project, registry_path = _fixture(tmp_path, agents=(AGENT_ID, "agent-beta"))
+
+    receipts = _settle(registry_path, _proposal(extra_lane=_second_lane()))
+
+    receipt = receipts[0]
+    lane_todo_ids = receipt["lane_todo_ids"]
+    assert len(lane_todo_ids) == 2 and len(set(lane_todo_ids)) == 2
+    # The first lane Todo is still the receipt's own identity, so a reader that
+    # only knows the older field keeps working.
+    assert receipt["todo_id"] == lane_todo_ids[0]
+    assert _todos(project).count("loopx:todo ") == 2
+    # Both the plan readback and the older receipt shape validate, which is what
+    # a settlement journal does with its stored receipts.
+    assert len(validate_governed_transition_receipts(receipts)) == 1
+
+    # A replayed settlement reports the same lanes instead of an empty readback.
+    replay = _settle(registry_path, _proposal(extra_lane=_second_lane()))
+    assert replay[0]["action"] == "reused"
+    assert replay[0]["lane_todo_ids"] == lane_todo_ids
+    assert _todos(project).count("loopx:todo ") == 2
+
+
+def _receipt(**overrides) -> dict:
+    receipt = {
+        "schema_version": "loopx_governed_transition_proposal_receipt_v0",
+        "proposal_id": "proposal-receipt-fixture",
+        "proposal_digest": "sha256:" + "a" * 64,
+        "kind": "continuous_monitor_upsert",
+        "monitor_key": "monitor-key-1",
+        "action": "updated",
+        "todo_id": "todo_1",
+        "status": "committed",
+        "target_key": None,
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def test_the_lane_readback_is_optional_bounded_and_additive() -> None:
+    """An older receipt stays valid; the new field is the only addition."""
+
+    assert len(validate_governed_transition_receipts([_receipt()])) == 1
+    assert len(
+        validate_governed_transition_receipts(
+            [_receipt(lane_todo_ids=["todo_1", "todo_2"])]
+        )
+    ) == 1
+
+    for invalid_readback in (
+        [],
+        ["todo_1", "todo_1"],
+        ["todo_1", "not-a-todo-id"],
+        ["todo_1", "todo_" + "a" * 41],
+        ["todo_1"] * 9,
+        "todo_1",
+    ):
+        with pytest.raises(ValueError, match="lane_todo_ids is invalid"):
+            validate_governed_transition_receipts(
+                [_receipt(lane_todo_ids=invalid_readback)]
+            )
+    # The field set stays closed: the readback is the only thing that may be
+    # added, and a monitor receipt still has to name its own key.
+    with pytest.raises(ValueError, match="receipt fields are invalid"):
+        validate_governed_transition_receipts([_receipt(unexpected_field=1)])
+    with pytest.raises(ValueError, match="monitor_key is invalid"):
+        validate_governed_transition_receipts([_receipt(monitor_key=None)])
+
+
+def test_a_team_plan_receipt_must_not_invent_a_monitor_key() -> None:
+    """A plan is not a monitor, so its receipt carries no monitor identity."""
+
+    team_plan = _receipt(kind="steward_team_plan_preview", monitor_key=None)
+
+    assert len(validate_governed_transition_receipts([team_plan])) == 1
+    with pytest.raises(ValueError, match="monitor_key is invalid"):
+        validate_governed_transition_receipts(
+            [{**team_plan, "monitor_key": "monitor-key-1"}]
+        )

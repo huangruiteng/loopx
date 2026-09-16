@@ -414,15 +414,16 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
    落地时重新按本 Goal 已注册 Agent 与本机 shipment 的 advancement action kind 校验，经
    canonical Todo owner 为每条 **ready** lane 创建首个有界 Todo，gap lane 不创建任何东西，
    未知 Goal 在任何写入前就被拒绝，回执记录 proposal digest，因此重放结算复用同一条 lane
-   Todo 而不会新增第二行。
+   Todo 而不会新增第二行，并且回执点名这次确保的每一条 lane Todo。
 
 这条入端口径目前在线上仍是**惰性**的，本节不作相反声明：还没有任何生产调用方传入
 `team_plan_context`，因此模型产出的预览会在准入处被丢弃，而不会浮现给业主确认；提供准入事实
 的适配器与重新推导这些事实的结算必须保持同一份契约而不是两份；而今天的落地入口是受治理能力
 执行 journal，所以被确认的 Chat 预览还需要那座桥，业主确认才能真正建成 lane。另有两处缺口
-属于这条工作线：已发布回执只带第一条 lane Todo 的身份，而不是它创建的全部 lane 身份（apply
-结果里算了完整的 `lane_todo_ids`，但回执字段集是封闭且持久化的，发布它是一次有界的兼容性
-变更）；以及多 lane 预览还没有前端确认面。
+属于这条工作线：被确认的计划还没有 Chat 侧的落地路径，以及多 lane 预览还没有前端确认面。
+回读本身已经不再是缺口：落地会把这次确保的每一条 lane Todo 以有界字段 `lane_todo_ids`
+发布出去；该字段是那个封闭且持久化的回执字段集的**唯一**加性例外，因此早前写下的回执仍然
+通过校验，而团队计划回执不带 monitor key——计划不是 monitor。
 
 ### 与 multi-agent 契约的关系
 
