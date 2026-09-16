@@ -1,12 +1,29 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import asdict
+import json
+import sys
+
+import pytest
+
 from loopx.control_plane.effect_program import (
     interpret_quota_should_run_packet,
+    interpret_turn_result_packet,
 )
+from loopx.control_plane.effect_runtime import effect_runtime_result
+from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_runtime_profile,
 )
 from loopx.control_plane.testing.quota_fixtures import quota_status_payload
+from loopx.control_plane.turn_driver import (
+    build_loopx_turn_plan,
+    load_loopx_turn_plan_from_journal,
+    run_loopx_turn_once,
+    validate_loopx_turn_host_result,
+)
+from loopx.control_plane.turn_driver.transaction import LoopXTurnResultKind
 from loopx.quota import build_quota_should_run
 
 GOAL_ID = "effect-interpreter-fixture"
@@ -256,3 +273,134 @@ def test_effect_turn_carries_scheduler_ack_and_failure_hints() -> None:
         "--failure",
         "--execute",
     )
+
+
+@pytest.mark.parametrize("result_kind", [kind.value for kind in LoopXTurnResultKind])
+def test_result_runtime_and_python_adapter_expose_verdict_without_action(result_kind):
+    packet = {
+        "result_kind": result_kind,
+        "completed_phases": ["host_execute", "typed_result"],
+        "failed_phase": "validation",
+        "next_cli_actions": ["loopx status"],
+    }
+    before = deepcopy(packet)
+    raw = effect_runtime_result("effect.interpret_turn_result", {"packet": packet})
+    turn = interpret_turn_result_packet(packet)
+    assert raw["observation"]["decision"] == turn.observation.decision == result_kind
+    assert raw["observation"]["effective_action"] is None
+    assert turn.observation.effective_action is None
+    assert (
+        json.loads(json.dumps(asdict(turn)))["observation"]["effective_action"] is None
+    )
+    assert turn.observation.should_run is False
+    assert turn.request.context["failed_phase"] == "validation"
+    assert turn.next_effect.cli_actions == ("loopx status",)
+    assert packet == before
+
+
+@pytest.mark.parametrize(
+    "host_action",
+    [
+        "normal_run",
+        "agent_scope_wait",
+        "wait",
+        "foreign_action",
+        None,
+        42,
+        {"action": "normal_run"},
+        ["normal_run"],
+    ],
+)
+def test_host_action_cannot_enter_the_quota_slot(host_action):
+    turn = interpret_turn_result_packet(
+        {"result_kind": "wait", "effective_action": host_action}
+    )
+    assert turn.observation.decision == "wait"
+    assert turn.observation.effective_action is None
+
+
+def test_real_executor_uses_verdict_and_replays_persisted_plan(tmp_path):
+    status = quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action="Advance the bounded slice.",
+        coordination={"agent_model": "peer_v1", "registered_agents": ["codex-fixture"]},
+        agent_todo_items=[
+            {
+                "index": 1,
+                "todo_id": "todo_effect_fixture",
+                "text": "[P1] Advance the bounded slice.",
+                "role": "agent",
+                "status": "open",
+                "priority": "P1",
+                "task_class": "advancement_task",
+            }
+        ],
+    )
+    packet = build_quota_should_run(
+        status,
+        goal_id=GOAL_ID,
+        agent_id="codex-fixture",
+    )
+    plan = build_loopx_turn_plan(
+        build_turn_envelope(packet),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+    )
+    result = {
+        "schema_version": "loopx_turn_result_v0",
+        "turn_key": plan["transaction"]["turn_key"],
+        "result_kind": "wait",
+        "completed_phases": ["host_execute", "typed_result"],
+    }
+    # The executor's existing host schema rejects this field before interpretation.
+    invalid = validate_loopx_turn_host_result(
+        plan, {**result, "effective_action": "normal_run"}
+    )
+    assert invalid["ok"] is False
+    assert "unsupported host result fields: effective_action" in invalid["errors"]
+    wrong_verdict = validate_loopx_turn_host_result(
+        plan, {**result, "result_kind": "normal_run"}
+    )
+    assert wrong_verdict["ok"] is False
+    assert "unsupported host result kind" in wrong_verdict["errors"]
+    result_path = tmp_path / "result.json"
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+    def forbidden_effect(*_args, **_kwargs):
+        pytest.fail(
+            "a wait result must not write back, spend, or apply scheduler effects"
+        )
+
+    kwargs = {
+        "host_argv": [
+            sys.executable,
+            "-c",
+            "import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_text())",
+            str(result_path),
+        ],
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": GOAL_ID,
+        "execute": True,
+        "timeout_seconds": 5,
+        "writeback": forbidden_effect,
+        "spend": forbidden_effect,
+        "scheduler": forbidden_effect,
+    }
+    first = run_loopx_turn_once(plan, **kwargs)
+    assert first["status"] == "stopped"
+    assert first["result_kind"] == "wait"
+    assert first["effects"]["host_invoked"] is True
+    assert first["effects"]["quota_spent"] is False
+    resumed = load_loopx_turn_plan_from_journal(
+        tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        turn_key=result["turn_key"],
+    )
+    assert resumed == plan
+    assert resumed["turn_envelope"]["effective_action"] == packet["effective_action"]
+    replay = run_loopx_turn_once(resumed, **kwargs)
+    assert replay["replayed"] is True
+    assert replay["result_kind"] == "wait"
+    assert not any(replay["effects"].values())

@@ -117,7 +117,7 @@ class EffectInterpretation:
 class EffectObservation:
     decision: str
     should_run: bool
-    effective_action: str
+    effective_action: str | None
     recommended_action: str
     action_portfolio: Mapping[str, Any] | None = None
     planning_horizon: Mapping[str, Any] | None = None
@@ -686,7 +686,11 @@ def _effect_turn_from_payload(payload: Any) -> EffectTurn:
         observation=EffectObservation(
             decision=str(observation.get("decision") or ""),
             should_run=observation.get("should_run") is True,
-            effective_action=str(observation.get("effective_action") or ""),
+            effective_action=(
+                str(observation["effective_action"])
+                if observation.get("effective_action") is not None
+                else None
+            ),
             recommended_action=str(observation.get("recommended_action") or ""),
             action_portfolio=(
                 dict(observation["action_portfolio"])
@@ -797,7 +801,7 @@ def interpret_turn_result_packet(
     agent_id: str | None = None,
     capabilities: Sequence[str] = (),
 ) -> EffectTurn:
-    """Map an existing `loopx_turn_result_v0` packet onto canonical slots."""
+    """Project a Turn verdict; the TS owner emits no quota action (None)."""
     return _effect_turn_from_payload(
         effect_runtime_result(
             "effect.interpret_turn_result",

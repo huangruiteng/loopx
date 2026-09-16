@@ -1,3 +1,4 @@
+import { EffectiveAction } from "../quota/effective_action.generated.ts";
 import { createHash } from "node:crypto";
 
 import {
@@ -590,7 +591,7 @@ function guardSelection(value: string): GuardSelection {
   }
   if (
     guard.should_run === false &&
-    guard.effective_action === "terminal_no_followup"
+    guard.effective_action === EffectiveAction.TERMINAL_NO_FOLLOWUP
   ) {
     return {
       state: "terminal_no_selection",

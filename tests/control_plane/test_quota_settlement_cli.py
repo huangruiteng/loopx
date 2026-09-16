@@ -2783,6 +2783,8 @@ def test_agent_selection_rejects_unprojected_todo(tmp_path: Path) -> None:
     assert invalid_rc != 0, invalid
     assert invalid["ok"] is False
     assert invalid["error_code"] == "quota_action_selection_rejected"
+    assert invalid["effective_action"] == "quota_skip"
+    assert invalid["should_run"] is False
     assert invalid["action_selection_qualification"] == {
         "schema_version": "action_selection_qualification_v0",
         "state": "rejected",
@@ -3154,6 +3156,8 @@ def test_selection_added_after_pending_guard_reports_final_boundary(
 
     assert rejected_rc == 1, rejected
     assert rejected["error_code"] == "quota_action_selection_deferred"
+    assert rejected["effective_action"] == "quota_skip"
+    assert rejected["should_run"] is False
     assert rejected["action_selection_qualification"]["reason"] == "control_repair"
     assert rejected["action_selection_qualification"]["requested_todo_id"] == (
         added["todo_id"]

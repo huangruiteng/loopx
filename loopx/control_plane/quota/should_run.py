@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -173,7 +174,7 @@ def build_quota_paused_should_run_payload(
     }
     execution_obligation = _execution_obligation(
         should_run=False,
-        effective_action="quota_skip",
+        effective_action=EffectiveAction.QUOTA_SKIP.value,
         heartbeat_recommendation=heartbeat_recommendation,
     )
     payload: dict[str, Any] = {
@@ -188,7 +189,7 @@ def build_quota_paused_should_run_payload(
         "self_repair_allowed": False,
         "capability_repair_allowed": False,
         "workspace_repair_allowed": False,
-        "effective_action": "quota_skip",
+        "effective_action": EffectiveAction.QUOTA_SKIP.value,
         "actionable_by_codex": False,
         "reason": reason,
         "quota": quota,

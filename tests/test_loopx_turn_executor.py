@@ -1180,6 +1180,20 @@ def test_run_once_commits_once_and_replays_without_duplicate_effects(
     assert count_path.read_text(encoding="utf-8") == "1"
     assert calls == {"writeback": 1, "spend": 1, "scheduler": 1}
 
+    # The route is a persisted compatibility surface, not just in-process state.
+    # Exercise the actual TypeScript-backed journal writer and Python resume reader.
+    transaction = plan["transaction"]
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
+    stored = json.loads(turn_journal_path(
+        tmp_path / "runtime", goal_id="fixture-goal", turn_key=turn_key,
+    ).read_text(encoding="utf-8"))
+    assert stored["plan"]["route"]["kind"] == "ready_for_host"
+    resumed = load_loopx_turn_plan_from_journal(
+        tmp_path / "runtime", goal_id="fixture-goal", turn_key=turn_key,
+    )
+    assert resumed["route"] == stored["plan"]["route"]
+
 
 def test_provider_can_commit_before_its_journal_checkpoint(
     tmp_path: Path,

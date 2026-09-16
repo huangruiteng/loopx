@@ -12,6 +12,7 @@ the rest of the project-local control-plane state.
 """
 
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 import json
 import os
@@ -72,7 +73,7 @@ def record_host_poll_receipt(
     terminal_state = frontier.get("terminal_state") if isinstance(frontier, dict) else None
     terminal = bool(
         decision.get("should_run") is False
-        and decision.get("effective_action") == "terminal_no_followup"
+        and decision.get("effective_action") == EffectiveAction.TERMINAL_NO_FOLLOWUP.value
         and isinstance(terminal_state, dict)
         and terminal_state.get("kind") == "no_followup"
     )

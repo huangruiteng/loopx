@@ -258,9 +258,9 @@ def assert_agent_scope_frontier_builder_contract() -> None:
         extra_fields={"cleared_without_successor_handoff_gates": [{"todo_id": "todo_gate"}]},
     )
 
-    assert payload["schema_version"] == "agent_scope_frontier_v0"
+    assert payload["schema_version"] == "agent_scope_frontier_v1"
     assert payload["action"] == "successor_replan_required"
-    assert payload["effective_action"] == payload["action"]
+    assert "effective_action" not in payload
     assert payload["blocks_delivery"] is True
     assert payload["requires_replan"] is True
     assert payload["quiet_noop_allowed"] is False
@@ -302,7 +302,7 @@ def assert_agent_scope_frontier_and_hint_contract() -> None:
     )
 
     assert frontier is not None, frontier
-    assert frontier["schema_version"] == "agent_scope_frontier_v0"
+    assert frontier["schema_version"] == "agent_scope_frontier_v1"
     assert frontier["action"] == "successor_replan_required"
     assert frontier["requires_replan"] is True
     assert frontier["quiet_noop_allowed"] is False

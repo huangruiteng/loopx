@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from enum import Enum
+from collections.abc import Mapping
 from typing import Any
 
 
-AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
+AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v1"
 AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION = "agent_lane_frontier_hint_v0"
 
 
@@ -29,6 +30,11 @@ def agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
         return None
 
 
+def read_frontier_action(payload: Mapping[str, Any]) -> str:
+    """Read the canonical action, retaining the persisted v0 alias as fallback."""
+    return str(payload.get("action") or payload.get("effective_action") or "")
+
+
 def build_agent_scope_frontier_payload(
     *,
     agent_id: str,
@@ -41,11 +47,18 @@ def build_agent_scope_frontier_payload(
     requires_replan: bool = False,
     extra_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    reserved = {"schema_version", "action", "effective_action"}.intersection(
+        extra_fields or {}
+    )
+    if reserved:
+        raise ValueError(
+            "agent-scope frontier extra_fields contain reserved keys: "
+            + ", ".join(sorted(reserved))
+        )
     payload: dict[str, Any] = {
         "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
         "agent_id": agent_id,
         "action": action.value,
-        "effective_action": action.value,
         "blocks_delivery": True,
         "quiet_noop_allowed": quiet_noop_allowed,
         "spend_policy": spend_policy,

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 from dataclasses import dataclass
 from typing import Any, TypedDict
@@ -6,7 +7,6 @@ from typing import Any, TypedDict
 from ...state_projection import actions_are_projection_aligned
 from ..goals.contract_health import project_contract_health_for_goal
 from ..goals.goal_frontier import (
-    AUTONOMOUS_REPLAN_REQUIRED_MODE,
     autonomous_replan_decision_allowed,
     goal_frontier_is_terminal_no_followup,
 )
@@ -293,7 +293,7 @@ def resolve_quota_run_decision(
         normal_delivery_allowed = False
         recovery_delivery_allowed = False
         should_run = True
-        effective_action = AUTONOMOUS_REPLAN_REQUIRED_MODE
+        effective_action = EffectiveAction.AUTONOMOUS_REPLAN_REQUIRED.value
         reason = (
             "autonomous replan obligation is selected before monitor quiet "
             "or agent-scope wait classification"
@@ -318,7 +318,7 @@ def resolve_quota_run_decision(
         capability_repair_allowed = False
         workspace_repair_allowed = False
         should_run = False
-        effective_action = "terminal_no_followup"
+        effective_action = EffectiveAction.TERMINAL_NO_FOLLOWUP.value
         reason = (
             "validated closure evidence derives terminal no-follow-up from "
             "complete todo sources and an empty frontier; stop recurring "
@@ -327,7 +327,7 @@ def resolve_quota_run_decision(
 
     if automation_prompt_upgrade_required and not terminal_no_followup:
         should_run = False
-        effective_action = "automation_prompt_upgrade_required"
+        effective_action = EffectiveAction.AUTOMATION_PROMPT_UPGRADE_REQUIRED.value
     elif inbox_reply_due:
         should_run = True
         normal_delivery_allowed = True
@@ -335,7 +335,7 @@ def resolve_quota_run_decision(
         self_repair_allowed = False
         capability_repair_allowed = False
         workspace_repair_allowed = False
-        effective_action = "lark_inbox_reply_due"
+        effective_action = EffectiveAction.LARK_INBOX_REPLY_DUE.value
         reason = (
             "a direct Lark question, bot mention, or verified reply to the bot "
             "is pending reply"
@@ -347,7 +347,7 @@ def resolve_quota_run_decision(
         self_repair_allowed = False
         capability_repair_allowed = False
         workspace_repair_allowed = False
-        effective_action = "operator_inbox_material_review_due"
+        effective_action = EffectiveAction.OPERATOR_INBOX_MATERIAL_REVIEW_DUE.value
         reason = (
             "captured unaddressed operator-inbox material is pending bounded review"
         )
@@ -386,29 +386,29 @@ def quota_effective_action(
     quota: dict[str, Any],
 ) -> str:
     if normal_delivery_allowed:
-        return "normal_run"
+        return EffectiveAction.NORMAL_RUN.value
     if recovery_delivery_allowed:
-        return "outcome_floor_recovery"
+        return EffectiveAction.OUTCOME_FLOOR_RECOVERY.value
     if workspace_repair_allowed:
-        return "agent_workspace_repair"
+        return EffectiveAction.AGENT_WORKSPACE_REPAIR.value
     if self_repair_allowed:
         repair_action = (
             stall_self_repair.get("effective_action")
             if isinstance(stall_self_repair, dict)
             else None
         )
-        return str(repair_action or "control_plane_repair")
+        return str(repair_action or EffectiveAction.CONTROL_PLANE_REPAIR.value)
     if capability_repair_allowed:
-        return "capability_bridge_repair"
+        return EffectiveAction.CAPABILITY_BRIDGE_REPAIR.value
     if state == "operator_gate":
-        return "operator_gate_notify"
+        return EffectiveAction.OPERATOR_GATE_NOTIFY.value
     if state == "blocked_health":
-        return "blocked_health"
+        return EffectiveAction.BLOCKED_HEALTH.value
     if state == "throttled":
-        return "throttled_skip"
+        return EffectiveAction.THROTTLED_SKIP.value
     if state in {"focus_wait", "waiting"} or quota.get("focus_wait"):
-        return "blocked_wait"
-    return "quota_skip"
+        return EffectiveAction.BLOCKED_WAIT.value
+    return EffectiveAction.QUOTA_SKIP.value
 
 
 def _task_orchestration_effective_action(
@@ -424,18 +424,18 @@ def _task_orchestration_effective_action(
         and str(contract.get("execution_state") or "ready") == "ready"
         and should_run
         and normal_delivery_allowed
-        and effective_action == "normal_run"
+        and effective_action == EffectiveAction.NORMAL_RUN.value
     ):
         if contract.get("mode") == "adaptive":
             return (
-                "coordinate_task_bundle",
+                EffectiveAction.COORDINATE_TASK_BUNDLE.value,
                 (
                     "the task coordinator may use admitted child lanes before its "
                     "own worker-lane delivery"
                 ),
             )
         return (
-            "coordinate_task_bundle",
+            EffectiveAction.COORDINATE_TASK_BUNDLE.value,
             (
                 "the explicitly selected task coordinator must activate or resume "
                 "eligible peer lanes before doing its own worker-lane delivery"
