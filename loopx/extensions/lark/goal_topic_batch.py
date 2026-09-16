@@ -31,6 +31,7 @@ def connect_lark_goal_topics(
     ingress_mode: str = "async_inbox",
     reply_mode: str = "topic_reply",
     registry_path: Path | None = None,
+    runtime_root: str | Path | None = None,
     execute: bool = True,
     runner: CommandRunner = default_subprocess_runner,
     cli_bin: str = DEFAULT_CLI_BIN,
@@ -66,6 +67,7 @@ def connect_lark_goal_topics(
         "ingress_mode": ingress_mode,
         "reply_mode": reply_mode,
         "registry_path": registry_path,
+        "runtime_root": runtime_root,
         "runner": runner,
         "cli_bin": cli_bin,
     }

@@ -46,6 +46,9 @@ def manager_failure_reply(error: Exception) -> tuple[str, str]:
         "hard_timeout": "处理超过时间限制",
         "interrupted": "处理已中断",
         "manager_authorization_unavailable": "当前连接的授权范围不可用",
+        "manager_channel_executor_rebind_required": (
+            "管家的执行器已由本机设置更改，需要重新应用一次管家连接"
+        ),
     }
     code = str(getattr(error, "error_code", ""))
     code = code if code in labels else "processing_failed"

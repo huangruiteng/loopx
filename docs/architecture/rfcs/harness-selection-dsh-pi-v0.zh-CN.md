@@ -90,6 +90,14 @@ LoopX **选择**托管有界 Turn 的默认宿主，而从不由启动时的意�
 （`executor_endpoint_default_reason`），因此运维方读到的是一个已决定的默认值，而不是
 从解析出的宿主名去反推。
 
+管家连接不会保存这份决定的第二份副本。连接记录把解析出的端点连同来源作为**观测值**
+存下来；所有读取路径——Lark 路由、授权连接解析、以及在该通道上应答的 Turn——都重新
+从本机解析。因此在另一个默认值仍生效时写下的记录，无法继续在被运维方替换过的端点上
+应答——而这正是"回读说 `dsh`、管家却仍在 `codex` 上跑"的来路。当本机确实改了选择时，
+通道上已绑定的 Session 仍跑在旧端点上；该 Turn 会以类型化回执
+`manager_channel_executor_rebind_required` 被拒绝，回复直接给出唯一能修复它的动作——
+重新应用一次该连接，把通道 Session 开在本机当前选择的端点上。
+
 两个托管面从同一个所有者解析**执行档位**
 （`loopx/control_plane/turn_driver/execution_profile.py`）：provider
 `deepseek-official`、模型 `deepseek-v4-flash`（DeepSeek V4.1 Flash）、推理档位

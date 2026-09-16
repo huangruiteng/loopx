@@ -115,6 +115,19 @@ where the endpoint came from (`executor_endpoint_source`, now including
 (`executor_endpoint_default_reason`), so an operator reads a decided default
 instead of inferring it from the resolved host name.
 
+A manager connection does not keep a second copy of that decision. The
+connection record stores the resolved endpoint as an **observation** with its
+source, and every read path -- the Lark route, the authorized-connection
+resolution, and the Turn that answers on the channel -- re-resolves from the
+machine. A record written while a different default was in force therefore
+cannot keep answering on an endpoint the operator has since replaced, which is
+what previously let a machine whose readback said `dsh` keep running its
+steward on `codex`. When the machine does change the selection, the Session
+bound to the channel still runs on the earlier endpoint; that Turn is refused
+with the typed `manager_channel_executor_rebind_required` receipt, and the reply
+names the one action that repairs it -- re-applying the connection, which opens
+the channel Session on the endpoint the machine now selects.
+
 Both managed surfaces resolve their **execution profile** from one owner
 (`loopx/control_plane/turn_driver/execution_profile.py`): provider
 `deepseek-official`, model `deepseek-v4-flash` (DeepSeek V4.1 Flash) and reasoning

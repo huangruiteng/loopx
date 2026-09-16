@@ -298,6 +298,7 @@ def connect_lark_goal_topic(
     ingress_mode: str | None = None,
     conversation_kind: str | None = None,
     executor_endpoint_id: str | None = None,
+    runtime_root: str | Path | None = None,
     reply_mode: str = "topic_reply",
     registry_path: Path | None = None,
     execute: bool = True,
@@ -321,11 +322,17 @@ def connect_lark_goal_topic(
         editing = edit.binding
         app_ref, chat_id, chat_name = edit.app_ref, edit.chat_id, edit.chat_name
         agent_id, capture_scope = edit.agent_id, edit.capture_scope
-    conversation_kind, executor_endpoint_id, ingress_mode = resolve_conversation_policy(
+    (
+        conversation_kind,
+        executor_endpoint_id,
+        executor_endpoint_source,
+        ingress_mode,
+    ) = resolve_conversation_policy(
         editing=editing,
         conversation_kind=conversation_kind,
         executor_endpoint_id=executor_endpoint_id,
         ingress_mode=ingress_mode,
+        runtime_root=runtime_root,
     )
     if conversation_kind == "manager":
         agent_id = MANAGER_AGENT_GOAL_ID
@@ -763,6 +770,7 @@ def connect_lark_goal_topic(
                     {
                         "conversation_kind": "manager",
                         "executor_endpoint_id": executor_endpoint_id,
+                        "executor_endpoint_source": executor_endpoint_source,
                     }
                     if conversation_kind == "manager"
                     else {}
@@ -1066,11 +1074,15 @@ def decide_lark_topic_event(
     target_payload: Mapping[str, Any],
     binding_payloads: Mapping[str, Mapping[str, Any]],
     event: Mapping[str, Any],
+    runtime_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Return a content-free routing decision for one provider event."""
 
     manager_decision = decide_manager_event(
-        target_payload=target_payload, binding_payloads=binding_payloads, event=event
+        target_payload=target_payload,
+        binding_payloads=binding_payloads,
+        event=event,
+        runtime_root=runtime_root,
     )
     if manager_decision is not None:
         return manager_decision
@@ -1277,11 +1289,13 @@ def route_lark_topic_event(
     target_payload: Mapping[str, Any],
     binding_payloads: Mapping[str, Mapping[str, Any]],
     event: Mapping[str, Any],
+    runtime_root: str | Path | None = None,
 ) -> dict[str, str] | None:
     decision = decide_lark_topic_event(
         target_payload=target_payload,
         binding_payloads=binding_payloads,
         event=event,
+        runtime_root=runtime_root,
     )
     route = decision.get("route")
     return dict(route) if isinstance(route, Mapping) else None

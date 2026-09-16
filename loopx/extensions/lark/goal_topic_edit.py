@@ -121,7 +121,18 @@ def resolve_conversation_policy(
     conversation_kind: str | None,
     executor_endpoint_id: str | None,
     ingress_mode: str | None,
-) -> tuple[str, str | None, str | None]:
+    runtime_root: str | Path | None = None,
+) -> tuple[str, str | None, str | None, str | None]:
+    """Resolve one connection's purpose, executor observation and ingress mode.
+
+    The machine owns its manager channel's executor. A manager connection
+    therefore records the machine's current resolution and may restate it, but
+    it may not override it: a caller asking for a different endpoint is refused
+    with the owner named, instead of being written into a connection record
+    that the route would then ignore.
+    """
+
+    from ...chat_manager import manager_connection_executor_endpoint
     from .goal_channel_transport import SAFE_PROFILE_PATTERN
 
     prior = (editing or {}).get("routing") or {}
@@ -129,15 +140,23 @@ def resolve_conversation_policy(
     if kind not in {"goal", "manager"}:
         raise ValueError("conversation_kind must be goal or manager")
     if kind == "manager":
-        endpoint = executor_endpoint_id or prior.get("executor_endpoint_id") or "codex"
+        endpoint, endpoint_source = manager_connection_executor_endpoint(
+            runtime_root
+        )
+        requested = str(executor_endpoint_id or "").strip()
+        if requested and requested != endpoint:
+            raise ValueError(
+                "the machine steward executor setting owns this connection's "
+                f"endpoint; change it there instead of requesting {requested}"
+            )
         if not SAFE_PROFILE_PATTERN.fullmatch(endpoint):
             raise ValueError("executor_endpoint_id must be a safe endpoint reference")
         if ingress_mode and ingress_mode != "session_queue":
             raise ValueError(
                 "the machine manager uses synchronous session_queue delivery"
             )
-        return kind, endpoint, "session_queue"
-    return kind, None, ingress_mode
+        return kind, endpoint, endpoint_source, "session_queue"
+    return kind, None, None, ingress_mode
 
 
 def _unregister_async_inbox(

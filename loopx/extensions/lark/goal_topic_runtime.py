@@ -796,12 +796,12 @@ def answer_lark_goal_topic(
     ingress_mode = str(route.get("ingress_mode") or "direct_session")
     session_id = str(route.get("session_id") or "")
     manager = route.get("conversation_kind") == "manager"
+    # The machine owns its manager channel's executor, so a manager Turn runs on
+    # the machine's current selection even when the connection record still
+    # carries the endpoint that was the default on the day it was created.
     agent_id = (
-        str(
-            route.get("executor_endpoint_id")
-            or manager_executor_endpoint_default(
-                machine_defaults=steward_machine_defaults(runtime_controller)
-            )
+        manager_executor_endpoint_default(
+            machine_defaults=steward_machine_defaults(runtime_controller)
         )
         if manager
         else str(route.get("agent_id") or "codex")
@@ -833,6 +833,22 @@ def answer_lark_goal_topic(
             or session.get("channel_id") != expected_channel
             or session.get("status") == "closed"
         ):
+            if (
+                manager
+                and session is not None
+                and session.get("channel_id") == expected_channel
+                and session.get("agent_id") != agent_id
+                and session.get("status") != "closed"
+            ):
+                # A machine that changes its steward executor leaves the older
+                # bound Session behind on the same audience. Name that state
+                # instead of failing the Turn under the opaque "manager failed"
+                # label, because one connection re-apply repairs it. Every other
+                # mismatch keeps the outcome it had.
+                raise LarkGoalTopicTurnFailed(
+                    "manager_channel_executor_rebind_required",
+                    _session_turn_effect(route),
+                )
             raise RuntimeError(
                 "bound Agent session is unavailable or no longer matches"
             )
@@ -989,6 +1005,7 @@ def process_lark_goal_topic_event(
         target_payload=target_payload,
         binding_payloads=binding_payloads,
         event=event,
+        runtime_root=runtime_root,
     )
     route = decision.get("route")
     if route is None:

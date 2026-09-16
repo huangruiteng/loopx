@@ -32,6 +32,7 @@ from .extensions.lark.presentation.kanban import (
 )
 from .chat_agent import CodexChatAgentError
 from .chat_manager import (
+    controller_runtime_root,
     manager_channel,
     manager_executor_endpoint_default,
     open_manager_session,
@@ -483,15 +484,19 @@ class LarkChatRequestMixin:
                 or stored_routing.get("conversation_kind")
                 or "goal"
             )
-            executor_endpoint_id = _compact_text(
-                body.get("executor_endpoint_id"), limit=100
-            ) or stored_routing.get("executor_endpoint_id")
-            if conversation_kind == "manager" and not executor_endpoint_id:
-                executor_endpoint_id = manager_executor_endpoint_default(
+            # The machine owns its manager channel's executor, so the machine
+            # setting -- not a stored connection field or a request field --
+            # decides which endpoint this connection runs on and which Session
+            # it binds. The connection write below records the resolution.
+            executor_endpoint_id = (
+                manager_executor_endpoint_default(
                     machine_defaults=steward_machine_defaults(
                         self.server.runtime_controller
                     )
                 )
+                if conversation_kind == "manager"
+                else None
+            )
             session_id: str | None = None
             session_ids_by_agent: dict[str, str] = {}
             if conversation_kind == "manager":
@@ -579,6 +584,9 @@ class LarkChatRequestMixin:
                 "ingress_mode": ingress_mode or "async_inbox",
                 "reply_mode": reply_mode,
                 "registry_path": binding_path.parent / "registry.json",
+                "runtime_root": controller_runtime_root(
+                    getattr(self.server, "runtime_controller", None)
+                ),
                 "execute": body.get("execute") is True,
                 "runner": self._lark_runner(),
                 "cli_bin": cli_bin,

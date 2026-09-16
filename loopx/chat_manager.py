@@ -24,6 +24,7 @@ from .control_plane.turn_driver.host_binding import (
     MANAGED_TURN_HOST,
     managed_executor_binding,
 )
+from .capabilities.steward_executor import load_effective_steward_executor_defaults
 from .chat_store import (
     CHAT_SESSION_MODE_ATTACHED,
     CHAT_SESSION_MODE_MANAGED,
@@ -342,6 +343,32 @@ def manager_executor_endpoint_default(
     return selected_manager_executor_endpoint(
         environ, machine_defaults=machine_defaults
     )[0]
+
+
+def manager_connection_executor_endpoint(
+    runtime_root: Path | str | None,
+    *,
+    environ: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    """Return the endpoint a manager connection runs on, and the source of it.
+
+    A manager conversation is one machine-level channel, so the machine owns
+    which executor answers there. A connection record therefore stores this
+    resolution as an observation instead of a decision that would outlive the
+    machine setting that made it: reading the connection's endpoint back as
+    authority is what let a machine that had selected a managed executor keep
+    answering on the interactive CLI endpoint that was the default when the
+    connection was created.
+    """
+
+    machine_defaults = (
+        load_effective_steward_executor_defaults(Path(runtime_root))
+        if runtime_root is not None
+        else None
+    )
+    return selected_manager_executor_endpoint(
+        environ, machine_defaults=machine_defaults
+    )
 
 
 # The channel's readback quotes the mode and the status of the Session it is an
