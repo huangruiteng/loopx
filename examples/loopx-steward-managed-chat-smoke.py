@@ -33,6 +33,7 @@ from loopx.chat import CHAT_REVIEW_CLOSE_TAG, CHAT_REVIEW_OPEN_TAG  # noqa: E402
 from loopx.chat_manager import (  # noqa: E402
     MANAGER_AGENT_GOAL_ID,
     MANAGER_AGENT_OBJECTIVE,
+    MANAGER_ENDPOINT_ENV_VAR,
     manager_channel_binding,
     manager_workspace,
     open_manager_session,
@@ -197,6 +198,7 @@ def main() -> int:
         for key in (
             CREDENTIAL_ENV,
             BASE_URL_ENV,
+            MANAGER_ENDPOINT_ENV_VAR,
             "DSH_CWD",
             "DSH_HOME",
             "DSH_SESSION_ROOT",
@@ -205,6 +207,10 @@ def main() -> int:
     try:
         os.environ[CREDENTIAL_ENV] = CREDENTIAL_VALUE
         os.environ[BASE_URL_ENV] = base_url
+        # The steward's shipped default is the interactive CLI endpoint, so the
+        # managed host is reached here the way an operator reaches it: by
+        # selecting it. The credential then authenticates that selection.
+        os.environ[MANAGER_ENDPOINT_ENV_VAR] = "dsh"
         for key in ("DSH_CWD", "DSH_HOME", "DSH_SESSION_ROOT"):
             os.environ.pop(key, None)
         return _run_turn(args)
@@ -223,7 +229,12 @@ def _run_turn(args: argparse.Namespace) -> int:
         binding["executor_endpoint"] == "dsh"
         and binding["executor_kind"] == "managed"
         and binding["available"] is True,
-        "the configured operator credential must resolve a launchable managed host",
+        "the selected managed host must be launchable with the configured credential",
+    )
+    _assert(
+        binding["executor_endpoint_source"] == "explicit_config"
+        and binding["executor_endpoint_default_reason"] == "",
+        "the managed host must be reached by selection, not by discovering a credential",
     )
     _assert(
         binding["model"] == "deepseek-v4-flash"

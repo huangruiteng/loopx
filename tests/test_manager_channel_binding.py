@@ -11,9 +11,8 @@ import pytest
 from loopx.chat_agent import CodexChatAgentError
 from loopx.capabilities.manager_runtime import manager_runtime_capability_projection
 from loopx.chat_manager import (
-    MANAGER_ENDPOINT_DEFAULT_MANAGED,
-    MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT,
-    MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED,
+    MANAGER_ENDPOINT_MANAGED,
+    MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT,
     MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG,
     MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT,
     MANAGER_MODEL_SOURCE_MANAGED_PROFILE,
@@ -38,7 +37,7 @@ from loopx.control_plane.turn_driver import host_binding
 from loopx.extensions.lark.cli_resolution import LarkCliResolution
 
 
-def test_without_the_operator_credential_the_channel_stays_on_the_cli_endpoint():
+def test_the_shipped_default_is_the_cli_endpoint_on_every_machine():
     """A machine with only a personal login must keep a reachable steward."""
 
     binding = manager_channel_binding({})
@@ -52,7 +51,7 @@ def test_without_the_operator_credential_the_channel_stays_on_the_cli_endpoint()
     assert (
         binding["executor_endpoint_default_reason"]
         == manager_endpoint_default_reason({})
-        == MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_ABSENT
+        == MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT
     )
     assert binding["executor_kind"] == "individual"
     assert binding["credential_env_var"] == ""
@@ -64,37 +63,69 @@ def test_without_the_operator_credential_the_channel_stays_on_the_cli_endpoint()
     assert binding["model_source"] == MANAGER_MODEL_SOURCE_VENDOR_DEFAULT
 
 
-def test_the_shipped_default_follows_the_operator_credential_it_reports():
-    """One reported local fact decides the default, and the readback names it."""
+def test_the_operator_credential_authenticates_without_selecting_the_executor():
+    """A credential authenticates a configuration; it never picks one.
 
-    without = manager_channel_binding({})
+    The steward is the surface a person talks to, so discovering an operator
+    credential must not re-point it in the middle of a conversation -- and it
+    must not hand the interactive channel an operator model to run through an
+    individual CLI login either.
+    """
+
     with_credential = manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})
 
-    assert without["executor_endpoint"] == "codex"
     assert (
         with_credential["executor_endpoint"]
-        == MANAGER_ENDPOINT_DEFAULT_MANAGED
         == manager_executor_endpoint_default({"DEEPSEEK_API_KEY": "fixture"})
+        == "codex"
     )
     assert (
         with_credential["executor_endpoint_source"]
-        == without["executor_endpoint_source"]
         == MANAGER_ENDPOINT_SOURCE_PRODUCT_DEFAULT
     )
     assert (
         with_credential["executor_endpoint_default_reason"]
-        == MANAGER_ENDPOINT_DEFAULT_REASON_CREDENTIAL_CONFIGURED
+        == MANAGER_ENDPOINT_DEFAULT_REASON_STEWARD_CHANNEL_DEFAULT
     )
+    # The model follows the executor the channel runs, so a configured
+    # credential cannot leave a managed model pointed at an individual CLI.
+    assert with_credential["executor_kind"] == "individual"
+    assert with_credential["model"] == "gpt-6-astra"
+    assert with_credential["model_source"] == MANAGER_MODEL_SOURCE_VENDOR_DEFAULT
+    assert with_credential["execution_profile"] is None
+    # The credential is still reported as the fact it is, by variable name and
+    # never by value, so an operator can see it was seen.
+    assert with_credential["operator_credential_configured"] is True
+    assert with_credential["credential_env_var"] == ""
+    assert "fixture" not in json.dumps(with_credential)
+
+
+def test_selecting_the_managed_host_runs_the_managed_execution_profile(monkeypatch):
+    """Selection, not discovery, is what puts the channel on the managed host."""
+
+    monkeypatch.setattr(
+        host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+    )
+
+    selected = manager_channel_binding(
+        {"LOOPX_MANAGER_ENDPOINT": "dsh", "DEEPSEEK_API_KEY": "fixture"}
+    )
+
+    assert selected["executor_endpoint"] == MANAGER_ENDPOINT_MANAGED == "dsh"
+    assert selected["executor_endpoint_source"] == MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG
+    # An explicit selection carries no shipped-default reason to explain.
+    assert selected["executor_endpoint_default_reason"] == ""
+    assert selected["executor_kind"] == "managed"
+    assert selected["available"] is True
     # The model follows the executor: the managed host runs the same execution
     # profile a governed Turn runs, so the channel and its workers agree.
-    assert with_credential["model"] == "deepseek-v4-flash"
-    assert with_credential["model_source"] == MANAGER_MODEL_SOURCE_MANAGED_PROFILE
+    assert selected["model"] == "deepseek-v4-flash"
+    assert selected["model_source"] == MANAGER_MODEL_SOURCE_MANAGED_PROFILE
     # One line, the same shape the governed Turn readback publishes, so the
     # channel and its workers cannot report two different managed profiles.
-    assert with_credential["execution_profile"] == "deepseek-v4-flash@high"
-    assert with_credential["operator_credential_configured"] is True
-    assert with_credential["credential_env_var"] == "DEEPSEEK_API_KEY"
-    assert "fixture" not in json.dumps(with_credential)
+    assert selected["execution_profile"] == "deepseek-v4-flash@high"
+    assert selected["credential_env_var"] == "DEEPSEEK_API_KEY"
+    assert "fixture" not in json.dumps(selected)
 
 
 def test_an_explicit_endpoint_selection_reports_no_default_reason():
@@ -102,8 +133,8 @@ def test_an_explicit_endpoint_selection_reports_no_default_reason():
         {"LOOPX_MANAGER_ENDPOINT": "codex", "DEEPSEEK_API_KEY": "fixture"}
     )
 
-    # The operator overruled the conditional default, so the projection must not
-    # claim a shipped-default reason for the endpoint it resolved.
+    # The operator selected the endpoint, so the projection must not claim a
+    # shipped-default reason for the endpoint it resolved.
     assert binding["executor_endpoint"] == "codex"
     assert binding["executor_endpoint_source"] == MANAGER_ENDPOINT_SOURCE_EXPLICIT_CONFIG
     assert binding["executor_endpoint_default_reason"] == ""
@@ -155,7 +186,7 @@ def test_an_unknown_explicit_endpoint_makes_no_availability_claim():
     assert binding["model"] == "gpt-6-astra"
 
 
-def test_explicit_model_override_wins_with_and_without_credential():
+def test_explicit_model_override_wins_on_either_endpoint():
     overridden = manager_channel_binding(
         {"DEEPSEEK_API_KEY": "fixture", "LOOPX_MANAGER_MODEL": "fixture-model"}
     )
@@ -169,10 +200,20 @@ def test_explicit_model_override_wins_with_and_without_credential():
         "model": "gpt-6-astra",
         "reasoning_effort": "low",
     }
-    # The managed effort is the same field the governed Turn surface resolves.
+    # The managed effort is the same field the governed Turn surface resolves,
+    # and it applies to the managed endpoint the operator selected.
+    assert manager_model_config(
+        {
+            "LOOPX_MANAGER_ENDPOINT": "dsh",
+            "DEEPSEEK_API_KEY": "fixture",
+            "LOOPX_TURN_REASONING_EFFORT": "max",
+        }
+    ) == {"model": "deepseek-v4-flash", "reasoning_effort": "max"}
+    # Selection is what moves the pair: the same credential without it leaves
+    # the interactive endpoint on its own vendor model and effort.
     assert manager_model_config(
         {"DEEPSEEK_API_KEY": "fixture", "LOOPX_TURN_REASONING_EFFORT": "max"}
-    ) == {"model": "deepseek-v4-flash", "reasoning_effort": "max"}
+    ) == {"model": "gpt-6-astra", "reasoning_effort": "high"}
 
 
 def test_manager_model_config_reads_the_process_environment(monkeypatch):
@@ -272,7 +313,7 @@ def test_chat_entry_point_never_lets_a_client_default_pick_the_steward_executor(
     server.runtime_controller = Controller()
     monkeypatch.setattr(
         "loopx.chat_manager.manager_executor_endpoint_default",
-        lambda environ=None: MANAGER_ENDPOINT_DEFAULT_MANAGED,
+        lambda environ=None: MANAGER_ENDPOINT_MANAGED,
     )
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
@@ -289,9 +330,9 @@ def test_chat_entry_point_never_lets_a_client_default_pick_the_steward_executor(
 
     try:
         resolved = create_session({"context_kind": "manager"})
-        assert calls[-1]["agent_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
-        assert resolved["agent_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
-        assert resolved["session"]["executor_endpoint_id"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+        assert calls[-1]["agent_id"] == MANAGER_ENDPOINT_MANAGED
+        assert resolved["agent_id"] == MANAGER_ENDPOINT_MANAGED
+        assert resolved["session"]["executor_endpoint_id"] == MANAGER_ENDPOINT_MANAGED
 
         explicit = create_session({"context_kind": "manager", "agent_id": "codex"})
         assert calls[-1]["agent_id"] == "codex"
@@ -407,11 +448,11 @@ def test_the_channel_quotes_the_session_mode_instead_of_deriving_it():
     """The endpoint says managed; the Session says which mode is serving it."""
 
     binding = manager_channel_binding(
-        {"DEEPSEEK_API_KEY": "fixture"},
+        {"LOOPX_MANAGER_ENDPOINT": "dsh", "DEEPSEEK_API_KEY": "fixture"},
         session={"session_mode": "attached_host", "status": "busy"},
     )
 
-    assert binding["executor_endpoint"] == MANAGER_ENDPOINT_DEFAULT_MANAGED
+    assert binding["executor_endpoint"] == MANAGER_ENDPOINT_MANAGED
     assert binding["executor_kind"] == "managed"
     assert binding["session_mode"] == "attached_host"
     assert binding["session_mode_source"] == (
@@ -426,7 +467,10 @@ def test_a_channel_without_a_session_reads_as_unbound(monkeypatch):
     monkeypatch.setattr(
         host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
     )
-    binding = manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})
+
+    binding = manager_channel_binding(
+        {"LOOPX_MANAGER_ENDPOINT": "dsh", "DEEPSEEK_API_KEY": "fixture"}
+    )
 
     assert binding["available"] is True
     assert binding["session_mode"] is None
@@ -485,7 +529,7 @@ def test_the_channel_session_is_the_resumable_row_on_that_channel(tmp_path):
         channel_id="manager",
         session_mode="attached_host",
         host_surface="desktop",
-        executor_endpoint_id=MANAGER_ENDPOINT_DEFAULT_MANAGED,
+        executor_endpoint_id=MANAGER_ENDPOINT_MANAGED,
     )
     store.update_session(attached["session_id"], status="ready")
 

@@ -298,7 +298,13 @@ def main() -> int:
             "reward_memory",
             "lark_event_inbox",
             "lark_kanban_heartbeat_sync",
+            "pull_request_review",
             "periodic_report",
+        }
+        assert features["pull_request_review"]["availability"] == "supported"
+        assert features["pull_request_review"]["default"] == {
+            "wait_for_ci": True,
+            "review_priority": "other-developers-first",
         }
         assert features["todo_replan_cadence"]["availability"] == "supported_opt_in"
         assert features["todo_replan_cadence"]["default"] == {"completed_todos": 5}

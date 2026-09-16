@@ -3,16 +3,15 @@ import { resolve } from "node:path";
 import { outputDir } from "./fixture.mjs";
 import { openWorkspacePage } from "./scenario-context.mjs";
 
-// The shipped steward default is conditional. On a machine with no operator
-// credential it resolves to the interactive CLI endpoint, which is billed to an
-// individual CLI login and keeps the vendor model default -- and the binding
-// says which branch was taken and why, instead of looking like an environment
-// value nobody chose.
-const withoutCredentialBinding = {
+// The shipped steward default is one endpoint on every machine: the interactive
+// CLI endpoint, which is billed to an individual CLI login and keeps the vendor
+// model default. The binding names the one decision behind it, so a reader does
+// not have to guess whether an endpoint was chosen or merely discovered.
+const shippedDefaultBinding = {
   schema_version: "manager_channel_binding_v0",
   executor_endpoint: "codex",
   executor_endpoint_source: "product_default",
-  executor_endpoint_default_reason: "operator_credential_absent",
+  executor_endpoint_default_reason: "steward_channel_default",
   executor_kind: "individual",
   model: "gpt-6-astra",
   model_source: "vendor_default",
@@ -22,13 +21,21 @@ const withoutCredentialBinding = {
   unavailable_reason: null,
 };
 
-// With a credential configured the same rule selects the managed host, and the
-// model and reasoning effort follow that endpoint rather than the environment.
-const withCredentialBinding = {
-  schema_version: "manager_channel_binding_v0",
+// A configured operator credential authenticates a configuration; it does not
+// select one. The chip must therefore be indistinguishable from the shipped
+// default it did not move -- only the reported fact changes.
+const credentialWithoutSelectionBinding = {
+  ...shippedDefaultBinding,
+  operator_credential_configured: true,
+};
+
+// Selecting the managed host is what puts the channel on it, and the model and
+// reasoning effort follow that endpoint rather than the environment.
+const selectedManagedBinding = {
+  ...shippedDefaultBinding,
   executor_endpoint: "dsh",
-  executor_endpoint_source: "product_default",
-  executor_endpoint_default_reason: "operator_credential_configured",
+  executor_endpoint_source: "explicit_config",
+  executor_endpoint_default_reason: "",
   executor_kind: "managed",
   model: "deepseek-v4-flash",
   model_source: "managed_execution_profile",
@@ -39,14 +46,9 @@ const withCredentialBinding = {
 };
 
 // The channel can select the managed host, but if it cannot launch here the chip
-// must name the missing fact instead of the transport gap it used to have. An
-// explicitly selected endpoint carries no conditional-default reason, so only
-// the unavailability reason is rendered.
+// must name the missing fact instead of the transport gap it used to have.
 const explicitManagedCredentialBinding = {
-  ...withCredentialBinding,
-  executor_endpoint: "dsh",
-  executor_endpoint_source: "explicit_config",
-  executor_endpoint_default_reason: "",
+  ...selectedManagedBinding,
   operator_credential_configured: false,
   available: false,
   unavailable_reason: "operator_credential_unconfigured",
@@ -61,7 +63,7 @@ const explicitManagedRuntimeBinding = {
 // kind the operator can act on, and an unrecognized model source must not be
 // reported as the vendor default.
 const unknownKindBinding = {
-  ...withoutCredentialBinding,
+  ...shippedDefaultBinding,
   executor_endpoint: "pi",
   executor_endpoint_source: "explicit_config",
   executor_endpoint_default_reason: "",
@@ -107,10 +109,13 @@ async function assertHairlineRow(page) {
 export const executionChipScenario = {
   id: "execution-chip",
   async run({ browser, collectCoverage, url }) {
-    const shipped = await openChip(browser, url, withoutCredentialBinding, collectCoverage);
+    const shipped = await openChip(browser, url, shippedDefaultBinding, collectCoverage);
+    let shippedText = "";
+    let shippedDefaultNote = "";
     const { close, coverageEntries, page } = shipped;
     try {
       const text = await chipText(page);
+      shippedText = text;
       for (const fragment of ["codex", "gpt-6-astra", "个人 CLI 登录"]) {
         if (!text.includes(fragment)) {
           throw new Error(`Execution chip omitted ${fragment}: ${text}`);
@@ -122,10 +127,15 @@ export const executionChipScenario = {
       if (await page.locator(".personal-execution-note").count() !== 0) {
         throw new Error(`A usable steward channel must not render an unavailability note: ${await chipText(page)}`);
       }
-      // The default is conditional, so the chip states which branch it took.
+      // The default is one endpoint, so the chip names it and the one way to
+      // move it, and never claims a credential branch that does not exist.
       const defaultNote = await page.locator(".personal-execution-rule-note").innerText();
-      if (!defaultNote.includes("未配置 operator 凭据") || !defaultNote.includes("codex")) {
-        throw new Error(`Conditional default did not explain itself: ${defaultNote}`);
+      shippedDefaultNote = defaultNote;
+      if (!defaultNote.includes("出货默认值") || !defaultNote.includes("codex")) {
+        throw new Error(`Shipped default did not explain itself: ${defaultNote}`);
+      }
+      if (defaultNote.includes("operator 凭据")) {
+        throw new Error(`The shipped default claimed a credential branch: ${defaultNote}`);
       }
       await assertHairlineRow(page);
       await page.screenshot({
@@ -137,9 +147,34 @@ export const executionChipScenario = {
       await close();
     }
 
-    // A configured credential selects the managed host, and the model and
-    // effort follow that endpoint instead of the environment.
-    const managed = await openChip(browser, url, withCredentialBinding, collectCoverage);
+    // A configured operator credential reports a fact and moves nothing: this
+    // regression is the whole point, so compare the two chips literally.
+    const credentialOnly = await openChip(
+      browser,
+      url,
+      credentialWithoutSelectionBinding,
+      collectCoverage,
+    );
+    try {
+      const text = await chipText(credentialOnly.page);
+      if (text !== shippedText) {
+        throw new Error(
+          `A configured credential moved the steward chip: ${shippedText} -> ${text}`,
+        );
+      }
+      const credentialDefaultNote = await credentialOnly.page
+        .locator(".personal-execution-rule-note")
+        .innerText();
+      if (credentialDefaultNote !== shippedDefaultNote) {
+        throw new Error("A configured credential changed the shipped-default explanation");
+      }
+    } finally {
+      coverageEntries.push(...await credentialOnly.close());
+    }
+
+    // Selecting the managed host moves the endpoint, the model and the effort
+    // together, and an explicit selection carries no shipped-default note.
+    const managed = await openChip(browser, url, selectedManagedBinding, collectCoverage);
     try {
       const text = await chipText(managed.page);
       for (const fragment of ["dsh", "operator 凭据", "deepseek-v4-flash"]) {
@@ -150,12 +185,11 @@ export const executionChipScenario = {
       if (await managed.page.locator(".personal-execution-note").count() !== 0) {
         throw new Error("A launchable managed host must not render an unavailability note");
       }
-      const defaultNote = (await managed.page.locator(".personal-execution-rule-note").innerText()).replace(/\s+/g, " ").trim();
-      if (!defaultNote.includes("已配置 operator 凭据") || !defaultNote.includes("dsh")) {
-        throw new Error(`Conditional default did not explain the managed branch: ${defaultNote}`);
+      if (await managed.page.locator(".personal-execution-rule-note").count() !== 0) {
+        throw new Error("A selected endpoint must not be explained as a shipped default");
       }
       if (text.includes("codex")) {
-        throw new Error(`The managed branch must not still report the CLI endpoint: ${text}`);
+        throw new Error(`The selected managed host must not still report the CLI endpoint: ${text}`);
       }
       await assertHairlineRow(managed.page);
     } finally {
@@ -231,7 +265,7 @@ export const executionChipScenario = {
     // there; if it is shown it must still fit inside the viewport, and an
     // unavailable executor must keep its reason readable instead of collapsing.
     const mobile = await openWorkspacePage(browser, url, {
-      apiOptions: { managerChannelBinding: withoutCredentialBinding },
+      apiOptions: { managerChannelBinding: shippedDefaultBinding },
       collectCoverage,
       isMobile: true,
       viewport: { width: 390, height: 844 },
@@ -272,7 +306,7 @@ export const executionChipScenario = {
     }
     return {
       coverageEntries,
-      note: "execution chip reports the selected executor, the credential it is billed to and the resolved model, explains which branch of the conditional steward default it took, names why a managed host cannot launch, and stays absent without a binding",
+      note: "execution chip reports the selected executor, the credential it is billed to and the resolved model, names the steward channel's shipped default without claiming a credential branch, keeps a configured credential from moving it, names why a selected managed host cannot launch, and stays absent without a binding",
     };
   },
 };
