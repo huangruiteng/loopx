@@ -363,28 +363,29 @@ whose listed symbol is a journal or receipt writer marks the vocabulary
 ### Formal model and proof boundary
 
 The registry is a finite specification of a larger program semantics. Let
-`V` be the set of registered vocabularies, `Val(v)` the admitted values of a
-vocabulary `v`, and `S` the set of source sites. The model records relations,
-not just names:
+`V` be the set of registered vocabularies, `L` the source sites, `U(v)` the
+ambient runtime values, and `S(v)` the registered admitted values of vocabulary
+`v`. Production and consumption range over `U(v)` before validation. The model
+records relations, not just names:
 
 ```text
-D ⊆ S × V                         defines
-P ⊆ S × V × Val(v)                produces
-C ⊆ S × V × Val(v)                consumes or branches on
-I ⊆ S × V × V                     interprets one vocabulary as another
-T ⊆ S × V                         passes through without changing meaning
-G ⊆ V × V × (Val ⇀ Val ∪ {reject}) projects
-R ⊆ S × V × Version               persists a value durably
+D ⊆ L × V                         defines
+P ⊆ L × V × U(v)                  produces
+C ⊆ L × V × U(v)                  consumes or branches on
+I ⊆ L × V × V                     interprets one vocabulary as another
+T ⊆ L × V                         passes through without changing meaning
+G ⊆ V × V × (S(v_source) ⇀ S(v_target) ∪ {reject}) projects
+R ⊆ L × V × Version               persists a value durably
 ```
 
 The minimum semantic obligations are:
 
-1. **Producer closedness:** `Produced(v) ⊆ Val(v)`. A recognised producer
+1. **Producer closedness:** `Produced(v) ⊆ S(v) ⊆ U(v)`. A recognised producer
    cannot write a value outside the registered set.
 2. **Canonical liveness:** `Canonical(v) ⊆ Produced(v) ∪ CompatibilityOnly(v)`.
    A value that is only compared is dead or compatibility-only, never
    canonical.
-3. **Consumer domain closedness:** `Accepted(c) ⊆ Val(v)`, unless the consumer
+3. **Consumer domain closedness:** `Accepted(c) ⊆ S(v)`, unless the consumer
    explicitly declares an external or partial domain.
 4. **Scope separation:** a name collision is a semantic conflict only when the
    declared scopes overlap. Spelling alone cannot establish equivalence.
@@ -404,6 +405,61 @@ edges are modelled. The registry stores this proof boundary in
 implicit pass.
 
 
+### Soundness, relative completeness, and candidate decisions
+
+The word *complete* is scoped here. Let `U(v)` be the ambient runtime value
+space for a vocabulary, `S(v)` its registered admitted set, `P(v)` the values
+actually produced, and `O(v)` the values observed by the scanner. The producer
+obligation is meaningful only when production is defined over `U(v)`:
+
+```text
+P(v) ⊆ S(v) ⊆ U(v)
+```
+
+Defining `P(v)` as a subset of `S(v)` in advance would make the first
+inclusion tautological. M0 currently establishes only bounded claims about
+`O(v)` and registered structural carriers.
+
+For a recognised language fragment `L0` and an exact analyser `A0`, define:
+
+```text
+Sound(A0, property, L0)    := A0 accepts c ⇒ property(c)
+Complete(A0, property, L0) := property(c) ⇒ A0 accepts c
+```
+
+The M0 guard can aim at both properties for its fixed carrier and dispatch
+forms. It cannot claim either property for arbitrary dynamic Python or
+TypeScript. A value flowing through an alias, configuration, reflection,
+external input, or unrecognised syntax belongs to `unknown` until a bounded
+analysis accounts for it. Unknown is an evidence result, not proof of absence.
+
+Advisory candidate triage uses one finite disposition:
+
+```text
+reuse_existing | extend_vocabulary | create_vocabulary | local_only
+external_input | compatibility_only | unknown
+```
+
+This makes the *workflow classification* exhaustive even though the program
+analysis is not. The registry stores the allowed labels and default, not
+per-candidate decisions; this metadata does not enforce candidate handling in
+product code. The drift smoke validates the label contract only.
+`reuse_existing` requires the same slot, compatible scope, and an equivalent
+contract. `extend_vocabulary` requires a witness that
+reusing an existing value would collapse two states with different required
+behaviour. `create_vocabulary` requires a new semantic domain or independently
+owned lifecycle. If the evidence cannot decide among these cases, the default
+is `unknown`; the agent must not silently treat an unresolved candidate as a
+reuse.
+
+General behavioural equivalence remains undecidable for arbitrary programs, so
+`same_concept` is not promoted to a theorem by this schema. It becomes a
+blocking property only for a restricted contract with explicit inputs,
+outputs, transitions, persistence version and finite test domain. This is the
+boundary between a useful proof skeleton and an uncheckable claim of
+whole-program semantic convergence.
+
+
 ### State model and schema
 
 `loopx/semantics/vocabulary_v0.json`, `schema_version`
@@ -420,7 +476,7 @@ vocabulary key fails the smoke.
 | `vocabularies.<name>.scope` (M0.5) | `global` or `bounded_context`; a `bounded_context` entry lists `contexts`, each with one owner symbol | Closed enumeration; declared bounded-context names are excluded from `multi_value_forks`; an undeclared multi-module name stays a fork (I14) |
 | `vocabularies.<name>.producers` (M0.5) | `path::Symbol` sites that write the field, required for `kernel` | Every site writes registered values only; every value not under `compatibility_only` has at least one site or a variable-sourced entry (I12, I13) |
 | `vocabularies.<name>.compatibility_only` (M0.5) | values kept so readers of persisted records still resolve them | Subset of `values`; zero production sites; each carries a `value_notes` reason and a retirement milestone |
-| `formal_model` | finite universes, role relations and hierarchy, semantic obligations, and established/bounded/unproved claims | Exact schema, role hierarchy, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
+| `formal_model` | finite universes, role relations and hierarchy, semantic obligations, candidate decisions, and established/bounded/unknown/unproved claims | Exact schema, role hierarchy, candidate decisions, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
 | `formal_model.enforcement_policy` | blocking-now, blocking-next, advisory, and unproved lanes | Every formal invariant appears exactly once and its lane agrees with its enforcement stage |
 | `vocabularies.<name>.value_notes`, `deprecated_values` | per-value review notes; values slated for removal | Names must be registered values |
 | `relations.same_concept` | groups of `vocabulary.value` members | Every member resolves |
@@ -516,9 +572,9 @@ inventory in the same PR.
 
 | Claim | Test or evidence | Required result | Boundary / exclusions |
 | --- | --- | --- | --- |
-| Registry and inventory match the code at baseline | `python3.11 examples/semantic-vocabulary-drift-smoke.py` | `ok` with coverage, ratchet, budget, and twin report | Proves parity for registered vocabularies and mapped carriers only |
-| Inventory is fresh | `python3.11 scripts/generate_semantic_inventory.py --check` | exit 0 | Structural map only |
-| Scanner classification rules | `pytest tests/architecture/test_semantic_inventory.py` | pass | Fixture repository; rules from this RFC, not from output |
+| Registry and inventory match the code at baseline | `uv run --extra test loopx canary smoke-suite --script semantic-vocabulary-drift-smoke.py` | `ok` with coverage, ratchet, budget, and twin report | Proves parity for registered vocabularies and mapped carriers only |
+| Inventory is fresh | `uv run python scripts/generate_semantic_inventory.py --check` | exit 0 | Structural map only |
+| Scanner classification rules | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass | Fixture repository; rules from this RFC, not from output |
 | A widened `effective_action` set fails closed in Python | Add an unregistered literal via `==`, membership, or conditional expression | Failure names the value and file | Mutation exercise; not a committed test |
 | A widened `effective_action` set fails closed in TypeScript | Add an unregistered literal via `===` or a ternary | Same | Same |
 | A forked constant fails closed | Redefine `TURN_ENVELOPE_SCHEMA_VERSION` or `HANDOFF_MODES` in a non-owner module, regenerate the inventory | Failure lists the extra defining module or the fork budget | Same |
@@ -529,10 +585,10 @@ inventory in the same PR.
 | A multi-value collision cannot grow | Define one closed-set name in two modules with divergent values, or with equal values, and regenerate | `multi_value_forks` or `multi_value_twins` fails naming the new name | Mutation exercise; not a committed test |
 | The registry cannot relax its own ratchet | Lower any `coverage_floor` count, raise any `inventory_ratchets` budget, or raise a retirement budget, in the same diff that removes the coverage it counts | `COVERAGE_ANCHOR`, `BUDGET_ANCHOR`, or `RETIREMENT_ANCHOR` fails naming the anchored value | Mutation exercise; moving an anchor is a code edit a reviewer sees |
 | A tightened budget cannot drift back to a stale anchor | Lower a registry budget without touching the anchor | Failure says the registry value and the anchor differ | Equality, not `<=`; the fix is to lower the anchor in the same diff |
-| The smoke is on the pull-request path | `pytest tests/architecture/test_semantic_vocabulary_drift.py` | pass; the test is collected by the default `pytest -q` sweep in `python-tests.yml` | The fleet and premerge surfaces are not the obligation (I10) |
-| Premerge selects the smoke for a `loopx/` diff | `loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | the plan lists `examples/semantic-vocabulary-drift-smoke.py` under `repo-architecture-budget` | Selection is by trigger hint; the pytest wrapper is the guarantee |
-| Measurement covers both carrier shapes and filters local naming | `pytest tests/architecture/test_semantic_inventory.py` | pass, including the collision and module-local-convention fixtures | Rules come from this RFC, not from scanner output |
-| No behavior change from the two owner fixes | `pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
+| The smoke is on the pull-request path | `uv run --extra test python -m pytest tests/architecture/test_semantic_vocabulary_drift.py` | pass; the test is collected by the default `pytest -q` sweep in `python-tests.yml` | The fleet and premerge surfaces are not the obligation (I10) |
+| Premerge selects the smoke for a `loopx/` diff | `uv run --extra test loopx canary premerge --changed-file loopx/control_plane/turn_driver/loop_controller.py` | the plan lists `examples/semantic-vocabulary-drift-smoke.py` under `repo-architecture-budget` | Selection is by trigger hint; the pytest wrapper is the guarantee |
+| Measurement covers both carrier shapes and filters local naming | `uv run --extra test python -m pytest tests/architecture/test_semantic_inventory.py` | pass, including the collision and module-local-convention fixtures | Rules come from this RFC, not from scanner output |
+| No behavior change from the two owner fixes | `uv run --extra test python -m pytest tests/test_loopx_turn_transaction.py tests/test_loop_turn_loop_controller.py tests/test_turn_loop_disposition.py tests/test_loopx_turn_managed_step.py tests/control_plane -k authority` and `uv run --extra test loopx canary premerge --from-git-diff` | pass | Environment failures already present on `main` are excluded when reproduced on a clean tree |
 | Docs governance accepts the RFC pair | `python3 examples/docs-governance-smoke.py` | pass | Checks mirror, links, index |
 | Retirement budgets count substrings, not identifiers | `goal_boundary` counted with `in file.text` and with `\bgoal_boundary\b` | 35 vs 30 Python modules on the baseline | Known boundary; M3's zero-reader gate needs the identifier count, tracked in Section 12 |
 | The module-local convention filter is a code edit | Widen `MODULE_LOCAL_CONVENTION` in `inventory.py` and regenerate | `*_semantic` budgets fall with no code change elsewhere | Known boundary; the regex is in code so the widening is a reviewed diff, and the unfiltered totals stay budgeted |
@@ -540,7 +596,7 @@ inventory in the same PR.
 | A producer of an unregistered value fails (M0.5) | Write `effective_action: "brand_new"` in a listed producer site | Fails naming the site and the value even though no consumer compares it | I13; production is stricter than comparison |
 | A bounded-context name leaves the fork budget only by declaration (M0.5) | Declare `SOURCE_SURFACES` with its four contexts; separately, rename one definition without declaring | The declaration lowers `multi_value_forks` to 3; the rename alone does not | I14; the honest fix is a registry edit a reviewer sees, the rename is code without registry change |
 | An upstream merge can stale the committed inventory | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Measured cost of committing a snapshot; the handling rule is Section 10 and Section 12 Q9 |
-| The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
+| The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, candidate decision, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
 
 Known limits, stated so the check is not over-trusted:
 
@@ -601,13 +657,14 @@ rule is that the person who merges a PR after a red `main` regenerates the
 inventory in a follow-up commit that touches only `inventory_v0.json`, and the
 smoke's failure text names that command.
 
-**Interpreter.** The smoke, the generator, and the scanner require the
-project's Python (`>=3.11` in `pyproject.toml`); `zip(strict=True)` fails on
-3.9. Fleet and premerge commands are spelled `python3` by repository convention
-and run under the CI interpreter. A macOS system `python3` is 3.9, so local
-premerge runs need a 3.11 environment on `PATH`; the docs spell the direct
-commands as `python3.11` for that reason, and the planner entry is left as
-`python3` on purpose.
+**Interpreter and checkout.** Run the commands above from the target worktree
+with `uv run`; Python compatibility comes from `pyproject.toml` (`>=3.11`),
+and the imported LoopX must come from this checkout. Canary normalizes displayed
+`python3` commands to `sys.executable`, the interpreter that launched LoopX.
+A global installation may scan a different release snapshot even when its Python
+is compatible. See [local validation](../../development/testing-and-quality.md#local-validation-environment--本地验证环境)
+for setup, interpreter/source readback, and lockfile boundaries. Historical
+receipts below retain the commands actually executed.
 
 ## 11. Normative delivery plan
 
@@ -673,6 +730,19 @@ when a bounded source-to-sink analysis exists, and moves to a blocking lane only
 after its false-negative boundary is documented and mutation tests cover the
 recognised forms. This keeps the contract strict about silent corruption while
 allowing incomplete analyses to remain useful without blocking unrelated work.
+
+PR review preserves these lanes. Ordinary changes record their checked scope and
+reason, then exit semantic review when no shared contract is affected. Detailed
+evidence is limited to affected contracts and may reference existing review
+evidence. A scanner blind spot is advisory; missing required validation for a
+contract affected by this PR, or a concrete violation, blocks approval with the
+contract, triggering change, observed evidence, minimum repair and rerun command.
+The global F6 proof gap does not itself block unrelated work or excuse a missing
+compatibility check required by the changed contract. See the
+[review evidence contract](../../../loopx/capabilities/pr_review_queue/README.md#semantic-alignment-and-ci-constraint-recovery)
+for the executable verdict shapes. Model performance remains an empirical
+question: compare matched tasks/model/budgets, counting tokens, time, independently
+accepted completions, false blocks and missed defects before claiming a benefit.
 
 The phases are therefore:
 
@@ -767,6 +837,15 @@ introduce a competing target state.
    Owner: kernel maintainers.
 
 ## Appendix A: Execution ledger (non-normative)
+
+### 2026-09-16 — Review consistency repair
+
+- Keep one candidate-decision section per language.
+- Use `L` for source sites, `U(v)` for ambient values and `S(v)` for admitted
+  values throughout the registry and narrative. Production is not admitted by definition.
+- Clarify candidate dispositions as advisory metadata; no per-candidate runtime
+  store or enforcement is delivered by this schema.
+
 
 ### 2026-09-15 — M0 opened with the RFC
 
