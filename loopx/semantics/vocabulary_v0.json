@@ -1,9 +1,8 @@
 {
   "schema_version": "loopx_semantic_vocabulary_v0",
   "rfc": "docs/architecture/rfcs/semantic-vocabulary-convergence-v0.md",
-  "inventory": "loopx/semantics/inventory_v0.json",
   "policy": {
-    "scope": "Repository-wide. The curated vocabularies below are the kernel and cross-runtime sets; the generated inventory maps every other closed-set carrier under loopx/ so additions are visible in a diff.",
+    "scope": "Repository-wide. The curated vocabularies below are the kernel and cross-runtime sets; the generated inventory maps every other closed-set carrier under loopx/ so additions are visible in the full-tree scan and optional report.",
     "closed_sets": "Every value a registered vocabulary may carry is listed here. Adding, renaming, or removing a value is a registry edit reviewed with the code change; an unregistered literal fails the drift smoke.",
     "owner_exclusivity": "A registered symbol is defined only in its listed owner modules. Any other module imports it instead of redefining the literal. An owner is always module::Symbol or null; a null owner requires a literal_scan.",
     "budgets_only_decrease": "Retirement, twin, and inventory-ratchet budgets only fall. Lowering a budget is a routine edit; raising one needs the maintainer approval recorded in the RFC decision log. Each budget must equal its BUDGET_ANCHOR or RETIREMENT_ANCHOR literal in the drift smoke, so tightening edits the JSON and the code literal in one diff, and a later diff cannot raise the JSON back toward a stale anchor.",
@@ -114,7 +113,7 @@
         "owner_carrier_set_equality",
         "cross_runtime_owner_parity",
         "declared_projection_mapping",
-        "inventory_snapshot_freshness"
+        "current_tree_inventory"
       ],
       "bounded": [
         "fixed_literal_forms",
