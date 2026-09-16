@@ -5,6 +5,12 @@ decision" means: read the same live status, apply the same controller advisory
 primary, and sign the same ``loopx_turn_envelope_v0``. Duplicating that chain
 would let the two drift, so both owners build through this module.
 
+The owner carries the inputs the decision was derived from as well, because a
+Turn that later spends quota or re-checks the scheduler must use the same live
+status, the same scheduler context and the same activation-bound capability
+hooks as the decision it already took. A call site that re-derives one of those
+inputs is free to drift from the decision it is settling.
+
 Nothing here executes, writes, or spends: it only projects the control plane's
 current decision into the envelope the loop controller consumes.
 """
@@ -13,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -56,34 +63,24 @@ def collect_turn_status_payload(
     )
 
 
-def build_turn_decision_builder(
+def _build_turn_decision(
     args: argparse.Namespace,
     *,
     registry_path: Path,
     runtime_root: Path,
-    runtime_root_arg: str | None,
     status_payload: Mapping[str, Any],
+    scheduler_execution_context: Mapping[str, Any],
+    operator_inbox_urgency_projector: Callable[..., dict[str, Any]],
     turn_start_hook_dispatch: Mapping[str, Any] | None = None,
 ) -> Callable[..., dict[str, Any]]:
-    """Return the shared ``build_turn_decision`` used by the Turn owners.
+    """Return the ``build_turn_decision`` every Turn owner resolves through.
 
     ``turn_start_hook_dispatch`` is the caller's business: an executing Turn
     may publish Go/No-Go hooks before deciding, while a read-only managed step
     must not. Passing the projection in keeps that choice with the caller.
+    Every other input is the owner's, so the two commands cannot disagree about
+    the status, the scheduler context or the capability hooks behind a decision.
     """
-
-    scheduler_context = scheduler_execution_context_for_turn(
-        host=args.host,
-        execution_mode=args.execution_mode,
-        scheduler_owner=args.scheduler_owner,
-    )
-    # Use the resolved runtime root, not the raw CLI argument. When a registry
-    # declares `common_runtime_root` and the command omits `--runtime-root`,
-    # the raw value is None and the activation check would silently read the
-    # global default instead of this registry's own extension state.
-    operator_inbox_urgency_projector = build_lark_operator_inbox_urgency_projector(
-        runtime_root_arg=runtime_root,
-    )
 
     def build_turn_decision(
         *, requested_action_todo_id: str | None = None
@@ -98,7 +95,7 @@ def build_turn_decision_builder(
             registry_path=registry_path,
             runtime_root=runtime_root,
             route_source=TURN_DECISION_ROUTE_SOURCE,
-            scheduler_execution_context=scheduler_context,
+            scheduler_execution_context=scheduler_execution_context,
             operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             bounded_research_frontier_projector=(
                 project_live_explore_composition_frontier
@@ -141,6 +138,75 @@ def apply_controller_advisory_primary(
     return decision
 
 
+@dataclass(frozen=True)
+class FreshTurnDecisionOwner:
+    """The one owner of a fresh Turn decision and the inputs behind it.
+
+    A Turn that already decided must settle against what it decided with: the
+    same live status, the same scheduler context and the same
+    activation-bound operator-inbox projector. Carrying them here is what keeps
+    a later spend or scheduler re-check on the decision's own inputs instead of
+    a second reading of the same arguments.
+    """
+
+    status_payload: Mapping[str, Any]
+    scheduler_execution_context: Mapping[str, Any]
+    operator_inbox_urgency_projector: Callable[..., dict[str, Any]]
+    build_turn_decision: Callable[..., dict[str, Any]]
+
+    def resolve(self) -> dict[str, Any]:
+        """The current governing decision, controller advisory primary applied."""
+
+        return apply_controller_advisory_primary(self.build_turn_decision)
+
+
+def build_fresh_turn_decision_owner(
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+    runtime_root_arg: str | None,
+    turn_start_hook_dispatch: Mapping[str, Any] | None = None,
+) -> FreshTurnDecisionOwner:
+    """Read the live status and derive the shared decision inputs from it.
+
+    ``runtime_root_arg`` is only the override the status read forwards, as
+    ``collect_status`` documents. The root every activation check uses is the
+    resolved ``runtime_root``: when a registry declares
+    ``common_runtime_root`` and the command omits ``--runtime-root``, the raw
+    argument is None and the check would otherwise read the operator's global
+    extension state instead of this registry's own.
+    """
+
+    status_payload = collect_turn_status_payload(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+    )
+    scheduler_execution_context = scheduler_execution_context_for_turn(
+        host=args.host,
+        execution_mode=args.execution_mode,
+        scheduler_owner=args.scheduler_owner,
+    )
+    operator_inbox_urgency_projector = build_lark_operator_inbox_urgency_projector(
+        runtime_root_arg=runtime_root,
+    )
+    return FreshTurnDecisionOwner(
+        status_payload=status_payload,
+        scheduler_execution_context=scheduler_execution_context,
+        operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+        build_turn_decision=_build_turn_decision(
+            args,
+            registry_path=registry_path,
+            runtime_root=runtime_root,
+            status_payload=status_payload,
+            scheduler_execution_context=scheduler_execution_context,
+            operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+            turn_start_hook_dispatch=turn_start_hook_dispatch,
+        ),
+    )
+
+
 def fresh_turn_envelope(
     decision: Mapping[str, Any],
     *,
@@ -173,34 +239,24 @@ def build_fresh_envelope_for_managed_step(
     may wake the same failed Turn again.
     """
 
-    status_payload = collect_turn_status_payload(
-        args,
-        registry_path=registry_path,
-        runtime_root_arg=runtime_root_arg,
-    )
-    build_turn_decision = build_turn_decision_builder(
+    owner = build_fresh_turn_decision_owner(
         args,
         registry_path=registry_path,
         runtime_root=runtime_root,
         runtime_root_arg=runtime_root_arg,
-        status_payload=status_payload,
     )
-    decision = apply_controller_advisory_primary(build_turn_decision)
     return fresh_turn_envelope(
-        decision,
-        scheduler_execution_context=scheduler_execution_context_for_turn(
-            host=args.host,
-            execution_mode=args.execution_mode,
-            scheduler_owner=args.scheduler_owner,
-        ),
+        owner.resolve(),
+        scheduler_execution_context=owner.scheduler_execution_context,
     )
 
 
 __all__ = [
+    "FreshTurnDecisionOwner",
     "TURN_DECISION_ROUTE_SOURCE",
     "apply_controller_advisory_primary",
     "build_fresh_envelope_for_managed_step",
-    "build_turn_decision_builder",
+    "build_fresh_turn_decision_owner",
     "collect_turn_status_payload",
     "fresh_turn_envelope",
 ]
