@@ -126,7 +126,8 @@ Authority-core lease mutation verb.
 Pure controller verdict for the outer loop after combining the last Turn receipt with the fresh route.
 
 - Tier / 层级: `kernel`; status / 状态: `canonical`.
-- python: [`LoopDisposition`](../../loopx/control_plane/turn_driver/loop_controller.py).
+- python: [`LoopDisposition`](../../loopx/control_plane/turn_driver/turn_contract_generated.py).
+- typescript: [`LOOP_DISPOSITIONS`](../../loopx/control_plane/turn_driver/turn_contract_generated.ts).
 - Values / 值: `run_now`, `capability_action_required`, `wait`, `stop`, `user_action_required`, `repair`, `replan`, `terminal`.
 
 ## receipt_bound_monitor_phase
@@ -233,8 +234,8 @@ Scope kind of a Todo decision.
 Typed public outcome of one executed Turn as settled by the Turn Journal.
 
 - Tier / 层级: `kernel`; status / 状态: `canonical`.
-- python: [`LoopXTurnResultKind`](../../loopx/control_plane/turn_driver/transaction.py).
-- typescript: [`TURN_RESULT_KINDS`](../../loopx/control_plane/turn_driver/settlement.ts).
+- python: [`LoopXTurnResultKind`](../../loopx/control_plane/turn_driver/turn_contract_generated.py).
+- typescript: [`TURN_RESULT_KINDS`](../../loopx/control_plane/turn_driver/turn_contract_generated.ts).
 - Values / 值: `validated_progress`, `validated_completion`, `repair_required`, `replan_required`, `user_action_required`, `wait`, `iteration_failed`, `host_failure`, `validation_failed`, `writeback_failed`, `quota_spend_failed`, `terminal_closeout_failed`.
 
 ## turn_route
@@ -242,5 +243,6 @@ Typed public outcome of one executed Turn as settled by the Turn Journal.
 Typed delivery route derived from a fresh should-run decision before a Host is engaged.
 
 - Tier / 层级: `kernel`; status / 状态: `canonical`.
-- python: [`LoopXTurnRoute`](../../loopx/control_plane/turn_driver/driver.py).
+- python: [`LoopXTurnRoute`](../../loopx/control_plane/turn_driver/turn_contract_generated.py).
+- typescript: [`TURN_ROUTES`](../../loopx/control_plane/turn_driver/turn_contract_generated.ts).
 - Values / 值: `ready_for_host`, `capability_action_required`, `repair_required`, `replan_required`, `user_action_required`, `wait`, `blocked`, `contract_error`.

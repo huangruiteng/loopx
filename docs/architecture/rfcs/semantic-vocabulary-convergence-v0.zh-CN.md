@@ -148,6 +148,8 @@ todos、capabilities 与 TypeScript 运行时各自拥有同一想法的一种�
   模式，但有一处刻意的不同：注册表的值必须**等于**锚点。先例用 `<=` 比较，
   这会让一个已收紧到锚点以下的预算，在之后的 PR 里不改任何代码就涨回锚点。
   相等性让每次收紧都是两个文件的 diff，每次放松都是评审者可见的代码修改。
+  Q7 允许独立评审、限制幅度的清单超限例外，但不改变债务目标；无效、过期或
+  超出评审上限的例外均失败。
 - **I6 同 diff 可见。** 语义变化与其注册表修改或清单再生成落在同一个可评审
   diff 里。
 - **I7 确定性且公开安全。** 检查只读已跟踪源码，不需网络或凭据，失败文本只
@@ -217,7 +219,7 @@ todos、capabilities 与 TypeScript 运行时各自拥有同一想法的一种�
   `coordination_state_contract_v0.json`。它们仍是各自阶段与记录的 owner；本
   注册表可以引用它们，不能复述它们。
 - 取代 `maintainability_ratchet.py`。它拥有模块指标与依赖方向；本注册表拥有
-  词表形状。两者的例外生命周期是否合并见第 12 节 Q7。
+  词表形状。Q7 复用既有例外评估器，但保留独立的发现、债务目标与例外表。
 - 用散文术语表作为强制机制。术语表是有用的伴随物，在第 12 节跟踪，但它不能
   让构建失败。
 
@@ -471,7 +473,7 @@ R ⊆ S × V × Version               将值持久化
 | `schema_versions.<name>` | 常量名、值、owner 模块 | 唯一的定义模块就是列出的 owner 且都携带该值（I1） |
 | `retirement_ledger.<group>.fields` | 每字段的 Python 与 TypeScript 模块预算 | 实际模块数不超过预算，且字段集合与每个预算与 `RETIREMENT_ANCHOR` 一致（I5） |
 | `dual_runtime_twins` | 根目录与模块预算 | 同名 `.py`/`.ts` 对数不超过预算（I5） |
-| `inventory_ratchets` | 同运行时分叉的名字数与定义数、冲突的名字数与定义数、schema 版本分叉数、多值孪生与分叉数，以及共享词表冲突与分叉子集的预算 | 清单摘要计数不超过预算，且每个预算必须等于其 `BUDGET_ANCHOR` 条目（I5、I9） |
+| `inventory_ratchets` | 同运行时分叉的名字数与定义数、冲突的名字数与定义数、schema 版本分叉数、多值孪生与分叉数，以及共享词表冲突与分叉子集的预算 | 每个预算必须等于其 `BUDGET_ANCHOR`；超限由默认例外表为空的 Q7 生命周期评估（I5、I9） |
 
 `loopx/semantics/inventory_v0.json`，`schema_version` 为
 `loopx_semantic_inventory_v0`，由 `scripts/generate_semantic_inventory.py` 生成，
@@ -507,7 +509,7 @@ PR 中重新生成清单。
 | 仅靠文档术语表 | 不能让构建失败；仓库已有十一份自称 mental model 的文档且没有术语表，这本身就是症状。 |
 | 立即从注册表生成绑定 | owner 尚未定下之前为时过早。生成是 M2，效仿协调契约先例。 |
 | CI 里不带注册表的 grep 式 lint | 把允许集合编码进 linter，变成没有评审痕迹的第二份注册表。 |
-| 扩展 `maintainability_ratchet.py` 而不新建注册表 | 它的对象是模块指标与依赖方向，按模块设上限；词表形状需要值、owner 与关系。两者共享棘轮思想而非数据模型。例外生命周期是否合并见 Q7。 |
+| 扩展 `maintainability_ratchet.py` 而不新建注册表 | 它的对象是模块指标与依赖方向，按模块设上限；词表形状需要值、owner 与关系。Q7 复用例外评估器，两者仍保留独立的发现、目标与例外表。 |
 | 把扫描正则放进注册表 | 数据里的正则可以在扩宽词表的同一次修改中被收窄；M0 评审表明第一版模式漏掉了全部 TypeScript `===` 分发点。形式固定在 smoke 里，后缀集合设下限。 |
 | 在清单中提交消费者计数 | 每次消费者改动都会搅动文件，让新鲜度检查变成噪音。计数通过 `--report` 保持为参考信息。 |
 
@@ -736,10 +738,17 @@ TypeScript effective-action 绑定与[术语表](../../reference/glossary.md)通
    replay 使用既有 `observation.decision`，不新增另一份冗余字段。读取历史 v0
    capsule 时保留已签名的旧字段，新写入使用版本化的缩减形状。见上文 M1
    兼容表与测试；这不授权其他旧字段退休或 Turn 结果枚举合并。
-7. **与 `maintainability_ratchet.py` 的关系。** 清单棘轮是否采用它的评审化例外
-   生命周期（`retirement_plan`、过期例外检测），还是保持为纯预算。建议：在 M2
-   生成落地时采用，让有书面理由的分叉可以被例外而非被预算。Owner：canary
-   维护者。
+7. **清单评审例外（Q7，已决）。** 语义清单预算超限复用既有
+   `loopx.canary.maintainability_ratchet.evaluate_maintainability_findings`
+   评估器。现有漂移 smoke 生成 `semantic_inventory_budget:<metric>` 发现，
+   保留实际指标与未改动的锚定目标。代码拥有的
+   `REVIEWED_SEMANTIC_INVENTORY_EXCEPTIONS` 默认为空；当前没有合理的例外或
+   预算上调。评审条目必须有非空 `reason`、`retirement_plan`，以及键精确对应
+   指标的 `metric_ceilings`。未评审超限、无效条目、幅度继续增长、过期例外均
+   失败；一旦不再超限，原例外成为过期项，必须删除。复用生命周期不合并语义
+   债务目标与 canary 的模块/依赖目标。锚点相等性、清单新鲜度、词表与生产
+   验证、退休预算及模块孪生检查仍是独立硬门。已验证的生成孪生是派生分类，
+   不是临时豁免，其逐字节新鲜度证明必须保留。Owner：canary 维护者。
 8. **从清单到注册表的晋升规则。** 外部消费者模块不少于三个或存在跨运行时孪生
    的已映射载体是否必须策展。建议：现在作为评审规则采用，待清单积累一个季度
    历史后再由 smoke 强制。Owner：内核维护者。
