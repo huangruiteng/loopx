@@ -462,6 +462,7 @@
     {"name": "HOST_PATH_DELTA_MODES", "module": "loopx/control_plane/turn_driver/executor.py", "container": "set", "values": ["", "unchanged", "material_replan"]},
     {"name": "HOST_RESULT_FIELDS", "module": "loopx/control_plane/turn_driver/executor.py", "container": "set", "values": ["schema_version", "turn_key", "result_kind", "completed_phases", "classification", "recommended_action", "next_action", "delivery_batch_scale", "delivery_outcome", "vision_unchanged_reason", "path_delta_mode", "agent_vision_json", "summary", "reward_memory_reflection_json"]},
     {"name": "HOST_FAILURE_KINDS", "module": "loopx/control_plane/turn_driver/host_failure.py", "container": "frozenset", "values": ["auth_failed", "contract_rejected", "executor_timeout", "provider_capacity", "provider_overloaded", "quota_exhausted", "rate_limited", "session_missing", "transport_lost", "unknown"]},
+    {"name": "TURN_LANE_HOLDER_TEXT_FIELDS", "module": "loopx/control_plane/turn_driver/lane_fence.py", "container": "tuple", "values": ["agent_id", "operation", "acquired_at"]},
     {"name": "CHILD_CONTEXT_MODES", "module": "loopx/control_plane/turn_driver/subagent_execution_topology.py", "container": "frozenset", "values": ["fresh", "forked_snapshot", "resume"]},
     {"name": "CHILD_FALLBACK_ACTIONS", "module": "loopx/control_plane/turn_driver/subagent_execution_topology.py", "container": "tuple", "values": ["retry_fresh", "replace_child", "serial_takeover", "ignore_optional_result"]},
     {"name": "KNOWN_EFFECT_CLASSES", "module": "loopx/control_plane/turn_driver/subagent_execution_topology.py", "container": "frozenset", "values": ["local_read", "network_read", "held_workspace_write", "external_write", "production_action", "credential_use", "monitor"]},
@@ -899,12 +900,12 @@
     ]
   },
   "summary": {
-    "source_files": 1180,
+    "source_files": 1181,
     "python_enums": 103,
-    "python_closed_sets": 492,
+    "python_closed_sets": 493,
     "python_literal_aliases": 8,
     "typescript_const_arrays": 40,
-    "named_string_constants": 2054,
+    "named_string_constants": 2059,
     "schema_version_names": 756,
     "schema_version_same_runtime_forks": 7,
     "cross_runtime_twins": 166,
