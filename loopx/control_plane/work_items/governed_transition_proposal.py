@@ -20,6 +20,7 @@ from ..runtime.public_safety import validate_public_safe_value
 from ..todos.contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_capability_binding_ref,
 )
@@ -50,9 +51,12 @@ class GovernedTransitionSettlementPhase(StrEnum):
     POST_SETTLEMENT = "post_settlement"
 
 
+STEWARD_TEAM_PLAN_PREVIEW_KIND = "steward_team_plan_preview"
+
 _SETTLEMENT_PHASE_BY_PROPOSAL_KIND = {
     "continuous_monitor_upsert": GovernedTransitionSettlementPhase.PRE_SETTLEMENT,
     "continuous_monitor_complete": GovernedTransitionSettlementPhase.POST_SETTLEMENT,
+    STEWARD_TEAM_PLAN_PREVIEW_KIND: GovernedTransitionSettlementPhase.PRE_SETTLEMENT,
 }
 
 
@@ -94,6 +98,7 @@ def validate_governed_transition_receipts(
         if receipt.get("kind") not in {
             "continuous_monitor_upsert",
             "continuous_monitor_complete",
+            STEWARD_TEAM_PLAN_PREVIEW_KIND,
         }:
             raise ValueError("governed transition proposal receipt kind is invalid")
         if receipt.get("status") != "committed":
@@ -216,6 +221,80 @@ def _upsert_monitor(
     }
 
 
+def _apply_team_plan(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    agent_id: str,
+    proposal: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Create the confirmed lanes' first bounded Todos through the Todo owner.
+
+    The plan is re-validated here against this Goal's registered Agents and the
+    shipped advancement action kinds, so a proposal cannot become work by
+    bypassing admission. Only lanes the preview already marked ready are
+    materialized; a lane the preview reported as a gap stays a gap and creates
+    nothing, and the canonical Todo owner decides whether a row is added or
+    reused, which makes a replayed settlement idempotent.
+    """
+
+    from ...agent_registry import registered_agent_ids_for_goal
+    from ...history import load_registry
+    from ...registry import registry_goals
+    from ..todos.contract import TODO_ACTION_KIND_ADVANCEMENT_VALUES
+
+    registry = load_registry(registry_path)
+    goal = next(
+        (
+            item
+            for item in registry_goals(registry)
+            if str(item.get("id") or "") == goal_id
+        ),
+        None,
+    )
+    if goal is None:
+        raise ValueError("steward team plan proposal names an unknown Goal")
+    preview = validate_steward_team_plan_preview(
+        proposal,
+        registered_agent_ids=registered_agent_ids_for_goal(goal),
+        supported_action_kinds=sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
+    )
+    created: list[str] = []
+    reused: list[str] = []
+    for lane in preview["lanes"]:
+        if lane.get("staffing") != "ready":
+            continue
+        first_todo = lane["first_todo"]
+        result = add_goal_todo(
+            registry_path=Path(registry_path).expanduser(),
+            goal_id=goal_id,
+            role="agent",
+            text=str(first_todo["text"]),
+            status=TODO_STATUS_OPEN,
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            action_kind=str(first_todo["action_kind"]),
+            claimed_by=str(lane["agent_id"]),
+            agent_id=str(lane["agent_id"]),
+        )
+        if result.get("added"):
+            created.append(str(result["todo_id"]))
+        else:
+            reused.append(str(result["todo_id"]))
+    # The receipt names every lane Todo this settlement ensured, whether the
+    # canonical owner added it or found it already present, so a replayed
+    # settlement still reports the same identities instead of an empty one.
+    lane_todo_ids = [*created, *reused]
+    return {
+        "action": "created" if created else "reused",
+        "todo_id": lane_todo_ids[0] if lane_todo_ids else "",
+        "target_key": None,
+        "created_todo_ids": created,
+        "lane_todo_ids": lane_todo_ids,
+        "reused_lane_count": len(reused),
+        "gap_count": len(preview["gaps"]),
+    }
+
+
 def _complete_monitor(
     *,
     registry_path: Path,
@@ -302,6 +381,13 @@ def settle_governed_transition_proposals(
                 agent_id=agent_id,
                 proposal=proposal,
             )
+        elif kind == STEWARD_TEAM_PLAN_PREVIEW_KIND:
+            result = _apply_team_plan(
+                registry_path=Path(registry_path),
+                goal_id=goal_id,
+                agent_id=agent_id,
+                proposal=proposal,
+            )
         elif kind == "continuous_monitor_complete":
             result = _complete_monitor(
                 registry_path=Path(registry_path).expanduser(),
@@ -317,7 +403,11 @@ def settle_governed_transition_proposals(
             "proposal_id": proposal_id,
             "proposal_digest": proposal_digest,
             "kind": kind,
-            "monitor_key": str(proposal["monitor_key"]),
+            "monitor_key": (
+                str(proposal["monitor_key"])
+                if proposal.get("monitor_key") is not None
+                else None
+            ),
             "action": str(result["action"]),
             "todo_id": str(result["todo_id"]),
             "status": "committed",
@@ -330,7 +420,6 @@ def settle_governed_transition_proposals(
     return receipts
 
 
-STEWARD_TEAM_PLAN_PREVIEW_KIND = "steward_team_plan_preview"
 STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION = "steward_team_plan_preview_v0"
 STEWARD_TEAM_PLAN_LANE_LIMIT = 8
 STEWARD_TEAM_PLAN_PRIORITIES = ("P0", "P1", "P2", "P3")

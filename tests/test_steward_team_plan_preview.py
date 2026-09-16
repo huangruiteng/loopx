@@ -6,6 +6,7 @@ import pytest
 
 from loopx.control_plane.work_items.governed_transition_proposal import (
     _SETTLEMENT_PHASE_BY_PROPOSAL_KIND,
+    GovernedTransitionSettlementPhase,
     STEWARD_TEAM_PLAN_PREVIEW_KIND,
     STEWARD_TEAM_PLAN_PREVIEW_SCHEMA_VERSION,
     validate_steward_team_plan_preview,
@@ -115,10 +116,12 @@ def test_a_malformed_preview_fails_closed(mutation: dict, match: str) -> None:
         _validate(_plan(**mutation))
 
 
-def test_the_preview_kind_has_no_materializer() -> None:
-    """Nothing may apply the preview while only the preview slice exists."""
+def test_the_preview_kind_is_settled_only_at_pre_settlement() -> None:
+    """The kind applies through one phase of the canonical owner, and nowhere else."""
 
-    assert STEWARD_TEAM_PLAN_PREVIEW_KIND not in _SETTLEMENT_PHASE_BY_PROPOSAL_KIND
+    assert _SETTLEMENT_PHASE_BY_PROPOSAL_KIND[STEWARD_TEAM_PLAN_PREVIEW_KIND] is (
+        GovernedTransitionSettlementPhase.PRE_SETTLEMENT
+    )
 
 
 def test_the_chat_normalizer_admits_a_preview_only_with_host_facts() -> None:
