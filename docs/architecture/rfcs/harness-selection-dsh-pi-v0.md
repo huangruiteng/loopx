@@ -663,6 +663,32 @@ operator-local path is recorded here.
 | Host modes M0-M1 | The channel's executor selection and its bounded one-segment execution | Selection is covered by PR #4446 and the Turn-side selection by PR #4443; bounded one-segment execution is covered by the Mode B acceptance above. The channel itself now reaches the managed host through the segment transport, so the managed host's own one-segment execution is reachable from the channel; what remains open is that the segment is not a session, so cross-turn host continuity is still not offered |
 | Host modes M2-M3 | Attached-host parity, typed unavailability, and mode-aware projection with no mode inference and no second executor | Partly shipped: the channel's managed segment transport holds one executor per binding, refuses a second start with the typed `managed_host_chat_segment_in_flight`, and discards an interrupted segment's answer instead of letting it enter visible history. The channel readback also carries the mode-aware projection: it quotes the Session's own `session_mode` and `status`, reads a channel with no Session as `unbound`, and names a mode outside the closed set as `unrecognized` instead of deriving a mode from the executor it resolved. Still not implemented: attached-host parity, and an external audience still degrades to `restricted` |
 
+### Remote-source coverage acceptance (2026-09-16)
+
+The M2 row above recorded that "a provider read failure surfaces as raw error
+text instead of a typed source row". Two shipped changes moved that, and the
+behaviour is now accepted from a live channel read rather than inferred from the
+code:
+
+- a declared remote source that cannot be read reports a typed cause together
+  with the repair that clears it (an authorization that lapsed, a remote client
+  that is missing, a remote protocol that is unavailable, a host that cannot be
+  reached) instead of an untyped unavailability;
+- a live manager-channel question that required its declared remote source was
+  accepted on 2026-09-16 at release `20260916T123949Z` (serving revision
+  `55ebbc6b7`, executor `dsh`, profile `deepseek-v4-flash@high`). The answer
+  named the one declared source it read and kept that read's freshness visible,
+  stated its evidence window and the bounds it applied, listed the remote rows it
+  included, and said that hosts it did not read are outside coverage instead of
+  presenting them as having made no progress.
+
+That is the typed per-source coverage and freshness property the M2 row asked
+for. The other two halves of M2 - receiver resolution across registered running
+lanes, and a goal-level milestone the report can lead with - stay open. The
+acceptance is a live channel read: it needs a running channel, a real credential
+and a declared source, so it is a recorded procedure rather than a CI job, and
+the failure half needs an unreadable source to exercise.
+
 Two boundaries stay fixed across all five rows. The channel remains an entry point
 and projection of one manager Session: it owns no profile, no permission state, no
 second executor and no work authority, so a richer answer contract must not widen
