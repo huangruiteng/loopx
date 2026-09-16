@@ -75,6 +75,7 @@ def collect_status(
     recent_run_limit: int | None = None,
     include_goal_subagent_configuration: bool = False,
     activation_state_filter: GoalActivationState | str | None = None,
+    agent_lane_id: str | None = None,
 ) -> dict[str, Any]:
     display_limit = max(0, limit)
     control_plane_limit = max(
@@ -107,6 +108,7 @@ def collect_status(
         limit=control_plane_limit,
         include_runtime_goals=include_runtime_goals,
         activation_state_filter=activation_filter,
+        agent_lane_id=agent_lane_id,
     )
     contract = context.check_contract(
         registry_path=registry_path,

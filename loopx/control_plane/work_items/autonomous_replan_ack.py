@@ -6,6 +6,12 @@ from ..runtime.time import parse_timestamp
 from .progress_observation import FRESH_VISION_PATH_DISPOSITIONS
 
 AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW = 20
+# A normal delivery appends both a durable run record and a neutral quota-spend
+# record. Keep enough internal history to observe the full material-run
+# threshold even when those records are interleaved, with headroom for other
+# neutral events. The budget is per agent lane: a Goal-wide window that peer
+# lanes also fill cannot decide one lane's material-run count.
+AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW * 3
 
 
 def ack_binds_trigger_checkpoints(ack: dict[str, Any] | None) -> bool:
