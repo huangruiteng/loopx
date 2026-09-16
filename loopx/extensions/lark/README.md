@@ -85,6 +85,18 @@ Confirmation and result cards consume the same internal TypeScript
 card render, then owns only provider-specific Card 2.0 markup and delivery; the
 frame neither grants authority nor replaces the canonical operation receipt.
 
+That request path is not operation-only. `presentation.action_review_plan.compile`
+also returns a `review_card_frame_v0` for a validated steward team plan
+(`team.plan`), whose confirmation identity is the action proposal and the state
+fingerprint the apply re-validates against rather than an operation envelope. Its
+fields are `{key, value}` pairs and its fixed labels are keys, so this boundary
+stays language-neutral and the surface owns the words. A plan card can therefore
+reuse the card shell, the callback consumer, the operator membership check,
+replay protection and card readback described here. What a plan card still needs
+is its own delivery route for the audience that asked (the manager group is not a
+Goal channel binding) and a callback effect that applies the proposal through the
+Chat action service instead of claiming an operation envelope.
+
 ```bash
 loopx goal-channel prepare-operation \
   --goal-id <goal-id> \

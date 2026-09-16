@@ -14,6 +14,12 @@
 
 ---
 
+## Cross-RFC execution priority (2026-09-16)
+
+[Roadmap](loopx-overall-roadmap-v0.md) R1–R5 are current product consumers of T0–T4, not another migration ladder. Close one hot-path team confirmation/materialization/recovery transaction first: `governed_transition_proposal.py` still validates plans in Python and calls Todo per lane. Calling a typed Todo owner does not migrate the entire team transaction.
+
+Retain T0 caller/parity inventory, T1/T2 transaction/effect convergence, T3 complete-source consumption and T4 deletion conditions. #4472 is merged; inspect `todos/public_update.ts` and actual callers before rebuilding Todo update. Converge new team domain rules in existing typed work-items/collaboration ownership; Python retains input/IO adaptation. R1 independent counterexamples and real-path verification gate delivery. More leaf RPCs, enums or files are not migration payoff. Shared-authority retains D1–D3.
+
 ## Current implementation checkpoint
 
 The projection-delivery stage now closes the cross-language boundary: typed

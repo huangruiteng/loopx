@@ -23,7 +23,7 @@ answer.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -122,15 +122,7 @@ def project_team_plan_preview(
 
     if projector is None or str(session.get("channel_id") or "") != "manager":
         return
-    for proposal in response.get("proposals") or []:
-        if (
-            not isinstance(proposal, Mapping)
-            or str(proposal.get("kind") or "") != STEWARD_TEAM_PLAN_PREVIEW_KIND
-        ):
-            continue
-        preview = proposal.get("preview")
-        if not isinstance(preview, Mapping):
-            continue
+    for preview in team_plan_previews(response):
         try:
             projected = projector(preview)
         except (OSError, ValueError, TypeError, KeyError) as exc:
@@ -155,9 +147,89 @@ def project_team_plan_preview(
         )
 
 
+def team_plan_previews(response: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The admitted team previews an answer carries, in the order it carried them."""
+
+    previews: list[Mapping[str, Any]] = []
+    for proposal in response.get("proposals") or []:
+        if (
+            not isinstance(proposal, Mapping)
+            or str(proposal.get("kind") or "") != STEWARD_TEAM_PLAN_PREVIEW_KIND
+        ):
+            continue
+        preview = proposal.get("preview")
+        if isinstance(preview, Mapping):
+            previews.append(preview)
+    return previews
+
+
+def confirmation_pointer(goals: Sequence[str]) -> str:
+    """The one line that makes a preview actionable from the surface that asked.
+
+    A manager audience may be a Lark group with no confirmation card of its own,
+    and even on the owner's own channel the card lives under the Goal the plan
+    staffs rather than in the manager conversation. The answer therefore names
+    that Goal and states what confirming there does, so a plan the owner cannot
+    click is at least a plan they know how to confirm.
+    """
+
+    named = "、".join(goals)
+    return (
+        f"已为 {named} 准备好可确认的团队计划卡片：在 LoopX 工作区的该 Goal 下确认后，"
+        "才会为每条就绪 lane 创建它的首个有界 Todo；确认前不会创建任何 lane。"
+    )
+
+
+def offer_team_plan_confirmation(
+    *,
+    store: TurnEventSink,
+    session: Mapping[str, Any],
+    session_id: str,
+    turn_id: str,
+    response: Mapping[str, Any],
+    projector: TeamPlanProjector | None,
+) -> dict[str, Any]:
+    """Make each admitted team preview actionable for the audience that asked.
+
+    Admission decides whether a preview may be *shown*; this is what turns it into
+    something the owner can act on, and it does exactly two things for a manager
+    channel: it appends one typed pointer line naming the Goal whose workspace
+    holds the card, and -- for the owner's own local channel only -- it stores
+    that card. A remote audience's confirmation surface is not this store, so it
+    receives the pointer and no card is written on its behalf.
+
+    The steward's prose is preserved: the added line is an operational receipt
+    from the channel, in the same way the delegation path states its own receipt,
+    not a rewrite of what the model answered. Nothing here creates work.
+    """
+
+    previews = team_plan_previews(response)
+    if not previews or not is_manager_channel(str(session.get("channel_id") or "")):
+        return dict(response)
+    project_team_plan_preview(
+        store=store,
+        session=session,
+        session_id=session_id,
+        turn_id=turn_id,
+        response=response,
+        projector=projector,
+    )
+    goals = sorted({str(preview.get("goal_id") or "") for preview in previews} - {""})
+    if not goals:
+        return dict(response)
+    message = str(response.get("message") or "").strip()
+    return {
+        **response,
+        "message": f"{message}\n\n{confirmation_pointer(goals)}".strip(),
+    }
+
+
 __all__ = [
     "TeamPlanProjector",
     "TurnEventSink",
+    "confirmation_pointer",
+    "offer_team_plan_confirmation",
     "project_team_plan_preview",
+    "team_plan_previews",
     "team_plan_admission_context",
 ]

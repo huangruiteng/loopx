@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   compileActionReviewPlan,
   compileOperationReviewFrame,
+  compileReviewCardFrame,
   isStaleActionFailure,
 } from "../../loopx/control_plane/presentation/action_review_plan.ts";
 
@@ -115,4 +116,129 @@ test("generic action review keeps state precedence and stale classification", ()
   );
   assert.equal(isStaleActionFailure({ error_code: "action_conflict" }), true);
   assert.equal(isStaleActionFailure({ error: "unrelated conflict text" }), false);
+});
+
+function teamPlanProposal() {
+  return {
+    schema_version: "loopx_chat_action_proposal_v1",
+    proposal_id: "proposal-team-plan-1",
+    action_kind: "team.plan",
+    context: { kind: "manager", goal_id: "goal-1" },
+    expected_state_fingerprint: "registry-revision-1",
+    permission_classification: "durable_write",
+    validation_evidence: ["every ready lane names an Agent this Goal registers"],
+    available_transitions: ["apply", "cancel"],
+    status: "preview_ready",
+    normalized_parameters: {
+      goal_id: "goal-1",
+      plan: {
+        schema_version: "steward_team_plan_preview_v0",
+        kind: "steward_team_plan_preview",
+        goal_id: "goal-1",
+        objective: "Ship the bounded intake",
+        lanes: [
+          {
+            lane_id: "lane_intake",
+            agent_id: "agent-backend",
+            acceptance: "the Todo exists through the canonical owner",
+            staffing: "ready",
+            first_todo: {
+              text: "Implement the bounded intake",
+              priority: "P1",
+              task_class: "advancement_task",
+              action_kind: "implement",
+            },
+          },
+          {
+            lane_id: "lane_review",
+            agent_id: "agent-reviewer",
+            acceptance: "the review receipt is recorded",
+            staffing: "gap",
+            gap_reason_code: "agent_not_registered",
+            declined_first_todo: {
+              text: "Independently review the intake",
+              priority: "P1",
+              task_class: "advancement_task",
+              action_kind: "validate",
+            },
+          },
+        ],
+        gaps: [{ lane_id: "lane_review", reason_code: "agent_not_registered" }],
+        quota_envelope: { slots: 4, window: "1d" },
+        stop_condition: "every lane reports a typed outcome or a stated gap",
+        applies: false,
+      },
+    },
+  };
+}
+
+test("a validated plan compiles into a confirmation card frame", () => {
+  const plan = compileActionReviewPlan(teamPlanProposal());
+  assert.equal(plan.interaction, "review");
+  assert.equal(plan.canApply, true);
+  const frame = compileReviewCardFrame(teamPlanProposal());
+  if (!frame) assert.fail("expected review card frame");
+  // The confirmation identity is the proposal and the state the apply
+  // re-validates against, not an operation envelope this proposal does not have.
+  assert.equal(frame.schemaVersion, "review_card_frame_v0");
+  assert.equal(frame.kind, "confirmation");
+  assert.equal(frame.interactionMode, "confirm_reject");
+  assert.deepEqual([...frame.decisions], ["confirm", "reject"]);
+  assert.equal(frame.proposalId, "proposal-team-plan-1");
+  assert.equal(frame.stateFingerprint, "registry-revision-1");
+  const fields = new Map(frame.fields.map((field) => [field.key, field.value]));
+  assert.equal(fields.get("goal"), "goal-1");
+  assert.equal(fields.get("objective"), "Ship the bounded intake");
+  assert.equal(
+    fields.get("lane_1"),
+    "agent-backend · ready · P1 · implement · Implement the bounded intake"
+    + " · acceptance: the Todo exists through the canonical owner",
+  );
+  // A gap lane keeps the work it did not staff, so a card can show what the
+  // owner asked for next to the reason it cannot run.
+  assert.equal(
+    fields.get("lane_2"),
+    "agent-reviewer · gap · agent_not_registered · Independently review the intake",
+  );
+  assert.equal(fields.get("lane_gaps"), "lane_review: agent_not_registered");
+  assert.equal(fields.get("quota_envelope"), "slots: 4 · window: 1d");
+  assert.equal(
+    fields.get("stop_condition"),
+    "every lane reports a typed outcome or a stated gap",
+  );
+  assert.equal(frame.focus, "goal-1 · 2 lanes");
+  // Labels are keys, never sentences: this boundary stays language-neutral and
+  // the surface owns the words it renders.
+  for (const key of [
+    frame.titleKey,
+    frame.subtitleKey,
+    frame.confirmLabelKey,
+    frame.rejectLabelKey,
+    frame.warningKey,
+    ...frame.fields.map((field) => field.key),
+  ]) {
+    assert.match(key, /^[a-z][a-z0-9_]*$/);
+  }
+});
+
+test("a plan card frame is refused for anything that is not an admitted preview", () => {
+  const applied = teamPlanProposal();
+  applied.normalized_parameters.plan.applies = true;
+  assert.equal(compileReviewCardFrame(applied), undefined);
+
+  const moved = teamPlanProposal();
+  moved.status = "applied";
+  assert.equal(compileReviewCardFrame(moved), undefined);
+
+  const otherKind = { ...teamPlanProposal(), action_kind: "todo.create" };
+  assert.equal(compileReviewCardFrame(otherKind), undefined);
+
+  const withoutFingerprint = { ...teamPlanProposal() };
+  delete (withoutFingerprint as { expected_state_fingerprint?: string }).expected_state_fingerprint;
+  assert.equal(compileReviewCardFrame(withoutFingerprint), undefined);
+
+  // An operation proposal keeps the operation frame path and gains no plan card.
+  const operation = compileActionReviewPlan(operationProposal("awaiting_confirmation"));
+  assert.equal(operation.operationFrame?.kind, "confirmation");
+  assert.equal(operation.reviewCardFrame, undefined);
 });

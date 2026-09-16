@@ -613,6 +613,12 @@ lane/proposal/stale-basis negatives and later qualifies the supported commit
 path. This RFC retains Stage 3–5 implementation and promotion ownership;
 manager readiness cannot silently mark those stages done.
 
+### Steward execution integration (2026-09-16)
+
+[Roadmap](loopx-overall-roadmap-v0.md) R1 repairs team-plan source-basis preconditions; R4 supplies the product continuation for Stage 3–5. The current team receipt `intent_basis` only reuses `source_basis_digest`, a source-facts summary that does not cover the full objective/non-goals/acceptance/permissions/stop envelope. It may be absent and is not a CAS precondition. Do not claim full canonical intent binding.
+
+First connect existing commitments/work basis to commit-time validation. Then version intent in this owner and implement one intent-preserving work-graph amendment class with policy/verifier, lease impact, conflicts and receipt recovery. Ordinary Todo edits retain their writer rather than being forced into amendments. A steward may organize and synthesize peer work without gaining leader write authority. Stage 1/2 and the local 24-row directory exist; Stage 3, presence/lease epoch and pagination gaps remain explicit.
+
 ## 10. Staged delivery
 
 1. **Stage 0 — characterization and RFC.** Record own-lane, unclaimed,

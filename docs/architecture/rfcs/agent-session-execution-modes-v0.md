@@ -454,6 +454,12 @@ at least one real-host row: a live process, a real bind, and a real restart.
 - **Recovery.** An interrupted executor turn is reconciled before retry. A
   validated result is journaled before lifecycle writeback.
 
+### Long-horizon managed route (2026-09-16)
+
+[Roadmap](loopx-overall-roadmap-v0.md) R2 first qualifies a steward and 2–3 actual managed workers across Turns; R6 qualifies local/cloud execution on one authority, then R7 expands active scale. M1–M4 here retain host admission ownership. Team-plan `ready` cannot replace binding, qualification, claim/lease or actual process readback.
+
+DSH steward Chat is currently single-segment, read-only and without cross-turn host sessions; `turn run-once` is a separate bounded execution path. The next slice proves successor wake, cancellation/stop, crash recovery and returning stale-executor fences with packaged frontend/CLI/Lark readback. An executor name, one segment or multiple registrations cannot establish continuous managed execution. Disconnection never switches attached hosts to managed, and unqualified hosts retain their existing boundary.
+
 ## 12. Normative delivery plan
 
 | Milestone | Shipped behavior | Entry gate | Exit evidence | Rollback |

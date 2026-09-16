@@ -63,6 +63,10 @@ This slice implements only the private-owner M1 journey in
 It does not implement the M2 collaboration request, the M3 outbox, or treat manager Session fields
 as work, request, or delivery authority.
 
+### Implementation and successor (2026-09-16)
+
+`43d362532` contains the machine profile, controller integration and focused tests; passing them here is not deployment or full M1 qualification. The `restricted` default, Codex-only private `trusted_owner` and external-audience downgrade remain. Selecting DSH does not inherit that capable profile. Follow [roadmap](loopx-overall-roadmap-v0.md) R2 for actual tool/session/continued-execution and settings readback, without a second machine configuration.
+
 ### Acceptance
 
 1. A default installation starts `restricted` with no implicit grant.

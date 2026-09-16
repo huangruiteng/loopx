@@ -13,6 +13,12 @@
 
 ---
 
+## 跨 RFC 的执行优先级（2026-09-16）
+
+[统一路线](loopx-overall-roadmap-v0.zh-CN.md) 的 R1–R5 是 T0–T4 的当前产品消费者，不另设一套迁移阶段。先闭合团队计划确认/物化/恢复热路径的一笔事务：`governed_transition_proposal.py` 仍在 Python 校验计划并逐 lane 调 Todo，不能把调用了 typed Todo owner 等同于整笔团队事务已迁到 TS。
+
+保留 T0 caller/parity 盘点、T1/T2 事务与 effect 收敛、T3 完整来源消费、T4 删除条件。#4472 已合入，执行前核验 `todos/public_update.ts` 和实际 caller，不能重建 Todo update。新增团队领域规则应在现有 typed work-items/collaboration 归属中收敛；Python 保留输入/IO adapter。R1 的独立反例与 real-path 验证是交付条件；不以更多 leaf RPC、enum 或文件数量记迁移收益。D1–D3 仍由 shared-authority RFC 拥有。
+
 ## 当前实现检查点
 
 投影交付阶段现已闭合跨语言边界：typed TypeScript mutation 结果与 Python

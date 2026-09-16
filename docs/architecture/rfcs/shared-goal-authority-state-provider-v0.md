@@ -15,12 +15,19 @@
 - PostgreSQL baseline: the TypeScript Stage 2B candidate implements the store
   contract, transaction-local tenant context, forced row-level security, and
   bounded canonical commit admission, and has passed a real PostgreSQL 16
-  transaction matrix. No shared authority service, runtime caller, principal
-  authentication/tenant authorization, measured capacity/retention profile, or
-  authority promotion ships yet
+  transaction matrix. Subsequent delivery adds in-process service admission,
+  principal/tenant verification injection points and restore-incarnation rotation.
+  Deployed authenticated transport, cross-host runtime callers, measured
+  capacity/retention and authority promotion are not established by those seams
 - Language note: the
   [Chinese version](./shared-goal-authority-state-provider-v0.zh-CN.md) and this
   English version are semantic mirrors. A difference between them is a defect.
+
+## Persistence route for steward scale (2026-09-16)
+
+[Roadmap](loopx-overall-roadmap-v0.md) R5 reuses D1 projection, D2 real-backend/capacity/applicable ten-day soak and D3 fenced cutover. R6 connects the selected shared profile to authenticated local/cloud execution. R1–R3 can advance on supported profiles without waiting for PostgreSQL or whole-Goal default promotion.
+
+`e94759d88` adds [PostgreSQL service admission](../../reference/postgresql-authority-service-v0.md), with authentication/tenant verification injection and identity rotation. It is an in-process service boundary, not a deployed network service. The P lane should reuse it and finish transport, real identity policy, pool/cancellation/failover and operations qualification rather than rebuilding admission. R7 must separately report registration, active executors and measured capacity. Directory, presence, a plan or one source read grants no shared authority. Existing fail-closed source, receipt/replay and rollback contracts remain.
 
 ## Current implementation checkpoint
 

@@ -468,60 +468,100 @@ def test_the_owner_channel_projects_an_admitted_preview_onto_the_action_surface(
     """
 
     from loopx.capabilities.manager_context.team_plan import (
-        project_team_plan_preview,
+        offer_team_plan_confirmation,
     )
     from loopx.chat_store import ChatSessionStore
 
     store = ChatSessionStore(tmp_path / "runtime")
     preview = {"goal_id": "authorized-goal", "lanes": [{"lane_id": "lane-alpha"}]}
+    answer = "Here is the plan"
     response = {
-        "message": "Here is the plan",
+        "message": answer,
         "proposals": [{"kind": "steward_team_plan_preview", "preview": preview}],
         "gate": None,
     }
     projected: list[dict] = []
+    projector = lambda value: (  # noqa: E731 - one inline surface owner
+        projected.append(dict(value)) or {"proposal_id": "proposal-team-plan"}
+    )
 
-    def project(session: dict, *, projector=None) -> None:
-        project_team_plan_preview(
+    def offer(session: dict, *, projector=None, turn_id: str = "turn-1") -> dict:
+        return offer_team_plan_confirmation(
             store=store,
             session=session,
             session_id="session-1",
-            turn_id="turn-1",
+            turn_id=turn_id,
             response=response,
             projector=projector,
         )
 
-    # Without a surface owner the answer is unchanged: the Controller does not
-    # invent a second place where cards live.
-    project({"channel_id": "manager"})
+    # A Goal channel has no team plan to offer, so its answer is untouched even
+    # when a surface owner is available.
+    untouched = offer({"channel_id": "goal.authorized-goal"}, projector=projector)
+    assert untouched == response
     assert projected == []
 
-    projector = lambda value: (  # noqa: E731 - one inline surface owner
-        projected.append(dict(value)) or {"proposal_id": "proposal-team-plan"}
-    )
-    project({"channel_id": "manager"}, projector=projector)
+    # The owner's own channel stores exactly one card and says where it lives.
+    owner = offer({"channel_id": "manager"}, projector=projector)
     assert projected == [preview]
+    assert owner["message"].startswith(answer)
+    assert "authorized-goal" in owner["message"]
+    assert "确认前不会创建任何 lane" in owner["message"]
+    assert owner["proposals"] == response["proposals"]
 
-    # A remote manager channel and a Goal channel both keep the answer only.
-    for channel_id in ("manager.external." + "a" * 24, "goal.authorized-goal"):
-        project({"channel_id": channel_id}, projector=projector)
+    # A remote manager audience has no card of its own, so none is written on its
+    # behalf -- but it still learns the exact Goal whose workspace holds one,
+    # instead of reading a plan it has no way to confirm.
+    remote = offer(
+        {"channel_id": "manager.external." + "a" * 24},
+        projector=projector,
+        turn_id="turn-2",
+    )
     assert projected == [preview]
+    assert remote["message"].startswith(answer)
+    assert "authorized-goal" in remote["message"]
 
     # A surface that cannot store the card does not fail the answer: the gap is
-    # typed on the Turn instead.
+    # typed on the Turn instead, and the pointer still names the Goal.
     def refuse(_value: object) -> dict:
         raise ValueError("the typed action store is unavailable")
 
-    project({"channel_id": "manager"}, projector=refuse)
-    kinds = [
-        event["kind"]
-        for event in store.events_after("session-1", "turn-1", None)
-    ]
-    # The successful projection named the card it stored and the Goal it staffs;
-    # the refused one reported a typed code instead of failing the answer.
-    assert kinds == ["team_plan.projected", "team_plan.projection_failed"]
+    refused = offer({"channel_id": "manager"}, projector=refuse, turn_id="turn-3")
+    assert "authorized-goal" in refused["message"]
+    assert [
+        event["kind"] for event in store.events_after("session-1", "turn-1", None)
+    ] == ["team_plan.projected"]
+    assert [
+        event["kind"] for event in store.events_after("session-1", "turn-3", None)
+    ] == ["team_plan.projection_failed"]
     projected_event = store.events_after("session-1", "turn-1", None)[0]
     assert projected_event["payload"] == {
         "goal_id": "authorized-goal",
         "proposal_id": "proposal-team-plan",
     }
+
+
+def test_an_answer_without_a_team_plan_is_never_annotated() -> None:
+    """The pointer belongs to a team plan, not to every manager answer."""
+
+    from loopx.capabilities.manager_context.team_plan import (
+        offer_team_plan_confirmation,
+    )
+
+    class _Store:
+        def append_event(self, *_args, **_kwargs):  # pragma: no cover - not reached
+            raise AssertionError("no event is written without a team plan")
+
+    response = {
+        "message": "只回答问题的普通回复。",
+        "proposals": [{"kind": "todo", "text": "Do one thing"}],
+        "gate": None,
+    }
+    assert offer_team_plan_confirmation(
+        store=_Store(),
+        session={"channel_id": "manager"},
+        session_id="session-1",
+        turn_id="turn-1",
+        response=response,
+        projector=lambda _preview: {"proposal_id": "unused"},
+    ) == response

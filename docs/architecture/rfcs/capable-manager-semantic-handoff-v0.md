@@ -1,7 +1,7 @@
 # RFC: Capable Agent Manager and Semantic Work Handoff (v0)
 
 - **RFC status:** Draft, under maintainer review
-- **Delivery maturity:** Proposal; existing foundations are identified in Section 4
+- **Delivery maturity:** Partial; private runtime profile, team-plan confirmation and Todo materialization shipped; complete M1–M4 remain unqualified.
 - **Authors / owners:** LoopX maintainers; manager engineering owner
 - **Created / last normative revision:** 2026-09-13 / 2026-09-15
 - **Implementation baseline:** `7eb4b7bb1661bd5eff63a8725a33169792d5964b`
@@ -60,6 +60,12 @@ These failures have different causes. A better model can improve investigation a
 Include global manager conversations, host-native investigation, ordinary authorized actions, responsibility discovery, semantic handoff, receiver planning, automatic return, cross-entrypoint visibility and recovery. Support manager→worker and worker→worker as two real consumers of the same handoff semantics.
 
 Do not build a replacement agent runtime, a second scheduler, an external-agent marketplace, a new repository API, a universal workflow DSL or a duplicate task database. A substantial refactor of the current manager, collaboration and adapter boundaries is explicitly in scope; conserving current code volume or module names is not an acceptance goal. Do not require OpenViking, a shared online database or A2A to make local handoffs correct. Do not copy private reasoning traces or complete historical transcripts into every request. Complex financial and other domain effects remain owned by their capabilities and execution adapters.
+
+### Current cross-RFC route (2026-09-16)
+
+At `43d362532`, the private `manager_runtime` profile, steward executor configuration and team preview→frontend confirmation→initial Todo materialization have implementations. #4547/#4548/#4552 supply confirmation UI, bundle and browser fixture; they do not prove worker execution. DSH Chat remains a bounded read-only segment without cross-turn host sessions and cannot borrow Codex `trusted_owner` qualification.
+
+The [overall roadmap](loopx-overall-roadmap-v0.md) records verified F1–F7 and R1–R7. Repair R1 commitment preservation, stale basis and recovery first, then qualify R2 small teams; M2/M3 converge through R3, and M4 requires real user journeys. Section 4 retains its older baseline as migration input, not an override of this checkpoint. Partial merges do not complete M1–M4. Parallel joins, pipeline dependencies, peer help/review, execution responsibility continuation and cross-host collaboration between long-running LoopX Agents follow the roadmap Section 5 matrix. R2 requires real inter-Agent handoff; M2/M3 cannot reduce to steward broadcasts or one-turn forwarding.
 
 ## 4. Current-system contract: audited facts
 
@@ -501,7 +507,7 @@ If this program changes a provider, retention or authority-source profile, its a
 
 ### 11.2 Execution order and integration receipts
 
-1. **Start M1; finish baseline reconciliation in that PR.** Record the exact source head and actual runtime/entrypoint call sites. Fix the owner-private profile and existing readback/feedback. Run A1–A3/A12. Do not deliver a standalone inventory framework.
+1. **Complete and qualify M1 through R1/R2 without rebuilding shipped profiles/entrypoints.** Record the exact source head and actual runtime/entrypoint call sites. Fix the owner-private profile and existing readback/feedback. Run A1–A3/A12. Do not deliver a standalone inventory framework.
 2. **Replace one complete M2 request transaction, then attach receivers.** Begin from `manager_context` request/tracking/return producers and both real consumers, including the shipped #4094 CLI continuation adapter (§5.13). Publish the before/after ownership map, migration mapping and the migration economics review artifact (§5.12). Preserve accepted work state through existing commands; qualify crash-between-commits and legacy/promoted sources before widening producer rollout. Use existing alignment source-basis reads, not a copied classifier.
 3. **Close M3 automatic return and user visibility.** Independent reply recovery can ship in parallel with steps 1–2. Integrate the generic producer only after its receipt contract is stable; exercise A8–A10, A13–A16 and A17/A20 across the actual entrance/receiver/return paths. With the source session gone, verify the same committed result/outbox identity, reconnect recovery and audience isolation through packaged frontend, Lark and CLI readback.
 4. **Promote a named M4 cohort and remove the replaced paths.** Keep provider default, Goal-intent authority and capability qualifications explicit. Shared-amendment commit integration follows its upstream readiness; until then the UI says proposal/admission or unsupported commit, never “Goal changed.” Provider source migration follows the shared-authority program rather than this release.
