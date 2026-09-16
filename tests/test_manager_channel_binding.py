@@ -420,9 +420,12 @@ def test_the_channel_quotes_the_session_mode_instead_of_deriving_it():
     assert binding["session_status"] == "busy"
 
 
-def test_a_channel_without_a_session_reads_as_unbound():
+def test_a_channel_without_a_session_reads_as_unbound(monkeypatch):
     """A ready managed endpoint is not evidence that the channel is bound."""
 
+    monkeypatch.setattr(
+        host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+    )
     binding = manager_channel_binding({"DEEPSEEK_API_KEY": "fixture"})
 
     assert binding["available"] is True
