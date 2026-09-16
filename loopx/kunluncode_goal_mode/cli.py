@@ -335,7 +335,6 @@ def _bootstrap_if_needed(
         objective,
         "--state-file",
         f".loopx/goals/{goal_id}/ACTIVE_GOAL_STATE.md",
-        "--no-onboarding-scan",
         "--no-global-sync",
     ]
     if dry_run:

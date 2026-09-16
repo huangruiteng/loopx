@@ -72,9 +72,7 @@ def render_goal_start_bootstrap_command(
         f"  --goal-id {shell_arg(goal_id)} \\",
         f"  --objective {shell_arg(objective)} \\",
         f"  --adapter-kind {shell_arg(DEFAULT_HANDOFF_ADAPTER_KIND)} \\",
-        f"  --adapter-status {shell_arg(DEFAULT_HANDOFF_ADAPTER_STATUS)} \\",
-        "  --no-onboarding-scan \\",
-        "  --codex-app-heartbeat ask",
+        f"  --adapter-status {shell_arg(DEFAULT_HANDOFF_ADAPTER_STATUS)}",
     ]
     if display_name:
         lines.insert(-1, f"  --display-name {shell_arg(display_name)} \\")
@@ -813,8 +811,9 @@ it conservatively:
 {connect_command}
 ```
 
-If the connect output includes onboarding candidate todos, summarize them in
-this TUI and ask me which ones to accept before starting autonomous delivery.
+`connect` only registers the goal and its active state. It does not create
+first-connect todos, so choose the first delivery todo explicitly (for example
+with `todo add`) instead of waiting for onboarding candidates.
 
 4. Generate the thin loop prompt after route reuse or bootstrap/connect, not before. Do not
 hand-write or copy an old heartbeat body:
@@ -932,10 +931,8 @@ def render_prompt_text(
 {goal_doc}
 
 请你按下面步骤推进，不要停在方案讨论；如果信息缺失，先从目标文档和项目结构中做保守抽取，并在最后说明假设。
-重要：`{cli_bin} connect` 默认会做一次快速 onboarding scan，基于 git status、最近 commit、顶层项目信号生成候选 agent todo。
-接入后不要直接开始 delivery；先把候选 todo 展示给我，并问我两件事：
-1. 接受、编辑或拒绝哪些候选 agent todo；
-2. 是否允许你从接受的 todo 开始自主推进。
+重要：`{cli_bin} connect` 只登记 goal 和 active state，不会生成首连 onboarding todo。
+接入后先只读核对状态与目标文档，把第一个交付 todo 的候选写给我确认，再开始 delivery。
 
 0. 先确认当前 shell 能调用 LoopX CLI；如果提示 `loopx` 不在 PATH，运行本机安装脚本再继续：
 
@@ -970,15 +967,11 @@ def render_prompt_text(
 ```
 
 4. 确认 `.loopx/registry.json` 和 `.codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md` 已创建或更新。
-   阅读输出里的 `Onboarding Scan`、`Proposed Onboarding Candidates`、`Accept Candidate Commands`
-   和 `Autonomy Choice`。不要让用户手动执行这些命令；你应当用中文简要解释候选 todo，
-   然后询问用户：
-   - 接受哪些编号，是否需要改写；
-   - 是否 `autonomous=yes`，允许你在 quota guard 通过后开始执行第一个接受的 agent todo。
-   如果用户接受候选 todo，用输出里的 `{cli_bin} todo add ...` 命令写入 agent todo；
-   如果用户允许自主推进，先运行 quota guard，再执行第一个已接受 agent todo。
-   如果用户不允许自主推进，只写入接受的 todo 并运行 `{refresh_command}`，
-   然后停下来汇报。
+   接入输出里不再有 onboarding 扫描、候选 todo 或自主推进选择项；首连之后状态里
+   没有可执行的 agent todo。请只读核对目标文档和 registry 的 `execution_profile`，
+   用中文给出 1-3 个第一个交付 todo 的候选，问用户确认后，用
+   `{cli_bin} todo add ...` 写入被接受的条目，再运行 `{refresh_command}` 并汇报。
+   在用户确认前不要开始 delivery。
    如果目标状态包含私有证据，把 `.loopx/` 和 `.codex/goals/` 加入该项目 `.gitignore`。
    `{cli_bin} connect` 默认会同步到共享全局 registry；不要手动编辑其他项目的 registry。
    接入后检查 registry 里的 `execution_profile`：它是本项目后续 heartbeat / adapter 的执行画像。

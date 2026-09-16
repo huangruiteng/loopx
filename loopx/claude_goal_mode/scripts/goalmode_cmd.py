@@ -234,7 +234,7 @@ def main():
         # Claude projects keep goal state under .claude/ (not the Codex-default .codex/)
         state_file = f".claude/goals/{goal_id}/ACTIVE_GOAL_STATE.md"
         r = gh(["bootstrap", "--project", str(proj), "--goal-id", goal_id,
-                "--objective", task, "--state-file", state_file, "--no-onboarding-scan"])
+                "--objective", task, "--state-file", state_file])
         if "ok: `True`" not in r.stdout and "ok=True" not in r.stdout and r.returncode != 0:
             print("[loopx] bootstrap failed:\n" + (r.stdout + r.stderr)[:600])
             sys.exit(1)

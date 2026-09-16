@@ -6,9 +6,11 @@ Covers:
               so the emitted command is accepted by ``loopx todo add``.
   - Defect 2: ``agent-onboard`` on a project with no ``.loopx/registry.json``
               must return a typed gate, not raise ``FileNotFoundError``.
-  - Guided takeover: when bootstrap already provides a runnable Todo frontier,
+  - Guided takeover: when the goal already has a runnable Todo frontier,
                      authoring is projected as a typed Todo delta instead of an
-                     unconditional ``write_ordered_todos`` step.
+                     unconditional ``write_ordered_todos`` step. `connect` no
+                     longer seeds that frontier, so the fixture writes the first
+                     agent Todo the way a real caller now does.
 
 See: https://github.com/huangruiteng/loopx/issues/3092
 Fix: https://github.com/huangruiteng/loopx/pull/3093
@@ -181,8 +183,6 @@ def test_guided_template_acceptance(project: Path, goal_id: str) -> None:
         "--objective", "regression test for #3092",
         "--adapter-kind", "read_only_project_map_v0",
         "--adapter-status", "connected-read-only",
-        "--no-onboarding-scan",
-        "--codex-app-heartbeat", "ask",
         "--no-global-sync",
         check=False,
     )
@@ -207,6 +207,22 @@ def test_guided_template_acceptance(project: Path, goal_id: str) -> None:
             agent_id in registered_agents,
         )
 
+    # Step 2b: write the first runnable agent Todo. connect/boot no longer seeds
+    # one, so the guided takeover frontier has to come from the caller.
+    seeded_todo = run_cli(
+        "--registry", str(registry_path),
+        "todo", "add",
+        "--goal-id", goal_id,
+        "--role", "agent",
+        "--text", "[P0] Implement the first bounded regression segment.",
+        "--task-class", "advancement_task",
+        "--action-kind", "implementation",
+        "--claimed-by", agent_id,
+        "--execute",
+        check=False,
+    )
+    check("first agent todo exits 0", seeded_todo.returncode == 0)
+
     # Step 3: Build the guided packet via direct Python import.
     guided_packet = build_start_goal_guided_packet(
         project=project,
@@ -216,8 +232,8 @@ def test_guided_template_acceptance(project: Path, goal_id: str) -> None:
         host_surface="claude-code",
         goal_text="regression test for #3092",
     )
-    # Fresh bootstrap seeds one runnable advancement Todo, so this fixture must
-    # not accept the frontier-free legacy authoring path.
+    # The fixture seeds one runnable advancement Todo, so this must not accept
+    # the frontier-free legacy authoring path.
     template = _require_guided_todo_delta_template(
         guided_packet,
         label="guided packet",
@@ -335,14 +351,24 @@ def test_clean_second_run() -> None:
             "--objective", "second run regression",
             "--adapter-kind", "read_only_project_map_v0",
             "--adapter-status", "connected-read-only",
-            "--no-onboarding-scan",
-            "--codex-app-heartbeat", "ask",
             "--no-global-sync",
             check=False,
         )
         registry_path = project / ".loopx" / "registry.json"
         if registry_path.exists():
             _register_agent_in_registry(registry_path, goal_id, agent_id)
+            run_cli(
+                "--registry", str(registry_path),
+                "todo", "add",
+                "--goal-id", goal_id,
+                "--role", "agent",
+                "--text", "[P0] Implement the second-run bounded segment.",
+                "--task-class", "advancement_task",
+                "--action-kind", "implementation",
+                "--claimed-by", agent_id,
+                "--execute",
+                check=False,
+            )
 
         guided = build_start_goal_guided_packet(
             project=project,

@@ -114,7 +114,6 @@ def main() -> int:
                 "verify soft claim TTL compatibility",
                 "--claim-ttl-minutes",
                 "5",
-                "--no-onboarding-scan",
                 "--no-global-sync",
             ],
             cwd=REPO_ROOT,

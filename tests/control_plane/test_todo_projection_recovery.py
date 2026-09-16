@@ -337,7 +337,7 @@ def test_objective_display_never_changes_canonical_authority(canonical_display, 
     state.write_text(render_state_markdown(
         project=state.parent, goal_id="goal-a", adapter_kind="read_only_project_map_v0",
         objective=objective, updated_at="2026-09-15T00:00:00Z",
-        goal_doc=None, execution_profile=None, include_connection_validation=False,
+        goal_doc=None, execution_profile=None,
     ))
     code, delivered = _run(registry, before["provider_revision"], "--execute")
     assert code == 0 and delivered["status"] == "delivered", delivered

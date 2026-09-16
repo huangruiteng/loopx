@@ -20,7 +20,8 @@ When onboarding is complete:
 - `loopx doctor` reports a usable installation;
 - `.loopx/registry.json` exists in the project;
 - `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md` exists;
-- `loopx status` can show active state, current Gates, and the next Agent Todo;
+- `loopx status` can show the active state and the current frontier; a first connection creates no
+  onboarding Todo, so the Agent writes the first delivery Todo after you confirm it;
 - `.loopx/` and `.codex/goals/` do not enter Git;
 - reconnecting reuses the exact existing `goal_id` instead of overwriting the Goal;
 - a new executor receives a fresh `agent_id` unless the user explicitly authorizes a takeover.
@@ -212,6 +213,11 @@ loopx start-goal \
 This produces a guided transaction packet. It is a preview, not proof that Todo writeback, Host activation,
 or an Agent turn has already happened. The Host integration must execute the planning, state writeback, and
 activation described by the packet.
+
+`connect` / `bootstrap` register the Goal and write the active state only: they create no first-connect
+onboarding Todo, owner-decision gate, or host-loop opt-in gate. A freshly connected goal therefore has no
+executable Agent Todo; the Agent or the connected domain adapter writes the first delivery Todo, so
+automation starts from the caller's own work queue instead of a generated onboarding queue.
 
 ### Choose the Goal before choosing the Agent
 

@@ -1819,7 +1819,6 @@ def _force_bootstrap(
         max_children=0,
         allowed_domains=None,
         write_scope=None,
-        onboarding_scan_enabled=False,
         preserve_todos=False,
         force=True,
         dry_run=False,

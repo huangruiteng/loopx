@@ -214,6 +214,7 @@ def main() -> None:
         build_bounded_chat_status_projection,
     )
     from loopx.chat_endpoints import AgentEndpointRegistry
+    from loopx.chat_manager import manager_executor_endpoint_default
 
     try:
         ChatHTTPServer(("127.0.0.1", 70_000), ChatRequestHandler)
@@ -605,7 +606,17 @@ def main() -> None:
                 method="POST",
                 body={"context_kind": "manager"},
             )
+            # The steward channel owns its executor default. This client sends
+            # no pick, so the session must land on whatever the channel resolves
+            # on this machine -- never on an executor the caller's client
+            # happens to ship with.
+            expected_manager_endpoint = manager_executor_endpoint_default()
             assert code == 201, manager_created
+            assert manager_created["agent_id"] == expected_manager_endpoint, manager_created
+            assert (
+                manager_created["session"]["executor_endpoint_id"]
+                == expected_manager_endpoint
+            ), manager_created
             assert manager_created["session"]["channel_id"] == "manager", manager_created
             assert manager_created["session_id"] != session_id, manager_created
             code, manager_resumed = request_json(
@@ -616,8 +627,17 @@ def main() -> None:
             assert code == 200 and manager_resumed["resumed"] is True, manager_resumed
             assert manager_resumed["session_id"] == manager_created["session_id"], manager_resumed
             assert manager_resumed["goal_id"] == "loopx-manager", manager_resumed
+            # An explicit pick still travels, and it resumes the same channel
+            # conversation instead of silently opening a second one.
+            code, manager_explicit = request_json(
+                f"{base_url}/api/chat/sessions",
+                method="POST",
+                body={"context_kind": "manager", "agent_id": expected_manager_endpoint},
+            )
+            assert code == 200 and manager_explicit["resumed"] is True, manager_explicit
+            assert manager_explicit["session_id"] == manager_created["session_id"], manager_explicit
             listed_manager = wait_for_json(
-                f"{base_url}/api/chat/sessions?agent_id=codex&channel_id=manager"
+                f"{base_url}/api/chat/sessions?channel_id=manager"
             )
             assert [item["session_id"] for item in listed_manager["sessions"]] == [
                 manager_created["session_id"]

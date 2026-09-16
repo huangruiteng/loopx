@@ -100,6 +100,10 @@ export const managerChannelBindingSchema = z.object({
   schema_version: z.string(),
   executor_endpoint: z.string(),
   executor_endpoint_source: z.string(),
+  // Why the shipped default resolved the way it did. Present so a conditional
+  // default reads as a decision with a reason instead of an incidental
+  // environment value; empty when the operator selected the endpoint explicitly.
+  executor_endpoint_default_reason: z.string().optional(),
   executor_kind: z.string(),
   model: z.string(),
   model_source: z.string(),
@@ -541,7 +545,7 @@ export async function recordProjectionExchange(options: {
 
 export async function createChatSession(
   goalId: string,
-  agentId = "codex",
+  agentId?: string,
   mode: "resume_latest" | "new" = "resume_latest",
   contextKind: "goal" | "manager" = "goal",
 ) {
@@ -554,6 +558,9 @@ export async function createChatSession(
     session: ChatSessionSummary;
   }>("/api/chat/sessions", {
     method: "POST",
+    // An omitted ``agent_id`` means "no explicit executor pick": the channel
+    // owner resolves its own default. Sending this client's own default would
+    // silently re-point the steward channel away from its configured executor.
     body: JSON.stringify({ goal_id: goalId, agent_id: agentId, mode, context_kind: contextKind }),
   });
 }
@@ -669,7 +676,10 @@ export function mergeChatSessionMessages(snapshots: ChatSessionSnapshot[]) {
 }
 
 export async function fetchChatHistory(options: {
-  agentId: string;
+  // An omitted ``agentId`` reads the whole channel transcript. The steward
+  // channel is one conversation across whatever executor it currently
+  // resolves, so the client must not filter it by its own assumed executor.
+  agentId?: string;
   channelId: string;
   goalId?: string;
 }) {

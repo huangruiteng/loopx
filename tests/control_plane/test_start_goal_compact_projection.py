@@ -1933,8 +1933,6 @@ def test_ark_managed_agent_plans_todos_before_one_shot_goal_activation(
         f" --objective {shlex.quote(GOAL_TEXT)}"
         " --adapter-kind read_only_project_map_v0"
         " --adapter-status connected-read-only"
-        " --no-onboarding-scan"
-        " --codex-app-heartbeat ask"
     )
     assert actionable_connect_command in payload["message"]
     assert "preview the issue-fix route before todo writeback" not in payload["message"]

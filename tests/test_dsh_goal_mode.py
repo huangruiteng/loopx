@@ -544,6 +544,7 @@ def test_build_sdk_config_targets_the_current_sdk_surface(tmp_path: Path) -> Non
     config = turn_host_adapter.build_sdk_config(
         provider="deepseek-official",
         model="deepseek-v4-flash",
+        reasoning_effort="high",
         workspace=tmp_path,
         dsh_home=dsh_home,
         max_tokens=1024,
@@ -554,6 +555,7 @@ def test_build_sdk_config_targets_the_current_sdk_surface(tmp_path: Path) -> Non
     assert set(config) <= {
         "provider",
         "model",
+        "reasoning_effort",
         "cwd",
         "dsh_home",
         "max_tokens",
@@ -561,11 +563,90 @@ def test_build_sdk_config_targets_the_current_sdk_surface(tmp_path: Path) -> Non
         "dsh_bin",
         "request_timeout_seconds",
     }
+    assert config["reasoning_effort"] == "high"
     assert config["dsh_home"] == str(dsh_home)
     assert config["dsh_bin"] == "/opt/dsh/bin/dsh"
     assert config["patches"] == (str(cordis.expanduser().resolve()),)
     for legacy_field in ("session_root", "cordis", "runtime_bin"):
         assert legacy_field not in config
+
+
+def test_build_sdk_config_omits_an_unset_reasoning_effort(tmp_path: Path) -> None:
+    # A caller that explicitly passes no effort must not have one invented for
+    # it: the SDK distinguishes "provider default" from a named effort.
+    config = turn_host_adapter.build_sdk_config(
+        provider="deepseek-official",
+        model="deepseek-v4-flash",
+        reasoning_effort=None,
+        workspace=tmp_path,
+        dsh_home=tmp_path / "dsh-home",
+        max_tokens=None,
+        cordis=None,
+        runtime_bin=None,
+        request_timeout_seconds=None,
+    )
+    assert "reasoning_effort" not in config
+
+
+def test_build_sdk_config_carries_a_caller_pinned_runtime_environment(
+    tmp_path: Path,
+) -> None:
+    # A Chat channel pins its own segments read-only through the runtime
+    # environment; the adapter forwards it instead of reinterpreting it.
+    config = turn_host_adapter.build_sdk_config(
+        provider="deepseek-official",
+        model="deepseek-v4-flash",
+        reasoning_effort="high",
+        workspace=tmp_path,
+        dsh_home=tmp_path / "dsh-home",
+        max_tokens=None,
+        cordis=None,
+        runtime_bin=None,
+        request_timeout_seconds=None,
+        env={"DSH_PERMISSION_MODE": "read-only"},
+    )
+    assert config["env"] == {"DSH_PERMISSION_MODE": "read-only"}
+
+    unpinned = turn_host_adapter.build_sdk_config(
+        provider="deepseek-official",
+        model="deepseek-v4-flash",
+        reasoning_effort="high",
+        workspace=tmp_path,
+        dsh_home=tmp_path / "dsh-home",
+        max_tokens=None,
+        cordis=None,
+        runtime_bin=None,
+        request_timeout_seconds=None,
+    )
+    assert "env" not in unpinned
+
+
+def test_host_config_resolves_the_shared_managed_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LOOPX_TURN_MODEL", raising=False)
+    monkeypatch.delenv("DSH_MODEL", raising=False)
+    profile = turn_host_adapter.DshHostConfig(workspace=tmp_path).resolved_profile()
+    assert (
+        profile["provider"],
+        profile["model"],
+        profile["reasoning_effort"],
+    ) == (
+        turn_host_adapter.DEFAULT_PROVIDER,
+        turn_host_adapter.DEFAULT_MODEL,
+        turn_host_adapter.DEFAULT_REASONING_EFFORT,
+    )
+    assert profile["model_source"] == "product_default"
+
+    monkeypatch.setenv("LOOPX_TURN_MODEL", "fixture-model")
+    overridden = turn_host_adapter.DshHostConfig(
+        workspace=tmp_path, model="argument-model"
+    ).resolved_profile()
+    assert overridden["model"] == "argument-model"
+    assert overridden["model_source"] == "explicit_argument"
+    # An explicit field wins alone: the others still follow the environment.
+    assert overridden["reasoning_effort"] == turn_host_adapter.DEFAULT_REASONING_EFFORT
 
 
 def test_dsh_home_resolution_prefers_config_then_environment(
@@ -577,11 +658,11 @@ def test_dsh_home_resolution_prefers_config_then_environment(
     environment = tmp_path / "environment-home"
     monkeypatch.setenv("DSH_HOME", str(environment))
 
-    assert turn_host_adapter._resolve_dsh_home(workspace, configured) == configured
-    assert turn_host_adapter._resolve_dsh_home(workspace, None) == environment
+    assert turn_host_adapter.resolve_dsh_home(workspace, configured) == configured
+    assert turn_host_adapter.resolve_dsh_home(workspace, None) == environment
 
     monkeypatch.delenv("DSH_HOME")
-    assert turn_host_adapter._resolve_dsh_home(workspace, None) == (
+    assert turn_host_adapter.resolve_dsh_home(workspace, None) == (
         workspace / ".local" / ".dsh-sessions"
     )
 

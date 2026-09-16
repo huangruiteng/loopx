@@ -1,17 +1,17 @@
 """Operator-supplied model credential facts shared by LoopX host surfaces.
 
-This module reports credential *facts* and nothing else. It never selects a
-host, an endpoint, or a model, and it never reads a credential value.
+This module reports credential *facts* and nothing else. It reads no credential
+value, and it resolves nothing by itself.
 
-Selection is a separate, explicit decision owned by the surface that runs the
-work: the governed Turn host comes from
-``turn_driver.host_binding.selected_turn_host`` and the steward channel endpoint
-comes from ``chat_manager.manager_channel_binding``. Both report the credential
-facts quoted from here so their readback cannot drift apart, and both treat the
-credential as authentication for the configuration the operator selected --
-never as a reason to change it. Discovering that a credential exists may help
-the operator set a surface up, but it must not silently re-point a surface that
-is already configured.
+Selection is a separate decision owned by the surface that runs the work: the
+governed Turn host comes from ``turn_driver.host_binding.selected_turn_host``
+and the steward channel endpoint comes from
+``chat_manager.manager_channel_binding``. Both report the credential facts
+quoted from here so their readback cannot drift apart, and both treat the
+credential as authentication for the configuration that runs. A configured
+credential is never a reason to re-point an explicitly selected surface: it
+resolves only the shipped default of a surface that would otherwise have to run
+on an individual CLI login.
 """
 
 from __future__ import annotations

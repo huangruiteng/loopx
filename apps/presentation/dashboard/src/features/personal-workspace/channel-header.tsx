@@ -97,6 +97,30 @@ export function ChannelHeader({
         : t("header.managerExecutorKindRegistered")
     : null;
   const managerExecutionUnavailable = managerChannelBinding?.available === false;
+  // Name the reason instead of one hardcoded host: the channel can hold the
+  // managed host through its segment transport now, so "this channel needs
+  // codex" would be both wrong and unactionable. An unknown reason stays
+  // unclaimed rather than being rendered as a reason this build invented.
+  const managerExecutionUnavailableReason = managerChannelBinding?.available === false
+    ? managerChannelBinding.unavailable_reason
+    : null;
+  const managerExecutionUnavailableKey = managerExecutionUnavailableReason === "operator_credential_unconfigured"
+    ? "header.managerExecutionUnavailableCredential"
+    : managerExecutionUnavailableReason === "dsh_runtime_unavailable"
+      ? "header.managerExecutionUnavailableRuntime"
+      : managerExecutionUnavailableReason === "invalid_reasoning_effort"
+        ? "header.managerExecutionUnavailableEffort"
+        : "header.managerExecutionUnavailable";
+  // The shipped default is conditional, so the chip says which branch it took
+  // and why; without this a steward on codex looks identical whether the
+  // operator chose it or the machine simply had no credential.
+  const managerExecutionDefaultReason = managerChannelBinding
+    && managerChannelBinding.executor_endpoint_source === "product_default"
+    && (managerChannelBinding.executor_endpoint_default_reason ?? "") !== ""
+    ? managerChannelBinding.executor_endpoint_default_reason === "operator_credential_absent"
+      ? "header.managerEndpointWithoutCredential"
+      : "header.managerEndpointFromCredential"
+    : null;
 
   return (
     <header className="personal-channel-header">
@@ -123,7 +147,15 @@ export function ChannelHeader({
             </span>
             {managerExecutionUnavailable ? (
               <span className="personal-execution-note">
-                {t("header.managerExecutionUnavailable", { executor: managerChannelBinding.executor_endpoint })}
+                {t(managerExecutionUnavailableKey, {
+                  executor: managerChannelBinding.executor_endpoint,
+                  credential: managerChannelBinding.credential_env_var,
+                })}
+              </span>
+            ) : null}
+            {managerExecutionDefaultReason ? (
+              <span className="personal-execution-rule-note">
+                {t(managerExecutionDefaultReason, { executor: managerChannelBinding.executor_endpoint })}
               </span>
             ) : null}
           </p>

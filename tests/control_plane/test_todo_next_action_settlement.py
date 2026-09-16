@@ -89,7 +89,7 @@ def _write_fixture(tmp_path: Path, *, next_action: str) -> tuple[Path, Path]:
     return registry, state
 
 
-def test_bootstrap_binds_generated_connection_validation_next_action(
+def test_bootstrap_renders_no_first_connect_todo_or_next_action_binding(
     tmp_path: Path,
 ) -> None:
     state_text = render_state_markdown(
@@ -102,13 +102,10 @@ def test_bootstrap_binds_generated_connection_validation_next_action(
         execution_profile=None,
     )
 
-    assert "<!-- loopx:next-action schema=loopx_next_action_binding_v0" in state_text
-    assert "todo_id=todo_" in state_text
+    assert "loopx:next-action" not in state_text
+    assert "loopx:todo todo_id=" not in state_text
     assert active_state_next_action_entries(state_text) == [
-        (
-            "[P1] Run `loopx check` against the project registry and record the first "
-            "project-specific adapter signal or an explicit no-follow-up rationale."
-        )
+        "Initial routing is owned by the connected domain adapter."
     ]
     record = build_state_refresh_record(
         goal_id=GOAL_ID,
@@ -126,7 +123,7 @@ def test_bootstrap_binds_generated_connection_validation_next_action(
     assert "loopx:next-action" not in json.dumps(record)
 
 
-def test_higher_priority_agent_todo_rebinds_generated_onboarding_next_action(
+def test_agent_todo_add_after_bootstrap_keeps_default_next_action(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -181,9 +178,10 @@ def test_higher_priority_agent_todo_rebinds_generated_onboarding_next_action(
     state_text = state.read_text(encoding="utf-8")
     assert added["todo_id"]
     assert active_state_next_action_entries(state_text) == [
-        "[P0] Implement and validate the requested behavior."
+        "Initial routing is owned by the connected domain adapter."
     ]
-    assert f"todo_id={added['todo_id']} -->" in state_text
+    assert "loopx:next-action" not in state_text
+    assert f"todo_id={added['todo_id']}" in state_text
 
 
 def test_agent_todo_add_preserves_same_priority_and_manual_next_actions(
@@ -378,7 +376,7 @@ def test_complete_reprojects_typed_next_action_to_open_successor(
         role="agent",
         text=completed_text,
         task_class="advancement_task",
-        action_kind="onboarding_connection_validation",
+        action_kind="project_connection_review",
         claimed_by=AGENT_ID,
     )
     successor = add_goal_todo(
@@ -524,7 +522,7 @@ def test_complete_preserves_unrelated_owner_next_action(tmp_path: Path) -> None:
         role="agent",
         text="[P1] Validate the project connection.",
         task_class="advancement_task",
-        action_kind="onboarding_connection_validation",
+        action_kind="project_connection_review",
         claimed_by=AGENT_ID,
     )
 
@@ -596,7 +594,7 @@ def test_complete_migrates_legacy_exact_text_next_action(tmp_path: Path) -> None
         role="agent",
         text=completed_text,
         task_class="advancement_task",
-        action_kind="onboarding_connection_validation",
+        action_kind="project_connection_review",
         claimed_by=AGENT_ID,
     )
 

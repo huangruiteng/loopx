@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""Qualify the explicit operator default flow for one bounded managed Turn.
+"""Qualify the credential-resolved default flow for one bounded managed Turn.
 
-The shipped operator rule is *selection first*: the default host is the managed
-``dsh`` executor by product decision, the operator credential only authenticates
-that selection, and discovering a credential never re-points a Turn. That rule
+The shipped operator rule is *explicit selection first*: an explicit ``--host``
+or ``LOOPX_TURN_HOST`` is honoured, and the shipped default is resolved from the
+operator's own credential facts -- a configured operator credential runs the
+managed ``dsh`` host on that credential, and its absence runs the individual
+``codex-cli`` host instead of a managed host nothing can authenticate. That rule
 is only usable if the *default* command (no explicit ``--host``) actually starts
-the managed Turn and reports what ran.
+the resolved host and reports what ran.
 
 This smoke is hermetic: a local mock OpenAI-compatible SSE server stands in for
 the model endpoint, so no operator key and no individual CLI subscription is
 consumed. It proves, through the public CLI only:
 
-1. no credential: the default host is still ``dsh``, reported as an unauthenticated
-   managed executor with the typed ``operator_credential_unconfigured`` reason;
-2. credential: the same default host reports its credential environment, its
-   billing boundary, and its launchability before any work runs;
+1. no credential: the default host is the individual ``codex-cli`` executor, so
+   the default flow still runs here and claims no managed credential;
+2. credential: the default host resolves to the managed ``dsh`` executor and
+   reports its credential environment, its billing boundary, and its
+   launchability before any work runs;
 3. credential: ``turn run-once`` without ``--host`` starts the real dsh runtime,
    commits one validated Turn, and reports the mode/executor/status readback;
 4. credential but an unavailable managed runtime: the same default flow fails
@@ -570,16 +573,15 @@ def main() -> int:
     effects = summary["managed_default_run"]["effects"] or {}
     ok = (
         unbound_default_exit == 0
-        and summary["default_without_credential"]["host_kind"] == "dsh"
+        and summary["default_without_credential"]["host_kind"] == "codex-cli"
         and summary["default_without_credential"]["execution_mode"]
-        == "isolated-headless"
+        == "interactive-visible"
         and summary["default_without_credential"]["executor_kind"]
-        == EXECUTOR_KIND_MANAGED
+        == EXECUTOR_KIND_INDIVIDUAL
         and summary["default_without_credential"]["credential_env"] is None
         and summary["default_without_credential"]["operator_credential_bound"] is False
-        and summary["default_without_credential"]["available"] is False
-        and summary["default_without_credential"]["unavailable_reason"]
-        == OPERATOR_CREDENTIAL_UNCONFIGURED
+        and summary["default_without_credential"]["available"] is None
+        and summary["default_without_credential"]["unavailable_reason"] is None
         and individual_exit == 0
         and summary["explicit_individual_host"]["host_kind"] == "codex-cli"
         and summary["explicit_individual_host"]["executor_kind"]
