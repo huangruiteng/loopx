@@ -20,7 +20,7 @@ from .capabilities.manager_runtime import (
 )
 from .capabilities.manager_context.team_plan import (
     TeamPlanProjector,
-    project_team_plan_preview,
+    offer_team_plan_confirmation,
     team_plan_admission_context,
 )
 from .capabilities.steward_executor import load_effective_steward_executor_defaults
@@ -1229,7 +1229,7 @@ class ChatRuntimeController:
                 except (OSError, ValueError):
                     response = {**response, "proposals": [], "gate": None,
                                 "message": "材料尚未转交：目标绑定、来源授权或持久收件回读未通过。管家需要修复交接链路；没有改动任务或优先级。"}
-            project_team_plan_preview(
+            response = offer_team_plan_confirmation(
                 store=self.store,
                 session=session,
                 session_id=session_id,

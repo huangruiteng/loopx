@@ -615,14 +615,25 @@ Shipped enforcement, in delivery order:
    would not grant. A Turn response now carries the preview beside its Todo
    proposals, so the surfaces read one response shape instead of deciding which
    kinds of answer may arrive.
+7. **The answer says where the confirmation is.** Every manager answer that
+   admitted a preview carries one channel-authored pointer line naming the Goal
+   whose workspace holds the card and the fact that no lane exists before that
+   confirmation. It is a receipt, not a rewrite: the steward's prose is
+   preserved, and a Goal channel is never annotated. A remote manager audience
+   receives the pointer as well, which is what makes one manager answer
+   actionable even where the audience that asked cannot itself confirm.
 
-The confirmation surface the owner's own channel needs is shipped: the admitted
-preview reaches the typed action store, and the card it produces renders the
-same click path a single-lane `team.plan` card already had. What is still
-missing is the per-audience coverage behind it: a remote manager audience (the
-Lark manager channel) keeps the preview in its answer text and has no card on
-its own surface yet, so no card is written on its behalf. Traceability is
-recorded rather than implied: the settlement reads
+The owner's own channel ships both the card and the sentence that explains it:
+the admitted preview reaches the typed action store, the card renders the same
+click path a single-lane `team.plan` card already had, and the answer the owner
+reads names the Goal whose workspace holds that card. That sentence is the
+channel's, not the model's, and a remote manager audience receives it too --
+one manager answer is therefore actionable for every audience that can read it,
+because the audience that asked may not be the audience that can confirm.
+What is still missing is the remote audience's *own* confirmation surface: a
+Lark manager channel has no card of its own, so nothing is written on its
+behalf, and its owner confirms in the LoopX workspace the answer named.
+Traceability is recorded rather than implied: the settlement reads
 the Goal's canonical source basis before it writes, and the receipt carries it as
 a bounded `intent_basis`, so each lane Todo can be tied to the revision it was
 meant to advance even though the Todo row itself does not carry the field. The

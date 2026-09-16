@@ -53,7 +53,6 @@ import {
   sessionInvalidatedByPayload,
   todoNoWriteReceiptFromPayload,
   todoReceiptLabel,
-  isTeamPlanPreviewProposal,
   isTodoProposal,
   type ChatSessionSnapshot,
   type ChatSessionSummary,
@@ -2229,22 +2228,11 @@ function PersonalGoalHome({
         text: visibleAgentMessage(response.message || streamedText.trim())
           || `${answerIdentityLabel(targetContextId, selectedRoute.label)} 已完成分析。`,
       });
-      const teamPlanPreviews = response.proposals.filter(isTeamPlanPreviewProposal);
-      if (teamPlanPreviews.length > 0) {
-        // The steward's team plan is offered as the typed card the manager
-        // channel stored for the Goal it staffs, so the owner confirms the plan
-        // there instead of typing the request again.
-        const goals = [...new Set(teamPlanPreviews
-          .map((preview) => String(preview.preview.goal_id ?? ""))
-          .filter(Boolean))];
-        updateManagerAssistantMessage(targetContextId, streamingMessageId, {
-          lines: [goals.length > 0
-            ? `团队计划已生成可确认卡片（${goals.join("、")}），确认后才会创建 lane。`
-            : "团队计划已生成可确认卡片，确认后才会创建 lane。"],
-        });
-      }
       const todoProposals = response.proposals.filter(isTodoProposal);
-      if (todoProposals.length > 0 && !targetGoal && teamPlanPreviews.length === 0) {
+      // The channel already states where a team plan is confirmed: its answer
+      // names the Goal whose workspace holds the card, so a manager-channel
+      // proposal here is only ever a Todo the owner has to be sent to.
+      if (todoProposals.length > 0 && !targetGoal) {
         updateManagerAssistantMessage(targetContextId, streamingMessageId, {
           lines: ["请进入要修改的 Goal，预览并确认具体变更。"],
         });
