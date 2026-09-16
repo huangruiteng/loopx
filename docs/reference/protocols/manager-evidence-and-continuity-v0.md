@@ -98,22 +98,26 @@ provider is prepended when it is not the shipped one.
 ### Steward channel host selection
 
 The steward channel resolves one shipped default and one explicit override.
-`LOOPX_MANAGER_ENDPOINT` re-points the executor, and the shipped default is
-conditional on exactly one reported local fact: when the operator credential
-(`DEEPSEEK_API_KEY`, endpoint in `DEEPSEEK_BASE_URL`) is configured the channel
-runs on the managed host (`dsh`), and otherwise it stays on the interactive CLI
-endpoint (`codex`). The channel reports which of the two reasons applied
-(`operator_credential_configured` or `operator_credential_absent`) next to the
-`product_default` source, so the conditional default is disclosed rather than
-silent. The credential is reported as the variable name, never the value, and
-only for the endpoint that actually authenticates with it.
+`LOOPX_MANAGER_ENDPOINT` re-points the executor; without it the channel runs the
+interactive CLI endpoint (`codex`) on every machine, and the managed host (`dsh`)
+is reached by selecting it. The channel reports where the endpoint came from
+(`executor_endpoint_source`) and, when it is the shipped default, which decision
+that was (`executor_endpoint_default_reason`, `steward_channel_default`), so the
+default is disclosed rather than silent or inferred from the resolved host name.
 
-The channel must stay reachable, which is why the default is conditional: a
-managed host without its credential cannot answer at all, and an operator whose
-machine has only a personal login must still get a steward. The model follows the
-executor, so a conditional default cannot produce the mismatched pair of a
-managed executor with a vendor model. The resolved model and effort are never
-discovered from a credential.
+The channel must stay reachable, which is why its default does not move: the
+steward is the surface a person talks to, a managed host without its credential
+cannot answer at all, and an operator whose machine has only a personal login
+must still get a steward. A credential authenticates the endpoint it belongs to
+and never selects one. Its presence is still reported as a fact
+(`operator_credential_configured`), as the variable name and never the value,
+and only for the endpoint that actually authenticates with it.
+
+The model follows the executor, so a credential can no longer pair a managed
+model with an individual CLI login: an explicitly selected managed host takes the
+managed execution profile in full, and the interactive CLI endpoint keeps its
+vendor model. The resolved model and effort are never discovered from a
+credential.
 
 The managed host answers through a **segment transport**: the channel runs
 exactly one bounded DeepSeek Harness work segment per Chat turn on the managed
@@ -164,12 +168,12 @@ rather than guessing. When the projection proves the selected endpoint cannot
 serve the channel, the chip is marked unavailable and the header names the
 reported reason -- the missing operator credential, the missing runtime, or a
 rejected reasoning effort -- instead of asserting that one particular host is
-required. Because the shipped default is conditional, the header also states
-which branch it took and why, so a steward on the interactive CLI endpoint looks
-different when the operator chose it than when the machine simply has no
-credential. A capabilities payload without `channel_binding` renders the
-previous header unchanged, and an unrecognized reason stays unclaimed rather than
-being rendered as a reason this build invented.
+required. The header also names the shipped default and the one way to move it,
+so a steward an operator selected looks different from the one every machine
+runs; a configured credential changes nothing visible, because it selects
+nothing. A capabilities payload without `channel_binding` renders the previous
+header unchanged, and an unrecognized reason stays unclaimed rather than being
+rendered as a reason this build invented.
 
 | Surface, Chinese | Shipped selection | Managed host selected |
 | --- | --- | --- |

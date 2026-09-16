@@ -111,15 +111,14 @@ export function ChannelHeader({
       : managerExecutionUnavailableReason === "invalid_reasoning_effort"
         ? "header.managerExecutionUnavailableEffort"
         : "header.managerExecutionUnavailable";
-  // The shipped default is conditional, so the chip says which branch it took
-  // and why; without this a steward on codex looks identical whether the
-  // operator chose it or the machine simply had no credential.
+  // The shipped default is one endpoint, so the chip names it and the one way
+  // to move it; without this a steward the operator selected looks identical to
+  // the one every machine runs, and the reason stays in the binding's typed
+  // field instead of being invented here.
   const managerExecutionDefaultReason = managerChannelBinding
     && managerChannelBinding.executor_endpoint_source === "product_default"
-    && (managerChannelBinding.executor_endpoint_default_reason ?? "") !== ""
-    ? managerChannelBinding.executor_endpoint_default_reason === "operator_credential_absent"
-      ? "header.managerEndpointWithoutCredential"
-      : "header.managerEndpointFromCredential"
+    && managerChannelBinding.executor_endpoint_default_reason === "steward_channel_default"
+    ? "header.managerEndpointStewardDefault"
     : null;
 
   return (
