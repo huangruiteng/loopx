@@ -144,7 +144,10 @@ branch. The shared runtime event contains:
 
 - a stable `change_id` and credential-free repository identity;
 - typed `branch` or `detached` checkout identity and exact head OID;
-- counts and content digests for staged, unstaged, and untracked state;
+- counts and content digests for staged, unstaged, and untracked state. An
+  untracked entry git will not hash as an object -- a symlink to a directory, for
+  example -- is digested by what describes it, the link target or a bounded
+  directory inventory, so one such entry cannot fail the whole fingerprint;
 - the typed gate decision and next eligible time; and
 - lifecycle source and update time.
 

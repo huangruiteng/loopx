@@ -94,7 +94,10 @@ _GOAL_ID_MODE = os.environ.get("LOOPX_GOAL_ID_MODE", "fixed")
 #      而「Only user `/goal resume` reactivates it」——benchmark 里没有 user。
 #      v2 有 21/45 个任务、113/417 个阶段（27%）以 blocked 收尾。
 #
-# 三处都用官方 CLI 参数修，不碰 LoopX 渲染出的 goal body，保真度门禁照旧。
+# 修复①和②的参数已随上游删除首连 onboarding 门禁而失效：现在无论哪一版，
+# bootstrap 都只登记 goal，不再写 onboarding todo，也不再要求
+# connection validation / heartbeat 选择。LOOPX_UNGATED 目前只剩写权限声明
+# 这一处差异，仍不碰 LoopX 渲染出的 goal body，保真度门禁照旧。
 _UNGATED = bool(os.environ.get("LOOPX_UNGATED"))
 
 # ── 三个模式 ────────────────────────────────────────────────────────────────
@@ -157,17 +160,17 @@ class CodexLoopxAgent(CodexGoalAgent):
     def _bootstrap_gates(self, cwd: str) -> str:
         """bootstrap 末尾那串门禁/规划相关的参数。
 
-        基准两版（v1/v2）用的是抑制方向的组合，第三版反过来。差别只有这一处，
-        其余（objective、adapter、goal-doc、goal-id）逐字不变。
+        历史记录（v1/v2 用 `--no-onboarding-scan --codex-app-heartbeat ask`，
+        v3 用 `--accept-onboarding-agent-todos --begin-autonomous-advance
+        --codex-app-heartbeat yes`）描述的是 LoopX 当时的首连门禁参数。这些参数
+        已在上游删除：bootstrap 不再写入任何首连 onboarding todo，也不再有
+        connection validation / heartbeat 选择项。现在两版只剩写权限声明不同，
+        objective、adapter、goal-doc、goal-id 仍逐字不变。
         """
         if not _UNGATED:
-            return "--no-onboarding-scan --codex-app-heartbeat ask"
-        return (
-            # ① 打开 LoopX 自己的首连扫描与候选 todo 提议，并允许自动推进
-            "--accept-onboarding-agent-todos --begin-autonomous-advance "
-            # ② 预授权心跳 + 声明写权限（原来 coordination.write_scope 是空的）
-            f"--codex-app-heartbeat yes --write-scope {cwd}"
-        )
+            return ""
+        # 声明写权限（原来 coordination.write_scope 是空的）
+        return f"--write-scope {cwd}"
 
     def _goal_id(self) -> str:
         """本 trial 的 goal id。

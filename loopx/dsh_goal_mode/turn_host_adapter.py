@@ -34,6 +34,14 @@ from typing import Any, cast
 from ..control_plane.quota.turn_envelope import (
     turn_envelope_action_signature_document,
 )
+from ..control_plane.turn_driver.execution_profile import (
+    MANAGED_MODEL_DEFAULT,
+    MANAGED_PROVIDER_DEFAULT,
+    MANAGED_REASONING_EFFORT_DEFAULT,
+    managed_execution_profile,
+    managed_profile_unavailable_reason,
+    require_supported_reasoning_effort,
+)
 from ..control_plane.turn_driver.host_failure import BuiltInHostError
 
 from .host_failure_map import classify_dsh_failure, classify_dsh_terminal_reason
@@ -60,8 +68,13 @@ TEXT_LIMITS = {
     "summary": 400,
 }
 
-DEFAULT_MODEL = os.environ.get("DSH_MODEL", "deepseek-v4-flash")
-DEFAULT_PROVIDER = os.environ.get("DSH_PROVIDER", "deepseek-official")
+# The adapter reads the managed execution profile for these three fields; the
+# constants re-export the product defaults for callers that only need the
+# shipped values. Nothing here reads the process environment at import time, so
+# a caller that changes its environment still gets the value it just set.
+DEFAULT_MODEL = MANAGED_MODEL_DEFAULT
+DEFAULT_PROVIDER = MANAGED_PROVIDER_DEFAULT
+DEFAULT_REASONING_EFFORT = MANAGED_REASONING_EFFORT_DEFAULT
 DEFAULT_SESSION_ROOT_NAME = ".dsh-sessions"
 
 
@@ -301,19 +314,27 @@ def build_sdk_config(
     *,
     provider: str,
     model: str,
+    reasoning_effort: str | None,
     workspace: Path,
     dsh_home: Path,
     max_tokens: int | None,
     cordis: Path | None,
     runtime_bin: str | None,
     request_timeout_seconds: float | None,
+    env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build kwargs for the current ``DeepSeekHarnessConfig`` surface.
 
     The current SDK config calls its explicit local runtime root ``dsh_home``;
     the adapter's legacy ``session_root`` spelling maps to that field. The
     runtime binary maps to ``dsh_bin`` and a cordis file rides as one
-    ``patches`` entry.
+    ``patches`` entry. ``reasoning_effort`` rides the SDK's own field so the
+    effort the operator configured reaches the provider request instead of
+    staying a LoopX-side note.
+
+    ``env`` carries caller-owned runtime variables, such as the dsh permission
+    mode a Chat channel pins for its own segments. A caller that pins nothing
+    passes ``None`` and the runtime keeps the operator's composed default.
     """
 
     config: dict[str, Any] = {
@@ -322,6 +343,8 @@ def build_sdk_config(
         "cwd": str(workspace),
         "dsh_home": str(dsh_home),
     }
+    if reasoning_effort is not None:
+        config["reasoning_effort"] = reasoning_effort
     if max_tokens is not None:
         config["max_tokens"] = max_tokens
     if cordis is not None:
@@ -330,6 +353,8 @@ def build_sdk_config(
         config["dsh_bin"] = runtime_bin
     if request_timeout_seconds is not None:
         config["request_timeout_seconds"] = request_timeout_seconds
+    if env:
+        config["env"] = dict(env)
     return config
 
 
@@ -417,10 +442,12 @@ def run_dsh_turn(
     session_root: Path,
     provider: str,
     model: str,
+    reasoning_effort: str | None,
     max_tokens: int | None,
     cordis: Path | None,
     runtime_bin: str | None,
     request_timeout_seconds: float | None,
+    env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one bounded DeepSeek Harness session through the Python SDK.
 
@@ -441,12 +468,18 @@ def run_dsh_turn(
     config = build_sdk_config(
         provider=provider,
         model=model,
+        reasoning_effort=(
+            require_supported_reasoning_effort(reasoning_effort)
+            if reasoning_effort is not None
+            else None
+        ),
         workspace=workspace,
         dsh_home=session_root,
         max_tokens=max_tokens,
         cordis=cordis,
         runtime_bin=runtime_bin,
         request_timeout_seconds=request_timeout_seconds,
+        env=env,
     )
     with DeepSeekHarness(DeepSeekHarnessConfig(**config)) as harness:
         result = harness.run(prompt, session_id=session_id)
@@ -481,9 +514,13 @@ def terminal_error_reason(outcome: Mapping[str, Any]) -> dict[str, Any] | None:
 def load_dsh_runner(path: Path) -> Callable[..., object]:
     """Load an explicit runner hook exposing ``run_dsh_turn``.
 
-    The runner module must expose the same legacy keyword signature as
-    :func:`run_dsh_turn`, including ``session_root``. It may return either
-    the legacy bare final-response string or an outcome mapping carrying
+    The runner module must accept the keyword set this adapter always supplies:
+    ``prompt``, ``session_id``, ``workspace``, ``session_root``,
+    ``provider``, ``model``, ``reasoning_effort``, ``max_tokens``,
+    ``cordis``, ``runtime_bin`` and ``request_timeout_seconds``. ``env`` is an
+    optional extra the default runner accepts for callers that pin their own
+    runtime variables. A runner may return either the legacy bare
+    final-response string or an outcome mapping carrying
     ``final_response``/``finish_reason``/``events``. This seam is primarily
     used by hermetic smokes so the repository does not need a real DeepSeek
     Harness SDK/runtime installed.
@@ -505,8 +542,14 @@ def _default_session_root(workspace: Path) -> Path:
     return workspace / ".local" / DEFAULT_SESSION_ROOT_NAME
 
 
-def _resolve_dsh_home(workspace: Path, configured: Path | None) -> Path:
-    """Resolve the explicit SDK home without falling back to a user-global path."""
+def resolve_dsh_home(workspace: Path, configured: Path | None = None) -> Path:
+    """Resolve the explicit SDK home without falling back to a user-global path.
+
+    Home precedence is an explicit value, then ``DSH_HOME``, then the
+    workspace-local default. The steward channel resolves its own home through
+    this same function so the channel and the bounded Turn cannot end up on two
+    different dsh homes for the same workspace.
+    """
 
     if configured is not None:
         return configured.expanduser().resolve()
@@ -518,17 +561,33 @@ def _resolve_dsh_home(workspace: Path, configured: Path | None) -> Path:
 
 @dataclass(frozen=True)
 class DshHostConfig:
-    """Owner-local runtime configuration for one bounded dsh host attempt."""
+    """Owner-local runtime configuration for one bounded dsh host attempt.
+
+    ``provider``/``model``/``reasoning_effort`` default to ``None``, which means
+    "use the resolved managed execution profile". A CLI flag or an explicit
+    value overrides one field without touching the others, and the profile is
+    resolved when the attempt starts rather than at import time.
+    """
 
     workspace: Path
-    provider: str = DEFAULT_PROVIDER
-    model: str = DEFAULT_MODEL
+    provider: str | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
     max_tokens: int | None = None
     dsh_home: Path | None = None
     cordis: Path | None = None
     runtime_bin: str | None = None
     request_timeout_seconds: float | None = None
     dsh_runner: Path | None = None
+
+    def resolved_profile(self) -> dict[str, Any]:
+        """Return the profile fields this attempt would use, with their source."""
+
+        return managed_execution_profile(
+            provider=self.provider,
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
+        )
 
 
 def _derive_session_id(request: Mapping[str, Any], turn_key: str) -> str:
@@ -572,9 +631,18 @@ def _execute_turn_host_request(
     warn: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     workspace = config.workspace.expanduser().resolve()
-    dsh_home = _resolve_dsh_home(workspace, config.dsh_home)
+    dsh_home = resolve_dsh_home(workspace, config.dsh_home)
     dsh_home.mkdir(parents=True, exist_ok=True)
     session_id = _derive_session_id(request, str(request.get("turn_key") or ""))
+    profile = config.resolved_profile()
+    profile_reason = managed_profile_unavailable_reason(profile)
+    if profile_reason is not None:
+        # The endpoint is known to reject this effort, so this is a contract
+        # refusal rather than a provider failure a same-Turn retry could clear.
+        raise BuiltInHostError(
+            "dsh_execution_profile_rejected",
+            failure_kind="contract_rejected",
+        )
 
     try:
         prompt = render_prompt(authority)
@@ -591,8 +659,9 @@ def _execute_turn_host_request(
                 # Preserve the established runner keyword while mapping the
                 # path to the current SDK's explicit dsh_home field.
                 session_root=dsh_home,
-                provider=config.provider,
-                model=config.model,
+                provider=str(profile["provider"]),
+                model=str(profile["model"]),
+                reasoning_effort=str(profile["reasoning_effort"]),
                 max_tokens=config.max_tokens,
                 cordis=config.cordis,
                 runtime_bin=config.runtime_bin,
@@ -671,8 +740,24 @@ def run_dsh_host(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", default=DEFAULT_PROVIDER)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--provider",
+        default=None,
+        help=f"Provider for this attempt; defaults to the managed execution profile ({DEFAULT_PROVIDER}).",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=f"Model for this attempt; defaults to the managed execution profile ({DEFAULT_MODEL}).",
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        default=None,
+        help=(
+            "Reasoning effort for this attempt; defaults to the managed "
+            f"execution profile ({DEFAULT_REASONING_EFFORT})."
+        ),
+    )
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--workspace", default=os.getcwd())
     parser.add_argument(
@@ -718,6 +803,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         workspace=Path(args.workspace),
         provider=args.provider,
         model=args.model,
+        reasoning_effort=args.reasoning_effort,
         max_tokens=args.max_tokens,
         dsh_home=Path(args.dsh_home) if args.dsh_home else None,
         cordis=Path(args.cordis).expanduser().resolve() if args.cordis else None,

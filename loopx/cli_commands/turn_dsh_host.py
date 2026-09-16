@@ -24,6 +24,7 @@ def build_dsh_host_runner(
             for key, value in {
                 "provider": args.dsh_provider,
                 "model": args.dsh_model,
+                "reasoning_effort": args.dsh_reasoning_effort,
                 "max_tokens": args.dsh_max_tokens,
                 "dsh_home": Path(args.dsh_home) if args.dsh_home else None,
                 "cordis": Path(args.dsh_cordis) if args.dsh_cordis else None,

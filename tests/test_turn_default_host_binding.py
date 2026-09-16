@@ -1,4 +1,4 @@
-"""The Turn host is selected explicitly; a credential only authenticates it."""
+"""The default Turn host follows the operator credential; explicit selection wins."""
 
 from __future__ import annotations
 
@@ -7,40 +7,64 @@ import pytest
 from loopx.cli import build_parser
 from loopx.control_plane.operator_credential import configured_operator_credential
 from loopx.control_plane.turn_driver.host_binding import (
-    MANAGED_DEFAULT_TURN_HOST,
+    INDIVIDUAL_TURN_HOST,
     MANAGED_TURN_HOST,
     TURN_HOST_ENV_VAR,
     TURN_HOST_SOURCE_EXPLICIT_CONFIG,
-    TURN_HOST_SOURCE_PRODUCT_DEFAULT,
+    TURN_HOST_SOURCE_NO_OPERATOR_CREDENTIAL,
+    TURN_HOST_SOURCE_OPERATOR_CREDENTIAL,
     resolve_default_turn_host,
     selected_turn_host,
 )
 
 
-def test_default_host_is_the_managed_product_default():
-    assert MANAGED_DEFAULT_TURN_HOST == MANAGED_TURN_HOST == "dsh"
-    assert resolve_default_turn_host({}) == MANAGED_DEFAULT_TURN_HOST
-    assert selected_turn_host({}) == (
-        MANAGED_DEFAULT_TURN_HOST,
-        TURN_HOST_SOURCE_PRODUCT_DEFAULT,
+def test_managed_credential_selects_the_managed_default_host():
+    assert MANAGED_TURN_HOST == "dsh"
+    environ = {"DEEPSEEK_API_KEY": "sk-operator"}
+
+    assert resolve_default_turn_host(environ) == MANAGED_TURN_HOST
+    assert selected_turn_host(environ) == (
+        MANAGED_TURN_HOST,
+        TURN_HOST_SOURCE_OPERATOR_CREDENTIAL,
     )
 
 
 @pytest.mark.parametrize(
     "environ",
     [
-        {"DEEPSEEK_API_KEY": "sk-operator"},
         {"DEEPSEEK_API_KEY": ""},
         {"DEEPSEEK_API_KEY": "   "},
         {"DEEPSEEK_BASE_URL": "https://example.invalid"},
-        {"DEEPSEEK_API_KEY": "sk-operator", "DEEPSEEK_BASE_URL": "https://x.invalid"},
+        {},
     ],
 )
-def test_a_credential_never_changes_the_selected_host(environ):
-    """Discovering a credential must not re-point a Turn by itself."""
+def test_no_usable_credential_defaults_to_the_individual_host(environ):
+    """Without an operator credential the default is the host that can run."""
 
-    assert resolve_default_turn_host(environ) == MANAGED_DEFAULT_TURN_HOST
-    assert selected_turn_host(environ)[1] == TURN_HOST_SOURCE_PRODUCT_DEFAULT
+    assert INDIVIDUAL_TURN_HOST == "codex-cli"
+    assert resolve_default_turn_host(environ) == INDIVIDUAL_TURN_HOST
+    assert selected_turn_host(environ) == (
+        INDIVIDUAL_TURN_HOST,
+        TURN_HOST_SOURCE_NO_OPERATOR_CREDENTIAL,
+    )
+
+
+@pytest.mark.parametrize(
+    "environ",
+    [
+        {TURN_HOST_ENV_VAR: "codex-cli", "DEEPSEEK_API_KEY": "sk-operator"},
+        {TURN_HOST_ENV_VAR: "codex-cli"},
+        {TURN_HOST_ENV_VAR: "dsh", "DEEPSEEK_API_KEY": ""},
+    ],
+)
+def test_an_explicit_selection_ignores_the_credential(environ):
+    """A credential resolves the shipped default only, never an explicit host."""
+
+    assert selected_turn_host(environ) == (
+        environ[TURN_HOST_ENV_VAR],
+        TURN_HOST_SOURCE_EXPLICIT_CONFIG,
+    )
+    assert resolve_default_turn_host(environ) == environ[TURN_HOST_ENV_VAR]
 
 
 def test_explicit_config_repoints_the_default_host():
@@ -70,20 +94,22 @@ def _turn_argv(command: str) -> list[str]:
 
 @pytest.mark.parametrize("command", ["plan", "run-once"])
 @pytest.mark.parametrize(
-    "environ",
-    [{}, {"DEEPSEEK_API_KEY": "sk-operator"}, {"DEEPSEEK_API_KEY": "   "}],
+    "environ, expected_host",
+    [
+        ({}, "codex-cli"),
+        ({"DEEPSEEK_API_KEY": "sk-operator"}, "dsh"),
+        ({"DEEPSEEK_API_KEY": "   "}, "codex-cli"),
+    ],
 )
-def test_cli_defaults_to_the_selected_host_regardless_of_credentials(
-    command, environ, monkeypatch
+def test_cli_default_follows_the_operator_credential(
+    command, environ, expected_host, monkeypatch
 ):
     for name in ("DEEPSEEK_API_KEY", TURN_HOST_ENV_VAR):
         monkeypatch.delenv(name, raising=False)
     for name, value in environ.items():
         monkeypatch.setenv(name, value)
 
-    assert (
-        build_parser().parse_args(_turn_argv(command)).host == MANAGED_DEFAULT_TURN_HOST
-    )
+    assert build_parser().parse_args(_turn_argv(command)).host == expected_host
 
 
 @pytest.mark.parametrize("command", ["plan", "run-once"])
@@ -106,17 +132,17 @@ def test_explicit_host_flag_wins_over_the_default(monkeypatch):
 def test_default_execution_mode_follows_the_selected_host(command, monkeypatch):
     for name in ("DEEPSEEK_API_KEY", TURN_HOST_ENV_VAR):
         monkeypatch.delenv(name, raising=False)
+    individual_default = build_parser().parse_args(_turn_argv(command))
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-operator")
     managed = build_parser().parse_args(_turn_argv(command))
 
-    monkeypatch.setenv(TURN_HOST_ENV_VAR, "codex-cli")
-    individual = build_parser().parse_args(_turn_argv(command))
-
-    # The selected managed host runs bounded headless Turns; pairing it with a
-    # visible interactive mode would make the shipped default unschedulable.
+    # The managed host runs bounded headless Turns; pairing it with a visible
+    # interactive mode would make that default unschedulable.
     # run-once ships only the isolated-headless mode, so it keeps that either way.
-    assert managed.host == MANAGED_DEFAULT_TURN_HOST
+    assert managed.host == MANAGED_TURN_HOST
     assert managed.execution_mode == "isolated-headless"
-    assert individual.host == "codex-cli"
-    assert individual.execution_mode == (
+    assert individual_default.host == INDIVIDUAL_TURN_HOST
+    assert individual_default.execution_mode == (
         "interactive-visible" if command == "plan" else "isolated-headless"
     )

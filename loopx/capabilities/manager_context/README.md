@@ -60,14 +60,28 @@ The live connection must still match; disabled, ambiguous or replaced sessions
 cannot use an old grant. Every turn rechecks scope and discards upstream context
 when it changes.
 
-The manager now receives recent Core delivery receipts from the previous local
-calendar day through collection time, separate from current Todo freshness.
-Accounting rows are excluded before the presentation cap. Completed Todo titles
+The manager now receives a bounded recent-evidence window of Core delivery
+receipts instead of a single local calendar day: seven days by default, with an
+eight-receipt per-day and 48-receipt per-Goal bound, starting at local midnight
+and ending at collection time. `evidence_window` states the window bounds, the
+limits, per-day matched counts, and included versus omitted receipts, so a week
+question does not silently narrow to today and a wide window cannot grow the
+model context without a bound. Within the window each Goal's newest receipt keeps
+full `recorded_details` while older receipts are compacted to their recorded
+outcome, result class, probe kind and surface; receipts outside the window are
+outside coverage, not evidence of no progress. Accounting rows are excluded
+before the presentation cap. Completed Todo titles
 help explain recorded deliveries; archive coverage and omitted rows are explicit.
 Reported outcomes and evidence-bearing receipts remain distinct, and neither
 means the referenced artifact was inspected. Manager Lark replies preserve paragraphs,
 lists and emphasis through Markdown posts. Structured mentions and posts exceeding
 the rich-message request limit retain the existing text path without truncation.
+
+The same block declares the evidence sources as data: the local registry source
+plus every configured SSH host alias with its read status and scope. Declaring a
+source never connects to it, and a declared but unread source is a named coverage
+gap rather than evidence of no progress. Reading remote rows still requires the
+explicit remote read path below.
 
 ### Manager-directed Core inspection
 
@@ -88,9 +102,10 @@ stopped identities using the portfolio tool and then read the selected Goal.
 Each read checks the current audience grant before and after provider access,
 returns source revisions and pagination, and records a `manager.evidence_read`
 receipt. Unavailable sources and oversized rows remain explicit unknowns. The
-recent delivery window is still yesterday through now; arbitrary artifact paths
-and external links are not fetched. Existing non-Codex adapters retain their
-context projection until they implement an equivalent tool contract.
+dated delivery read stays inside the declared bounded window; arbitrary artifact
+paths and external links are not fetched. Non-Codex adapters receive the same
+windowed projection without the interactive inspection tools until they
+implement an equivalent tool contract.
 
 Manager context version 10 starts a fresh upstream session for older manager
 contexts. The logical Chat session and its receipts remain intact. Runtime support

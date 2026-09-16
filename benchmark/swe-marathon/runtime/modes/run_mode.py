@@ -231,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         session.bootstrap(objective)
         # 任务必须作为 todo 进 goal —— 闸门按 todo 选工作，只放进 turn 输入的话
-        # 模型会去推进 onboarding todo，跑满预算却零产出且不报错。
+        # 模型没有可执行 todo，会跑满预算却零产出且不报错。
         session.add_task_todo(task)
     except SessionError as exc:
         out["error"] = f"bootstrap 失败: {exc}"

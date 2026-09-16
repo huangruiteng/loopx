@@ -43,12 +43,8 @@ loopx new-project-prompt \
 
 请你按下面步骤推进，不要停在方案讨论：
 
-重要：`loopx connect` 默认会做一次快速 onboarding scan，基于 git status、
-最近 commit、顶层项目信号生成候选 agent todo。接入后不要直接开始 delivery；
-先把候选 todo 展示给我，并问我两件事：
-
-1. 接受、编辑或拒绝哪些候选 agent todo；
-2. 是否允许你从接受的 todo 开始自主推进。
+重要：`loopx connect` 只登记 goal 和 active state，不会生成首连 onboarding todo。
+接入后先只读核对状态与目标文档，把第一个交付 todo 的候选写给我确认，再开始 delivery。
 
 0. 先确认当前 shell 能调用 LoopX CLI；如果提示 `loopx`
    不在 PATH，运行本机安装脚本再继续：
@@ -112,18 +108,14 @@ loopx new-project-prompt \
 
 3. 确认 `.loopx/registry.json` 和
    `.codex/goals/<STABLE_GOAL_ID>/ACTIVE_GOAL_STATE.md` 已创建或更新。
-   阅读输出里的 `Onboarding Scan`、`Proposed Onboarding Candidates`、
-   `Accept Candidate Commands` 和 `Autonomy Choice`。不要让我手动执行这些命令；
-   你应当用中文简要解释候选 todo，然后询问：
-   - 接受哪些编号，是否需要改写；
-   - 是否 `autonomous=yes`，允许你在 quota guard 通过后开始执行第一个接受的
-     agent todo。
-   如果我接受候选 todo，用输出里的 `loopx todo add ...` 命令写入
-   agent todo；如果我允许自主推进，先运行 quota guard，再执行第一个已接受
-   agent todo。如果我不允许自主推进，只写入接受的 todo 并运行
-   `loopx refresh-state --goal-id <STABLE_GOAL_ID>`，然后停下来汇报。
-   如果目标状态包含私有证据，把 `.loopx/` 和 `.codex/goals/`
-   加入该项目 `.gitignore`。
+   接入输出里不再有 onboarding 扫描、候选 todo 或自主推进选择项；首连之后状态里
+   没有可执行的 agent todo。请只读核对目标文档和 registry 的 `execution_profile`，
+   用中文给出 1-3 个第一个交付 todo 的候选，问我确认后，用
+   `loopx todo add ...` 写入被接受的条目，再运行
+   `loopx refresh-state --goal-id <STABLE_GOAL_ID>` 并汇报。在用户确认前不要开始
+   delivery。
+  如果目标状态包含私有证据，把 `.loopx/` 和 `.codex/goals/`
+  加入该项目 `.gitignore`。
    `loopx connect` 默认会同步到共享全局 registry；不要手动编辑其他
    项目的 registry。
    接入后检查 registry 里的 `execution_profile`：它是本项目后续 heartbeat /

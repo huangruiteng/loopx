@@ -138,8 +138,6 @@ def main() -> int:
             "--goal-doc",
             "README.md",
             "--no-global-sync",
-            "--accept-onboarding-agent-todos",
-            "--begin-autonomous-advance",
             cwd=project,
             env=cli_env,
         )

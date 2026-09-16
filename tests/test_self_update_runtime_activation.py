@@ -207,6 +207,47 @@ def test_missing_commit_lineage_never_proves_runtime_active() -> None:
     }
 
 
+def test_immutable_ref_resolves_the_target_commit_without_remote_lineage() -> None:
+    immutable = INSTALLED_COMMIT
+    payload = build_check(
+        doctor_payload(
+            target_commit=None,
+            relation=None,
+            source_ref=immutable,
+        ),
+        ref=immutable,
+    )
+
+    activation = payload["runtime_activation_qualification"]
+    assert activation["decision"] == "runtime_active"
+    assert activation["runtime_active"] is True
+    assert activation["target_source_commit"] == immutable
+    assert activation["revision_relation"] == "same"
+    assert activation["successor"] == {"required": False, "kind": None}
+    assert payload["recommended_action"] == (
+        "installed version and trusted source lineage match; no update needed"
+    )
+
+
+def test_immutable_ref_mismatch_names_the_commit_difference() -> None:
+    payload = build_check(
+        doctor_payload(
+            target_commit=None,
+            relation=None,
+            source_ref=TARGET_COMMIT,
+        ),
+        ref=TARGET_COMMIT,
+    )
+
+    activation = payload["runtime_activation_qualification"]
+    assert activation["decision"] == "activation_qualification_required"
+    assert activation["runtime_active"] is None
+    assert activation["target_source_commit"] == TARGET_COMMIT
+    assert activation["reason"] == (
+        "installed source commit does not match the selected immutable source commit"
+    )
+
+
 def test_different_selected_source_never_reuses_unrelated_lineage() -> None:
     payload = build_check(
         doctor_payload(

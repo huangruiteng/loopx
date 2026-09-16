@@ -7,8 +7,6 @@ from pathlib import Path
 from ..bootstrap import (
     DEFAULT_DOMAIN,
     DEFAULT_OBJECTIVE,
-    ONBOARDING_CONNECTION_VALIDATION_AGENT,
-    ONBOARDING_CONNECTION_VALIDATION_CHOICES,
     bootstrap_project,
     derive_goal_display_name,
     render_bootstrap_markdown,
@@ -120,58 +118,6 @@ def register_bootstrap_connect_command(subparsers: argparse._SubParsersAction) -
         default=[],
         help="Outcome/evidence floor label that future delivery must advance. Repeatable.",
     )
-    bootstrap_parser.add_argument(
-        "--no-onboarding-scan",
-        action="store_true",
-        help="Skip the fast first-connect repository scan and todo candidate proposal.",
-    )
-    bootstrap_parser.add_argument(
-        "--onboarding-connection-validation",
-        choices=sorted(ONBOARDING_CONNECTION_VALIDATION_CHOICES),
-        default=ONBOARDING_CONNECTION_VALIDATION_AGENT,
-        help=(
-            "Choose who validates the project connection. The default 'agent' may create "
-            "a loopx-check Todo; 'provider-prevalidated' records provider ownership and "
-            "omits that agent Todo."
-        ),
-    )
-    bootstrap_parser.add_argument(
-        "--accept-onboarding-agent-todos",
-        action="store_true",
-        help="Write all proposed onboarding agent todos into the initial active state.",
-    )
-    bootstrap_parser.add_argument(
-        "--begin-autonomous-advance",
-        action="store_true",
-        help="Record that Codex may begin from accepted onboarding agent todos after the quota guard permits work.",
-    )
-    bootstrap_parser.add_argument(
-        "--codex-app-heartbeat",
-        choices=["ask", "yes", "no"],
-        default="ask",
-        help=(
-            "Codex App recurring heartbeat choice for onboarding. Default ask creates a user gate; "
-            "yes/no records an explicit operator decision for headless setup."
-        ),
-    )
-    bootstrap_parser.add_argument(
-        "--onboarding-max-commits",
-        type=int,
-        default=5,
-        help="Maximum recent commits sampled by the fast onboarding scan.",
-    )
-    bootstrap_parser.add_argument(
-        "--onboarding-max-status-paths",
-        type=int,
-        default=12,
-        help="Maximum git status lines sampled by the fast onboarding scan.",
-    )
-    bootstrap_parser.add_argument(
-        "--onboarding-max-top-level-files",
-        type=int,
-        default=24,
-        help="Maximum top-level names sampled by the fast onboarding scan.",
-    )
     bootstrap_parser.add_argument("--force", action="store_true", help="Replace existing goal entry or state file.")
     bootstrap_parser.add_argument(
         "--preserve-todos",
@@ -236,16 +182,6 @@ def handle_bootstrap_connect_command(
             execution_surface_streak_threshold=args.execution_surface_streak_threshold,
             execution_outcome_must_advance=args.execution_outcome_must_advance or None,
             execution_turn_granularity=("fine" if bool(args.fine_grained) else None),
-            onboarding_scan_enabled=not bool(args.no_onboarding_scan),
-            onboarding_connection_validation=str(
-                args.onboarding_connection_validation
-            ),
-            accept_onboarding_agent_todos=bool(args.accept_onboarding_agent_todos),
-            begin_autonomous_advance=bool(args.begin_autonomous_advance),
-            codex_app_heartbeat=str(args.codex_app_heartbeat),
-            onboarding_max_commits=args.onboarding_max_commits,
-            onboarding_max_status_paths=args.onboarding_max_status_paths,
-            onboarding_max_top_level_files=args.onboarding_max_top_level_files,
             preserve_todos=bool(args.preserve_todos),
             force=args.force,
             dry_run=args.dry_run,

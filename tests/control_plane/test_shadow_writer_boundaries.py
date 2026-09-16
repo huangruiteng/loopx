@@ -201,7 +201,7 @@ def test_force_bootstrap_cannot_erase_an_active_shadow_binding(tmp_path: Path, p
             goal_id=GOAL, objective="Rebuild safely.", domain="test", role="primary",
             parent_goal_id=None, state_file=state, goal_doc=None, adapter_kind="generic_project_goal_v0",
             adapter_status="connected", next_probe=None, spawn_allowed=False, max_children=0,
-            allowed_domains=[], write_scope=[], onboarding_scan_enabled=False,
+            allowed_domains=[], write_scope=[],
             force=True, preserve_todos=preserve, dry_run=False, sync_global=False)
     assert (registry.read_bytes(), state.read_bytes()) == before
 

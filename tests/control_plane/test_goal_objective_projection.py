@@ -76,9 +76,11 @@ def test_bootstrap_keeps_objective_separate_from_todo_sources(
     }
     assert items["user"] == []
     assert archive == []
-    assert len(items["agent"]) == 1
-    assert items["agent"][0]["action_kind"] == "onboarding_connection_validation"
-    assert active_state_next_action_entries(state_text) == [items["agent"][0]["text"]]
+    assert items["agent"] == []
+    assert active_state_next_action_entries(state_text) == [
+        "Initial routing is owned by the connected domain adapter."
+    ]
+    assert "action_kind=onboarding_" not in state_text
     assert active_state_section_text(state_text, "Objective") == " ".join(objective.split())
     objective_line = next(line for line in state_text.splitlines() if line.startswith("objective: "))
     assert json.loads(objective_line.removeprefix("objective: ")) == objective
@@ -113,7 +115,7 @@ def test_start_goal_bootstrap_todo_and_chat_readback(tmp_path, capsys, monkeypat
     assert main(["--format", "json", "--registry", str(registry_path),
                  "todo", "list", "--goal-id", GOAL_ID]) == 0
     todos = json.loads(capsys.readouterr().out)
-    assert todos["agent_todos"]["open_count"] == 1
+    assert todos["agent_todos"]["open_count"] == 0
     registry = json.loads(registry_path.read_text())
     goal = next(goal for goal in registry["goals"] if goal["id"] == GOAL_ID)
     assert _goal_public_context(registry, goal)["objective"] == " ".join(objective.split())[:600]

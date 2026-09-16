@@ -143,7 +143,7 @@ print(json.dumps({'executable': sys.executable, 'package': str(package),
 
         self.cli("console_project_bootstrap", "bootstrap", "--project", str(self.project),
             "--goal-id", GOAL, "--objective", "Qualify installed authority transactions.",
-            "--no-onboarding-scan", "--onboarding-connection-validation", "provider-prevalidated", "--no-global-sync")
+            "--no-global-sync")
         # Set configuration only, before shadow bootstrap creates the real binding.
         registry = json.loads(self.registry.read_text())
         goal = next(item for item in registry["goals"] if item["id"] == GOAL)

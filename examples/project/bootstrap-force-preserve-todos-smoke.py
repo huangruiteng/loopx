@@ -45,7 +45,6 @@ def main() -> int:
             GOAL_ID,
             "--objective",
             "Exercise force reconnect preservation.",
-            "--no-onboarding-scan",
             "--no-global-sync",
         )
         assert initial["ok"] is True, initial
@@ -66,7 +65,6 @@ def main() -> int:
             "src/**",
             "--force",
             "--preserve-todos",
-            "--no-onboarding-scan",
             "--no-global-sync",
         )
         assert preserved["ok"] is True, preserved
@@ -96,7 +94,6 @@ def main() -> int:
             "--write-scope",
             "docs/**",
             "--force",
-            "--no-onboarding-scan",
             "--no-global-sync",
         )
         assert replaced["ok"] is True, replaced

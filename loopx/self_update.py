@@ -11,6 +11,10 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from .activation_qualification import (
+    RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION,
+    runtime_activation_qualification,
+)
 from .doctor import collect_doctor
 from .install_contract import NO_CLONE_INSTALL_URL
 from .runtime_activation import restart_services_for_runtime_activation
@@ -22,9 +26,6 @@ DEFAULT_UPDATE_REPO = "huangruiteng/loopx"
 DEFAULT_UPDATE_REF = "stable"
 ROLLBACK_PREVIOUS_ALIAS = "previous"
 SOURCE_VERSION_CHECK_SCHEMA_VERSION = "loopx_source_version_check_v0"
-RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION = (
-    "loopx_runtime_activation_qualification_v0"
-)
 SOURCE_VERSION_CHECK_TIMEOUT_SECONDS = 3
 SOURCE_VERSION_READ_LIMIT_BYTES = 64 * 1024
 PERSISTED_PYTHON_FILENAME = ".loopx-python"
@@ -211,93 +212,6 @@ def _source_version_check(source: dict[str, Any]) -> dict[str, Any]:
         "version": version,
         "version_tag": f"v{version}",
         "source_url": source_url,
-    }
-
-
-def _runtime_activation_qualification(
-    *,
-    install_freshness: dict[str, Any],
-    source: dict[str, Any],
-) -> dict[str, Any]:
-    installed_commit = install_freshness.get("manifest_source_git_commit")
-    target_commit = install_freshness.get("freshness_source_git_commit")
-    revision_relation = install_freshness.get("manifest_source_freshness_relation")
-    qualified_repo = install_freshness.get("manifest_source_repo")
-    qualified_ref = install_freshness.get("manifest_source_ref")
-    selected_repo = source.get("repo")
-    selected_ref = source.get("ref")
-    package_matches_runtime = install_freshness.get(
-        "manifest_package_version_matches_runtime"
-    )
-    requires_upgrade = install_freshness.get("requires_upgrade")
-    has_commit_pair = all(
-        isinstance(commit, str) and bool(commit)
-        for commit in (installed_commit, target_commit)
-    )
-    source_identity_matches = all(
-        isinstance(value, str) and bool(value)
-        for value in (qualified_repo, qualified_ref, selected_repo, selected_ref)
-    ) and (
-        str(qualified_repo).removesuffix(".git").lower()
-        == str(selected_repo).removesuffix(".git").lower()
-        and str(qualified_ref).removeprefix("refs/heads/")
-        == str(selected_ref).removeprefix("refs/heads/")
-    )
-
-    if package_matches_runtime is False:
-        decision = "release_or_install_successor_required"
-        runtime_active: bool | None = False
-        successor_kind = "release_or_install"
-        reason = "release manifest package version does not match the active runtime"
-    elif not source_identity_matches:
-        decision = "activation_qualification_required"
-        runtime_active = None
-        successor_kind = "activation_qualification"
-        reason = "trusted source lineage does not identify the selected update source"
-    elif has_commit_pair and (
-        installed_commit == target_commit or revision_relation == "installed_ahead"
-    ):
-        decision = "runtime_active"
-        runtime_active = True
-        successor_kind = None
-        reason = "installed source contains the trusted target source commit"
-    elif has_commit_pair and revision_relation in {"installed_behind", "diverged"}:
-        decision = "release_or_install_successor_required"
-        runtime_active = False
-        successor_kind = "release_or_install"
-        reason = "installed source does not contain the trusted target source commit"
-    else:
-        decision = "activation_qualification_required"
-        runtime_active = None
-        successor_kind = "activation_qualification"
-        reason = "trusted installed-versus-target source lineage is unavailable"
-
-    return {
-        "schema_version": RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION,
-        "decision": decision,
-        "runtime_active": runtime_active,
-        "installed_release_id": install_freshness.get("release_id"),
-        "installed_version": install_freshness.get("current_version"),
-        "installed_source_commit": installed_commit,
-        "target_source_label": install_freshness.get("freshness_source_label"),
-        "target_source_commit": target_commit,
-        "revision_relation": revision_relation,
-        "qualified_source": {
-            "repo": qualified_repo,
-            "ref": qualified_ref,
-        },
-        "source_identity_matches": source_identity_matches,
-        "package_version_matches_runtime": package_matches_runtime,
-        "requires_upgrade": requires_upgrade,
-        "selected_source": {
-            "repo": selected_repo,
-            "ref": selected_ref,
-        },
-        "successor": {
-            "required": runtime_active is not True,
-            "kind": successor_kind,
-        },
-        "reason": reason,
     }
 
 
@@ -651,7 +565,7 @@ def build_update_plan(
             else None
         )
     runtime_activation = (
-        _runtime_activation_qualification(
+        runtime_activation_qualification(
             install_freshness=install_freshness,
             source=source,
         )

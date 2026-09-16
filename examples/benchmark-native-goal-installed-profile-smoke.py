@@ -166,9 +166,6 @@ def main() -> int:
             "read_only_project_map_v0",
             "--adapter-status",
             "connected-read-only",
-            "--no-onboarding-scan",
-            "--codex-app-heartbeat",
-            "no",
             "--no-global-sync",
         )
         _run_profile_cli(

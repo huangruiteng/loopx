@@ -18,7 +18,8 @@
 - `loopx doctor` 报告安装可用；
 - 项目存在 `.loopx/registry.json`；
 - 项目存在 `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`；
-- `loopx status` 能显示 active state、当前 Gate 和下一项 Agent Todo；
+- `loopx status` 能显示 active state 和当前 frontier；首连不会生成 onboarding todo，
+  第一个交付 todo 由 Agent 与你确认后写入；
 - `.loopx/` 与 `.codex/goals/` 不会进入 Git；
 - 再次连接会按精确 `goal_id` 复用已有 Goal，而不是覆盖目标；
 - 新接入的执行者使用 fresh `agent_id`，除非用户明确授权 takeover。
@@ -200,6 +201,11 @@ loopx start-goal \
 
 这个命令生成 guided transaction packet。它默认是预览，不应被理解为已经完成 Todo 写回、Host
 激活和 Agent Turn。Agent 或 Host 集成需要按 packet 执行计划、状态写回与启动步骤。
+
+`connect` / `bootstrap` 只登记 Goal 并写入 active state：它不会生成首连 onboarding todo、
+owner 决策门禁或 Host loop opt-in 门禁。首连之后状态里没有可执行的 agent todo，第一个交付
+todo 由 Agent 或已接入的 domain adapter 写入，避免自动化从生成的 onboarding 队列而不是
+调用方自己的工作队列开始。
 
 ### 先选择 Goal，再选择 Agent
 

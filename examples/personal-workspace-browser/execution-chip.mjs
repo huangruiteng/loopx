@@ -3,40 +3,68 @@ import { resolve } from "node:path";
 import { outputDir } from "./fixture.mjs";
 import { openWorkspacePage } from "./scenario-context.mjs";
 
-// The shipped steward binding: the channel selected the interactive CLI endpoint,
-// which is billed to an individual CLI login, and kept the vendor model default.
-const shippedBinding = {
+// The shipped steward default is conditional. On a machine with no operator
+// credential it resolves to the interactive CLI endpoint, which is billed to an
+// individual CLI login and keeps the vendor model default -- and the binding
+// says which branch was taken and why, instead of looking like an environment
+// value nobody chose.
+const withoutCredentialBinding = {
   schema_version: "manager_channel_binding_v0",
   executor_endpoint: "codex",
   executor_endpoint_source: "product_default",
+  executor_endpoint_default_reason: "operator_credential_absent",
   executor_kind: "individual",
   model: "gpt-6-astra",
   model_source: "vendor_default",
   credential_env_var: "",
-  operator_credential_configured: true,
+  operator_credential_configured: false,
   available: null,
   unavailable_reason: null,
 };
 
-// The operator explicitly pointed the channel at the managed host, which has no
-// interactive Chat transport yet, so the binding resolves but reports it.
-const managedHostBinding = {
-  ...shippedBinding,
+// With a credential configured the same rule selects the managed host, and the
+// model and reasoning effort follow that endpoint rather than the environment.
+const withCredentialBinding = {
+  schema_version: "manager_channel_binding_v0",
+  executor_endpoint: "dsh",
+  executor_endpoint_source: "product_default",
+  executor_endpoint_default_reason: "operator_credential_configured",
+  executor_kind: "managed",
+  model: "deepseek-v4-flash",
+  model_source: "managed_execution_profile",
+  credential_env_var: "DEEPSEEK_API_KEY",
+  operator_credential_configured: true,
+  available: true,
+  unavailable_reason: null,
+};
+
+// The channel can select the managed host, but if it cannot launch here the chip
+// must name the missing fact instead of the transport gap it used to have. An
+// explicitly selected endpoint carries no conditional-default reason, so only
+// the unavailability reason is rendered.
+const explicitManagedCredentialBinding = {
+  ...withCredentialBinding,
   executor_endpoint: "dsh",
   executor_endpoint_source: "explicit_config",
-  executor_kind: "managed",
-  credential_env_var: "DEEPSEEK_API_KEY",
+  executor_endpoint_default_reason: "",
+  operator_credential_configured: false,
   available: false,
-  unavailable_reason: "managed_host_chat_transport_unsupported",
+  unavailable_reason: "operator_credential_unconfigured",
+};
+
+const explicitManagedRuntimeBinding = {
+  ...explicitManagedCredentialBinding,
+  unavailable_reason: "dsh_runtime_unavailable",
 };
 
 // An endpoint the control plane reports no kind for must not be labelled as a
 // kind the operator can act on, and an unrecognized model source must not be
 // reported as the vendor default.
 const unknownKindBinding = {
-  ...shippedBinding,
+  ...withoutCredentialBinding,
   executor_endpoint: "pi",
   executor_endpoint_source: "explicit_config",
+  executor_endpoint_default_reason: "",
   executor_kind: "",
   model_source: "unrecognized_source",
 };
@@ -79,7 +107,7 @@ async function assertHairlineRow(page) {
 export const executionChipScenario = {
   id: "execution-chip",
   async run({ browser, collectCoverage, url }) {
-    const shipped = await openChip(browser, url, shippedBinding, collectCoverage);
+    const shipped = await openChip(browser, url, withoutCredentialBinding, collectCoverage);
     const { close, coverageEntries, page } = shipped;
     try {
       const text = await chipText(page);
@@ -92,37 +120,83 @@ export const executionChipScenario = {
         throw new Error(`Selecting the CLI endpoint must not move the model: ${text}`);
       }
       if (await page.locator(".personal-execution-note").count() !== 0) {
-        throw new Error("A usable steward channel must not render an unavailability note");
+        throw new Error(`A usable steward channel must not render an unavailability note: ${await chipText(page)}`);
+      }
+      // The default is conditional, so the chip states which branch it took.
+      const defaultNote = await page.locator(".personal-execution-rule-note").innerText();
+      if (!defaultNote.includes("未配置 operator 凭据") || !defaultNote.includes("codex")) {
+        throw new Error(`Conditional default did not explain itself: ${defaultNote}`);
       }
       await assertHairlineRow(page);
       await page.screenshot({
         animations: "disabled",
         fullPage: false,
-        path: resolve(outputDir, "execution-chip-manager-header.png"),
+        path: resolve(outputDir, "steward-execution-chip-desktop.png"),
       });
     } finally {
       await close();
     }
 
-    // A destination with no Chat transport resolves, reports, and says so.
-    const managed = await openChip(browser, url, managedHostBinding, collectCoverage);
+    // A configured credential selects the managed host, and the model and
+    // effort follow that endpoint instead of the environment.
+    const managed = await openChip(browser, url, withCredentialBinding, collectCoverage);
     try {
       const text = await chipText(managed.page);
-      if (!text.includes("dsh") || !text.includes("operator 凭据")) {
-        throw new Error(`Managed host chip did not report its credential bound: ${text}`);
+      for (const fragment of ["dsh", "operator 凭据", "deepseek-v4-flash"]) {
+        if (!text.includes(fragment)) {
+          throw new Error(`Managed host chip omitted ${fragment}: ${text}`);
+        }
       }
-      const note = managed.page.locator(".personal-execution-note");
-      await note.waitFor({ state: "visible" });
-      const noteText = (await note.innerText()).replace(/\s+/g, " ").trim();
-      if (!noteText.includes("尚无 Chat 通道") || !noteText.includes("dsh")) {
-        throw new Error(`Transport note did not name the pending managed host: ${noteText}`);
+      if (await managed.page.locator(".personal-execution-note").count() !== 0) {
+        throw new Error("A launchable managed host must not render an unavailability note");
       }
-      if (await managed.page.locator(".personal-execution-chip.is-unavailable").count() !== 1) {
-        throw new Error("An unavailable steward executor did not mark its chip as unavailable");
+      const defaultNote = (await managed.page.locator(".personal-execution-rule-note").innerText()).replace(/\s+/g, " ").trim();
+      if (!defaultNote.includes("已配置 operator 凭据") || !defaultNote.includes("dsh")) {
+        throw new Error(`Conditional default did not explain the managed branch: ${defaultNote}`);
+      }
+      if (text.includes("codex")) {
+        throw new Error(`The managed branch must not still report the CLI endpoint: ${text}`);
       }
       await assertHairlineRow(managed.page);
     } finally {
       coverageEntries.push(...await managed.close());
+    }
+
+    // A managed host that cannot launch here names the missing fact, and never
+    // claims the channel lacks a transport it now has.
+    for (const [binding, expected] of [
+      [explicitManagedCredentialBinding, "需要 operator 凭据"],
+      [explicitManagedRuntimeBinding, "未安装其 runtime"],
+    ]) {
+      const unavailable = await openChip(browser, url, binding, collectCoverage);
+      try {
+        const text = await chipText(unavailable.page);
+        if (!text.includes("dsh")) {
+          throw new Error(`Unavailable managed chip lost its endpoint: ${text}`);
+        }
+        const noteText = (await unavailable.page.locator(".personal-execution-note").innerText()).replace(/\s+/g, " ").trim();
+        if (!noteText.includes(expected)) {
+          throw new Error(`Unavailable managed chip did not name ${expected}: ${noteText}`);
+        }
+        if (noteText.includes("尚无 Chat 通道") || noteText.includes("loopx turn")) {
+          throw new Error(`Retired transport wording is still rendered: ${noteText}`);
+        }
+        if (await unavailable.page.locator(".personal-execution-chip.is-unavailable").count() !== 1) {
+          throw new Error("An unavailable steward executor did not mark its chip as unavailable");
+        }
+        await assertHairlineRow(unavailable.page);
+        if (binding === explicitManagedCredentialBinding) {
+          // The documentation assets are viewport captures of exactly these
+          // states, so they are produced here instead of being hand-cropped once.
+          await unavailable.page.screenshot({
+            animations: "disabled",
+            fullPage: false,
+            path: resolve(outputDir, "steward-execution-chip-unavailable-desktop.png"),
+          });
+        }
+      } finally {
+        coverageEntries.push(...await unavailable.close());
+      }
     }
 
     // An endpoint with no reported kind, and a model source this build does not
@@ -157,7 +231,7 @@ export const executionChipScenario = {
     // there; if it is shown it must still fit inside the viewport, and an
     // unavailable executor must keep its reason readable instead of collapsing.
     const mobile = await openWorkspacePage(browser, url, {
-      apiOptions: { managerChannelBinding: shippedBinding },
+      apiOptions: { managerChannelBinding: withoutCredentialBinding },
       collectCoverage,
       isMobile: true,
       viewport: { width: 390, height: 844 },
@@ -176,7 +250,7 @@ export const executionChipScenario = {
     }
 
     const mobileUnavailable = await openWorkspacePage(browser, url, {
-      apiOptions: { managerChannelBinding: managedHostBinding },
+      apiOptions: { managerChannelBinding: explicitManagedCredentialBinding },
       collectCoverage,
       isMobile: true,
       viewport: { width: 390, height: 844 },
@@ -188,12 +262,17 @@ export const executionChipScenario = {
       if (!noteBox || noteBox.width < 40) {
         throw new Error(`Unavailable transport reason collapsed in the narrow header: ${JSON.stringify(noteBox)}`);
       }
+      await mobileUnavailable.page.screenshot({
+        animations: "disabled",
+        fullPage: false,
+        path: resolve(outputDir, "steward-execution-chip-unavailable-mobile.png"),
+      });
     } finally {
       coverageEntries.push(...await mobileUnavailable.close());
     }
     return {
       coverageEntries,
-      note: "execution chip reports the selected executor, the credential it is billed to and the resolved model, names a missing Chat transport, and stays absent without a binding",
+      note: "execution chip reports the selected executor, the credential it is billed to and the resolved model, explains which branch of the conditional steward default it took, names why a managed host cannot launch, and stays absent without a binding",
     };
   },
 };
