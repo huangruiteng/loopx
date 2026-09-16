@@ -230,7 +230,7 @@ def test_actual_manager_turn_delivers_and_reports_host_receipt(fixture, monkeypa
     monkeypatch.setattr(
         manager_context,
         "collect_manager_turn_context",
-        lambda *a: {"coverage": {}, "goals": []},
+        lambda *a, **_: {"coverage": {}, "goals": []},
     )
     try:
         session, _ = controller.open_session(

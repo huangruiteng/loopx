@@ -77,11 +77,23 @@ means the referenced artifact was inspected. Manager Lark replies preserve parag
 lists and emphasis through Markdown posts. Structured mentions and posts exceeding
 the rich-message request limit retain the existing text path without truncation.
 
+The window is a selected decision, not a discovered fact. It stays at the shipped
+seven days unless the operator selects another value with
+`LOOPX_MANAGER_EVIDENCE_WINDOW_DAYS` (1..30); the block declares `days`,
+`days_source` (`product_default`, `explicit_config` or `explicit_argument`),
+`days_env_var`, `days_default`, `days_bounds` and `days_reason`. A missing,
+out-of-bounds or unreadable explicit value keeps the shipped default and reports
+`explicit_window_out_of_bounds`, so a bad setting can neither widen the prompt
+nor answer a narrower window than it declares.
+
 The same block declares the evidence sources as data: the local registry source
-plus every configured SSH host alias with its read status and scope. Declaring a
-source never connects to it, and a declared but unread source is a named coverage
-gap rather than evidence of no progress. Reading remote rows still requires the
-explicit remote read path below.
+plus every SSH host this machine registered for LoopX evidence — a host named by
+an `evidence_ssh_hosts` grant on any channel, not every configured SSH alias,
+since an operator's `github.com` or personal jump host holds no Core state.
+Owner conversations may still read another configured alias on demand by naming
+it. Declaring a source never connects to it, and a declared but unread source is
+a named coverage gap rather than evidence of no progress. Reading remote rows
+still requires the remote read path below.
 
 ### Manager-directed Core inspection
 
@@ -142,6 +154,29 @@ and the same Core readers as the local manager. Pagination remains explicit.
 Delivery reads support `days=1..90` so latest known historical outcomes can be
 explained alongside fresh current Todos without pretending stale execution is
 current. Both hosts need the updated LoopX runtime.
+
+`remote_read` states how the declared sources reach the model. An interactive
+endpoint keeps the on-demand path above (`on_demand_tool`) and pays no source
+latency. A prompt-only steward segment has no read tool, so the Turn owner reads
+the registered sources for it (`inline_in_prompt`) and adds a
+`manager_remote_evidence_v0` block:
+
+- one dial per Turn, at most two hosts, nine seconds per host inside a ten-second
+  Turn budget, eight portfolio rows per host; a source outside that budget is
+  `deferred_budget` with its last successful read, not a silent omission;
+- a fresh cached read (`ttl_seconds`, ten minutes) is reused instead of dialling
+  again, so a warm channel adds no per-Turn latency;
+- every source carries a typed status and freshness: `read` or `cached` with
+  `read_at` and `age_seconds`, `unavailable` with its reason, last successful
+  read and `coverage_effect`, `not_configured` for alias drift;
+- a failed read keeps the last successful rows only as
+  `source_freshness: "stale"` with `remote_source_rows_are_stale` in
+  `limitations`, so stale remote state is never presented as current progress and
+  a failure is never read as no progress;
+- cache entries are keyed by host, window and the exact grant scope, so a changed
+  grant or window re-reads instead of answering from a narrower cached read.
+- the declaration and the read use the same SSH configuration, so one packet
+  cannot call a host unconfigured and read it in the same Turn.
 
 
 ## A delegation returns automatically
