@@ -190,6 +190,52 @@ def test_render_is_deterministic_valid_json(repo: Path) -> None:
     assert '    {"name": "Kind", "module": "loopx/a.py", "values": ["one", "two"]}' in rendered
 
 
+@pytest.fixture
+def retirement_repo(tmp_path: Path) -> Path:
+    """A tree where retired migration vocabulary sits next to live vocabulary."""
+    _write(
+        tmp_path,
+        "loopx/control_plane/agents/legacy_migration.py",
+        'LEGACY_HIERARCHY_ROLES = {"primary-agent", "side-agent"}\n',
+    )
+    _write(
+        tmp_path,
+        "loopx/control_plane/todos/contract.py",
+        'TODO_REMOVED_REVIEW_CONTINUATION_POLICY_VALUES = {"primary_review", "review_handoff"}\n'
+        'TODO_DECISION_SCOPE_KIND_VALUES = {"private_read", "write_scope"}\n',
+    )
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "loopx"], check=True)
+    return tmp_path
+
+
+def test_retired_migration_vocabulary_stays_out_of_the_map(retirement_repo: Path) -> None:
+    """A migration module's constants describe retired vocabulary, not ownership.
+
+    Republishing them would copy hierarchy tokens into a derived artifact
+    outside the peer migration boundary the repository guard enforces, and
+    would name a migration module as the current owner of a retired vocabulary.
+    The declared exclusions stay visible so a reviewer sees the omission.
+    """
+    inventory = build_inventory(retirement_repo)
+    assert [entry["name"] for entry in inventory["python_closed_sets"]] == [
+        "TODO_DECISION_SCOPE_KIND_VALUES"
+    ]
+    assert inventory["retired_vocabulary_excluded"] == [
+        {
+            "module": "loopx/control_plane/agents/legacy_migration.py",
+            "name": "LEGACY_HIERARCHY_ROLES",
+        },
+        {
+            "module": "loopx/control_plane/todos/contract.py",
+            "name": "TODO_REMOVED_REVIEW_CONTINUATION_POLICY_VALUES",
+        },
+    ]
+    duplicates = inventory["duplicate_definitions"]
+    assert duplicates["multi_value_twins"] == []
+    assert duplicates["multi_value_forks"] == []
+
+
 def test_committed_inventory_matches_the_tree() -> None:
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "generate_semantic_inventory.py"), "--check"],

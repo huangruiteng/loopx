@@ -23,6 +23,23 @@ DEFAULT_ROOT = "loopx"
 SOURCE_SUFFIXES = (".py", ".ts")
 SKIP_PARTS = frozenset({"__pycache__", "node_modules"})
 
+# Constants that exist only to read or reject vocabulary retired by a one-way
+# migration. Their values are not current semantic ownership, so the repository
+# map must not republish them: listing them misstates which module owns the
+# vocabulary today and copies retired hierarchy tokens into a derived artifact
+# outside the migration boundary the peer-agent guard enforces. Each pair is
+# explicit rather than name-matched so a new carrier cannot be hidden by
+# accident, and the skipped pairs stay visible in the rendered inventory.
+RETIRED_VOCABULARY_CARRIERS = frozenset(
+    {
+        ("loopx/control_plane/agents/legacy_migration.py", "LEGACY_HIERARCHY_ROLES"),
+        (
+            "loopx/control_plane/todos/contract.py",
+            "TODO_REMOVED_REVIEW_CONTINUATION_POLICY_VALUES",
+        ),
+    }
+)
+
 UPPER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SCHEMA_VERSION_NAME = re.compile(r"SCHEMA_VERSION$")
 # Names that are a per-module convention rather than shared vocabulary: every
@@ -253,6 +270,10 @@ def _sorted_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(entries, key=lambda entry: (entry["module"], entry["name"]))
 
 
+def _is_retired_vocabulary(entry: dict[str, Any]) -> bool:
+    return (entry.get("module"), entry.get("name")) in RETIRED_VOCABULARY_CARRIERS
+
+
 def build_inventory(
     repo_root: Path, root: str = DEFAULT_ROOT, sources: list[SourceFile] | None = None
 ) -> dict[str, Any]:
@@ -274,6 +295,12 @@ def build_inventory(
             facts = typescript_facts(source)
             const_arrays.extend(facts["const_arrays"])
             string_constants.extend(facts["string_constants"])
+
+    enums = [entry for entry in enums if not _is_retired_vocabulary(entry)]
+    closed_sets = [entry for entry in closed_sets if not _is_retired_vocabulary(entry)]
+    literal_aliases = [entry for entry in literal_aliases if not _is_retired_vocabulary(entry)]
+    const_arrays = [entry for entry in const_arrays if not _is_retired_vocabulary(entry)]
+    string_constants = [entry for entry in string_constants if not _is_retired_vocabulary(entry)]
 
     multi_value = multi_value_carriers(
         enums=enums,
@@ -306,6 +333,9 @@ def build_inventory(
         "advisory": (
             "Structural map only. Consumer counts are printed by the generator's --report "
             "and are not committed. Single-module string constants are counted, not listed."
+        ),
+        "retired_vocabulary_excluded": _sorted_entries(
+            {"module": module, "name": name} for module, name in RETIRED_VOCABULARY_CARRIERS
         ),
         "python_enums": _sorted_entries(enums),
         "python_closed_sets": _sorted_entries(closed_sets),
