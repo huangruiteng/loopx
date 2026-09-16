@@ -62,6 +62,36 @@ type ActionReviewState =
 
 export type ActionReviewPlan = ActionReviewIdentity & ActionReviewState & {
   operationFrame?: OperationReviewFrame;
+  reviewCardFrame?: ReviewCardFrame;
+};
+
+/**
+ * Provider-neutral content for a confirmation card on a surface that is not the
+ * Dashboard, such as a Lark Card 2.0.
+ *
+ * The operation frame above can only describe an `operation.execute` proposal,
+ * because its identity is the operation envelope. A plan has no envelope: what
+ * makes its confirmation exact is the action proposal and the state fingerprint
+ * the apply re-validates against, so that pair is the frame's identity. Labels
+ * stay keys, not sentences, because this boundary is language-neutral; the
+ * surface owns the words and renders the data below.
+ */
+export type ReviewCardFrame = {
+  schemaVersion: "review_card_frame_v0";
+  actionKind: string;
+  proposalId: string;
+  stateFingerprint: string;
+  kind: "confirmation";
+  attentionKind: "authority";
+  interactionMode: "confirm_reject";
+  decisions: readonly ["confirm", "reject"];
+  titleKey: string;
+  subtitleKey: string;
+  confirmLabelKey: string;
+  rejectLabelKey: string;
+  warningKey: string;
+  focus: string;
+  fields: Array<{ key: string; value: string }>;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -80,6 +110,99 @@ function objectValue(value: unknown): JsonRecord | null {
 
 function textValue(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function compactValue(value: unknown, limit = 240): string {
+  const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+function laneFieldValue(laneValue: unknown): string {
+  const lane = objectValue(laneValue) ?? {};
+  const agent = compactValue(lane.agent_id, 80) || "unknown-agent";
+  const acceptance = compactValue(lane.acceptance, 200);
+  if (lane.staffing === "gap") {
+    const declined = objectValue(lane.declined_first_todo) ?? {};
+    return [
+      `${agent} · gap`,
+      compactValue(lane.gap_reason_code, 80),
+      compactValue(declined.text, 200),
+    ].filter(Boolean).join(" · ");
+  }
+  const todo = objectValue(lane.first_todo) ?? {};
+  return [
+    `${agent} · ready`,
+    compactValue(todo.priority, 8),
+    compactValue(todo.action_kind, 40),
+    compactValue(todo.text, 240),
+    acceptance ? `acceptance: ${acceptance}` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function envelopeFieldValue(value: unknown): string {
+  const envelope = objectValue(value) ?? {};
+  return Object.entries(envelope)
+    .map(([key, item]) => `${key}: ${typeof item === "object" && item !== null ? JSON.stringify(item) : String(item)}`)
+    .join(" · ");
+}
+
+/**
+ * Compile the confirmation frame for a validated steward team plan.
+ *
+ * Returns `undefined` for anything else, so a surface asks for a plan card only
+ * when the proposal is one, and gets the same silence for a proposal whose plan
+ * is not a preview. The plan below is data the model wrote; the frame copies it
+ * as values and never as instructions.
+ */
+export function compileReviewCardFrame(proposalValue: unknown): ReviewCardFrame | undefined {
+  const proposal = objectValue(proposalValue);
+  if (proposal?.action_kind !== "team.plan") return undefined;
+  if (proposal.status !== "preview_ready" && proposal.status !== "deferred") return undefined;
+  const parameters = objectValue(proposal.normalized_parameters);
+  const plan = objectValue(parameters?.plan);
+  if (!plan || plan.kind !== "steward_team_plan_preview" || plan.applies !== false) return undefined;
+  const proposalId = textValue(proposal.proposal_id);
+  const stateFingerprint = textValue(proposal.expected_state_fingerprint);
+  const goalId = textValue(plan.goal_id);
+  if (!proposalId || !stateFingerprint || !goalId) return undefined;
+  const lanes = Array.isArray(plan.lanes) ? plan.lanes : [];
+  const gaps = Array.isArray(plan.gaps) ? plan.gaps : [];
+  const fields = [
+    { key: "goal", value: goalId },
+    { key: "objective", value: compactValue(plan.objective) },
+    ...lanes.map((lane, index) => ({ key: `lane_${index + 1}`, value: laneFieldValue(lane) })),
+    ...(gaps.length > 0
+      ? [{
+        key: "lane_gaps",
+        value: gaps
+          .map((gapValue) => {
+            const gap = objectValue(gapValue) ?? {};
+            return [compactValue(gap.lane_id, 80), compactValue(gap.reason_code, 80)].filter(Boolean).join(": ");
+          })
+          .filter(Boolean)
+          .join(" · "),
+      }]
+      : []),
+    { key: "quota_envelope", value: envelopeFieldValue(plan.quota_envelope) },
+    { key: "stop_condition", value: compactValue(plan.stop_condition) },
+  ].filter((field) => field.value.length > 0);
+  return {
+    schemaVersion: "review_card_frame_v0",
+    actionKind: "team.plan",
+    proposalId,
+    stateFingerprint,
+    kind: "confirmation",
+    attentionKind: "authority",
+    interactionMode: "confirm_reject",
+    decisions: ["confirm", "reject"],
+    titleKey: "team_plan_preview",
+    subtitleKey: "preview_only_no_lane_exists",
+    confirmLabelKey: "confirm_team_plan",
+    rejectLabelKey: "reject_team_plan",
+    warningKey: "confirming_creates_each_ready_lane_first_todo",
+    focus: `${goalId} · ${lanes.length} lane${lanes.length === 1 ? "" : "s"}`,
+    fields,
+  };
 }
 
 function operationContent(parameters: JsonRecord): OperationReviewContent | null {
@@ -175,10 +298,12 @@ export function compileActionReviewPlan(proposalValue: unknown): ActionReviewPla
       : "",
   };
   const operationFrame = compileOperationReviewFrame(proposal);
+  const reviewCardFrame = compileReviewCardFrame(proposal);
   const finish = (state: ActionReviewState): ActionReviewPlan => ({
     ...identity,
     ...state,
     ...(operationFrame ? { operationFrame } : {}),
+    ...(reviewCardFrame ? { reviewCardFrame } : {}),
   });
   const held = (
     interaction: "gated" | "refresh" | "repair" | "pending" | "completed" | "inactive",

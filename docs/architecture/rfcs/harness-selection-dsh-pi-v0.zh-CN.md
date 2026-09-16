@@ -421,6 +421,8 @@ journal 与配额语义；B 作为上游接口出现时的低成本替代；只�
 
 产生计划的管家会话现在也会列出它自己通道存入的那张卡片，而不只是提示里点名的 Goal 工作区。这是同一份已校验提案上的展示改动：不新增 Lark 卡片，确认前不创建任何东西，而为已选 Goal 拉取的提案仍留在该 Goal 工作区，因为它属于那个上下文。
 
+**Lark 卡片的复用边界。** LoopX 已经交付了卡片确认的 Lark 半边：`loopx/extensions/lark/goal_channel_operation.py` 会把 `operation.execute` 类型提案投递成不可转发的 Card 2.0（确认/拒绝按钮），`event_collector_runtime` 消费 `card.action.trigger`，传输层负责操作者成员与租户校验、重放保护、卡片读回与结果卡片修补。可复用的是这套外壳加 `presentation.action_review_plan.compile`；操作特有的部分是 operation envelope 身份、claim/execute 效果，以及投递所解析的 Goal channel 绑定。现在 `compileReviewCardFrame` 也会为已校验的 `team.plan` 返回语言中立的 `review_card_frame_v0`——身份是提案加 apply 会重新校验的 state fingerprint，字段是 `{key, value}` 对、固定标签保持为 key——因此团队计划卡片可以复用同一套外壳与回调消费者。仍缺的是**提问受众的投递路由**（管家群不是 Goal channel 绑定）以及一个**走 Chat action service 应用提案、而非 claim operation envelope 的回调效果**。目前还不会投递任何计划卡片；要从 Lark 确认，还需要明确回答"外部管家受众是否可以做这次持久写入"。
+
 ### 与 multi-agent / shared authority 契约的关系
 
 [对齐 RFC](shared-goal-alignment-and-governed-amendment-v0.zh-CN.md) 拥有共享意图及受治理修订；[共享权威 RFC](shared-goal-authority-state-provider-v0.zh-CN.md) 拥有持久化/晋升。团队计划只提议已接受 intent 内的工作，不能靠 envelope 散文修改权限、共享验收或终止条件。Stage 3 amendment commit 仍未交付。回执可选 `intent_basis` 是既有 `source_basis_digest`，不是尚未实现的完整 intent envelope 版本，不能通过改名赋予历史回执更强语义。
