@@ -341,6 +341,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "global-risks",
         "global-summary",
         "global-todos",
+        "goal-actions",
         "goal-alignment",
         "amendment-proposal",
         "goal-amendment-proposal",

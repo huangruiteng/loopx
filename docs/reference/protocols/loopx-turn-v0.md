@@ -330,6 +330,33 @@ One driver tick has exactly these ordered phases:
 The driver may stop after any phase. A stop must return a typed result and must
 not silently continue with a different execution mode.
 
+### One Executor Per Turn Lane
+
+A **Turn lane** is one agent working one goal. Phase 5 launches exactly one
+executing Turn per lane: while an executing Turn holds the lane, a second
+executing Turn for the same goal and agent stops before the journal, the host,
+and quota, and returns the typed refusal instead:
+
+```json
+{
+  "status": "unavailable",
+  "reason": "turn_lane_in_flight",
+  "remediation": ["wait_for_in_flight_turn"],
+  "in_flight": {"agent_id": "...", "operation": "loopx_turn_lane", "pid": 1234, "acquired_at": "..."}
+}
+```
+
+`in_flight` names the holder so the operator can see what to wait for; the
+runtime path, the lock id, and the lock policy stay out of it. The fence is a
+kernel lock held by the executing process, so a crashed or killed Turn releases
+the lane instead of leaving a stale claim that no later Turn can enter, and a
+settled Turn releases it for the next Turn, including an idempotent replay.
+
+Only an executing Turn takes the fence. A non-executing decision — a preview, or
+a route that stops before the host — invokes no host and spends nothing, so it
+always answers. Lanes stay independent: one agent on two goals, or two agents on
+one goal, do not contend.
+
 ### Read-Only Journal Inspection
 
 Maintainers can inspect one existing fenced journal without entering the live

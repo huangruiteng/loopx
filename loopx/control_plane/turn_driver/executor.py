@@ -42,6 +42,7 @@ from .journal_store import (
     turn_journal_path,
     write_turn_journal_checkpoint as _write_journal,
 )
+from .lane_fence import single_executor_per_turn_lane, turn_lane_in_flight_projection
 from .recovery import (
     assess_existing_turn_recovery,
     build_turn_recovery_audit,
@@ -803,6 +804,7 @@ def _execution_payload(
         ),
         **({"todo_completion": todo_completion} if todo_completion else {}),
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
+        **turn_lane_in_flight_projection(journal),
         **managed_executor_remediation_projection(journal),
         **project_host_failure(journal),
         **({"recovery": dict(recovery)} if isinstance(recovery, Mapping) else {}),
@@ -1266,6 +1268,7 @@ def _typed_settlement_stage(
     )
 
 
+@single_executor_per_turn_lane(_execution_payload)
 def run_loopx_turn_once(
     plan: Mapping[str, Any],
     *,
@@ -1317,8 +1320,7 @@ def run_loopx_turn_once(
         plan, execute=execute, host_projection=host_projection
     )
     if fail_closed is not None:
-        # Fail closed on an executor LoopX can prove cannot launch: report the
-        # planned executor and stop before the journal, host, and quota.
+        # Refuse before journal/host/quota when the planned executor cannot launch.
         return _execution_payload(
             plan, fail_closed, execute=True, replayed=False, effects=empty_effects
         )
