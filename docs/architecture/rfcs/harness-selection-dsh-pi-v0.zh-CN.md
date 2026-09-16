@@ -423,6 +423,7 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
    预览只会用**它点名那个 Goal** 的 Agent 来校验：业主自己的通道可解析任意已注册 Goal，
    外部管家通道只解析它被绑定的 Goal，而 registry 不认识的 Goal——或超出该通道范围的
    Goal——会让预览被丢弃，而不是拿另一个 Goal 的 Agent 去校验它。
+   出厂的管家指引要求计划**点名**那个 Goal，因为不点名 Goal 的计划会被丢弃而不是被展示。
 5. **从 Chat 确认落地。** 类型化 Chat action 面拥有一个 `team.plan` 动作：它的预览用该 Goal
    已注册 Agent 与本机 advancement action kind 校验计划，它的落地则把同一份载荷交给受治理
    提案所有者在 `PRE_SETTLEMENT` 相位重新校验，因此**一次业主确认**就会为每条 ready lane

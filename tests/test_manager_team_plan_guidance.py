@@ -23,6 +23,14 @@ def test_manager_guidance_orders_one_team_preview_before_any_effect() -> None:
     # The preview gates every effect, and the effects keep their canonical owners.
     assert "proposal, never an effect" in text
     assert "until the owner confirms that exact preview" in text
+    # A plan is admitted only for the Goal it names, and the confirmation is the
+    # product surface's typed action rather than something the steward performs.
+    assert "Name the exact Goal the plan\nstaffs" in text
+    assert "dropped instead of shown" in text
+    assert "typed team-plan action from the product\nsurface" in text
+    # A lane may not be claimed to exist before its apply receipt returns.
+    assert "before the\napply receipt returns" in text
+    assert "the plan went stale" in text
     assert "Agent\nregistration, Todo creation, quota or goal policy" in text
     assert "charge quota for the preview itself" in text
     # An unstaffable lane is named as a gap rather than invented.

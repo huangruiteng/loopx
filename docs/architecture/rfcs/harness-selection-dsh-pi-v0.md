@@ -543,6 +543,8 @@ Shipped enforcement, in delivery order:
    Goal, an external manager channel resolves only the Goals it is bound to, and
    a Goal the registry does not know - or one outside that channel's scope -
    drops the preview instead of validating it against another Goal's Agents.
+   The shipped steward guidance requires the plan to name that Goal, because a
+   plan that does not name it is dropped rather than shown.
 5. **Confirmed apply from Chat.** The typed Chat action surface owns a
    `team.plan` action. Its preview validates the plan against that Goal's
    registered Agents and the host's advancement action kinds, and its apply
