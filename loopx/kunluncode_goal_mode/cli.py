@@ -25,7 +25,17 @@ from loopx.kunluncode_goal_mode.runtime import (
 from loopx.registry import atomic_write_json
 
 
-MCP_REQUIREMENT = "mcp==1.28.1"
+# Single source for the adapter's `mcp` pin. It is an exact pin, not a range:
+# loopx/goal_mode_mcp.py imports `mcp.server.fastmcp`, which the MCP SDK 2.x
+# line no longer ships, and the pin is a deliberate security pin (892faa2c9
+# "fix(security): upgrade the MCP SDK pin"). It belongs to the KunlunCode
+# adapter venv only; loopx/claude_goal_mode/scripts/install.py provisions its
+# own venv and spells the same dependency as a range ("mcp<2"). The two are
+# separate packaging boundaries, so they are not required to agree on a
+# spelling. Bump MCP_SDK_VERSION alone; the probe and the user-facing message
+# below derive from it.
+MCP_SDK_VERSION = "1.28.1"
+MCP_REQUIREMENT = f"mcp=={MCP_SDK_VERSION}"
 MCP_SCRIPT = Path(__file__).with_name("server.py").resolve()
 DEFAULT_MCP_VENV = (
     Path.home() / ".local" / "share" / "loopx" / "kunluncode-mcp" / ".venv"
@@ -65,7 +75,7 @@ def _compatible_python(value: str | Path) -> bool:
                 "from importlib.metadata import version; "
                 "from mcp.server.fastmcp import FastMCP; "
                 "import loopx.kunluncode_goal_mode.server; "
-                "assert version('mcp') == '1.28.1'"
+                f"assert version('mcp') == '{MCP_SDK_VERSION}'"
             ),
         ],
         timeout=30,
@@ -192,7 +202,8 @@ def install_mcp(*, python: str | None, dry_run: bool, replace: bool) -> str:
         selected_python = provision_mcp_python(dry_run=dry_run)
     if not dry_run and not _compatible_python(selected_python):
         raise RuntimeError(
-            f"{selected_python} must import LoopX and mcp==1.28.1; use uv to sync the adapter environment"
+            f"{selected_python} must import LoopX and {MCP_REQUIREMENT}; "
+            "use uv to sync the adapter environment"
         )
     existing = next(
         (
