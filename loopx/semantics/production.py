@@ -70,6 +70,10 @@ def collect_production(root: Path, vocabulary: dict[str, Any], sources: list[Sou
             rows.extend(scan_python_production(source, field=field, enums=enums, return_functions=names,
                                               return_paths=paths, call_arguments=calls))
     rows.extend(_typescript_scan(root, [s for s in selected if s.suffix == '.ts'], field, returns))
+    if vocabulary.get('input_producer') == 'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition':
+        from .turn_contract_witness import probe_controller_production, probe_projection_production
+        rows.extend(probe_controller_production())
+        rows.extend(probe_projection_production())
     return rows
 
 

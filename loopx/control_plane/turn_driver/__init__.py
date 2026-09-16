@@ -36,6 +36,7 @@ from .managed_step import (
     LOOPX_TURN_MANAGED_STEP_SCHEMA_VERSION,
     decide_managed_step,
 )
+from .turn_contract_generated import project_turn_route
 from .recovery import TurnRecoveryBlockedError
 from .loop_controller import (
     BOUNDED_TURN_BUDGET_SCHEMA_VERSION,
@@ -84,6 +85,7 @@ __all__ = [
     "codex_cli_session_binding",
     "codex_cli_session_id_from_jsonl",
     "decide_loop_disposition",
+    "project_turn_route",
     "decide_managed_step",
     "load_codex_cli_session",
     "inspect_loopx_turn_journal",

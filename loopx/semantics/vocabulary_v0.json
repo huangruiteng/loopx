@@ -118,7 +118,7 @@
   },
   "coverage_floor": {
     "vocabularies": 26,
-    "owner_symbols": 49,
+    "owner_symbols": 51,
     "literal_scan_fields": 1,
     "projections": 1,
     "relations": 9,
@@ -134,8 +134,8 @@
       "tier": "kernel",
       "status": "canonical",
       "owners": {
-        "python": "loopx/control_plane/turn_driver/transaction.py::LoopXTurnResultKind",
-        "typescript": "loopx/control_plane/turn_driver/settlement.ts::TURN_RESULT_KINDS"
+        "python": "loopx/control_plane/turn_driver/turn_contract_generated.py::LoopXTurnResultKind",
+        "typescript": "loopx/control_plane/turn_driver/turn_contract_generated.ts::TURN_RESULT_KINDS"
       },
       "values": [
         "validated_progress",
@@ -187,8 +187,8 @@
       "tier": "kernel",
       "status": "canonical",
       "owners": {
-        "python": "loopx/control_plane/turn_driver/driver.py::LoopXTurnRoute",
-        "typescript": null
+        "python": "loopx/control_plane/turn_driver/turn_contract_generated.py::LoopXTurnRoute",
+        "typescript": "loopx/control_plane/turn_driver/turn_contract_generated.ts::TURN_ROUTES"
       },
       "values": [
         "ready_for_host",
@@ -222,8 +222,8 @@
       "tier": "kernel",
       "status": "canonical",
       "owners": {
-        "python": "loopx/control_plane/turn_driver/loop_controller.py::LoopDisposition",
-        "typescript": null
+        "python": "loopx/control_plane/turn_driver/turn_contract_generated.py::LoopDisposition",
+        "typescript": "loopx/control_plane/turn_driver/turn_contract_generated.ts::LOOP_DISPOSITIONS"
       },
       "values": [
         "run_now",
@@ -236,19 +236,19 @@
         "terminal"
       ],
       "producers": [
-        "loopx/control_plane/turn_driver/loop_controller.py::_completion_disposition",
         "loopx/control_plane/turn_driver/loop_controller.py::_replan_disposition",
-        "loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition",
-        "loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition"
+        "loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition",
+        "loopx/control_plane/turn_driver/turn_contract_generated.py::project_turn_route"
       ],
       "return_producers": [
-        "loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition"
+        "loopx/control_plane/turn_driver/turn_contract_generated.py::project_turn_route"
       ],
       "call_producers": {
         "loopx/control_plane/turn_driver/loop_controller.py::_disposition": [
           "disposition"
         ]
-      }
+      },
+      "input_producer": "loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition"
     },
     "agent_scope_frontier_action": {
       "meaning": "Frontier verdict for an agent-scoped lane. New v1 payloads use agent_scope_frontier.action; the root should-run effective_action projects the same value through its registered disjoint union. Legacy v0 signed payloads remain readable without rewriting.",
@@ -809,7 +809,7 @@
   "projections": {
     "turn_route_to_loop_disposition": {
       "meaning": "Total mapping the pure controller applies to a typed route; null means the route is rejected before projection.",
-      "owner": "loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition",
+      "owner": "loopx/control_plane/turn_driver/turn_contract_generated.py::project_turn_route",
       "mapping": {
         "ready_for_host": "run_now",
         "capability_action_required": "capability_action_required",

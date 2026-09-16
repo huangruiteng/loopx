@@ -18,11 +18,16 @@ inputs.
 """
 
 from __future__ import annotations
+# The generated data is the shared contract; Python alone evaluates decisions.
+from .turn_contract_generated import (
+    TURN_CONTROLLER_CONTRACT as _LOOP_CONTROLLER_CONTRACT,
+    project_turn_route as _route_to_disposition,
+)
+from .turn_contract_generated import LoopDisposition  # compatibility re-export
 from ..quota.effective_action import EffectiveAction
 
 from collections.abc import Mapping
-from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from ..effect_program import SettlementStepKind
 from .driver import LoopXTurnRoute, _typed_route, selected_turn_todo
@@ -54,16 +59,6 @@ _MATERIAL_RECEIPT_ORDER = (
     SettlementStepKind.QUOTA_SPEND.value,
 )
 
-
-class LoopDisposition(str, Enum):
-    RUN_NOW = "run_now"
-    CAPABILITY_ACTION_REQUIRED = "capability_action_required"
-    WAIT = "wait"
-    STOP = "stop"
-    USER_ACTION_REQUIRED = "user_action_required"
-    REPAIR = "repair"
-    REPLAN = "replan"
-    TERMINAL = "terminal"
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -124,16 +119,6 @@ def _envelope_route(decision: Mapping[str, Any]) -> LoopXTurnRoute:
     return route
 
 
-def _route_to_disposition(route: LoopXTurnRoute) -> LoopDisposition:
-    return {
-        LoopXTurnRoute.READY_FOR_HOST: LoopDisposition.RUN_NOW,
-        LoopXTurnRoute.CAPABILITY_ACTION_REQUIRED: LoopDisposition.CAPABILITY_ACTION_REQUIRED,
-        LoopXTurnRoute.REPLAN_REQUIRED: LoopDisposition.REPLAN,
-        LoopXTurnRoute.REPAIR_REQUIRED: LoopDisposition.REPAIR,
-        LoopXTurnRoute.USER_ACTION_REQUIRED: LoopDisposition.USER_ACTION_REQUIRED,
-        LoopXTurnRoute.WAIT: LoopDisposition.WAIT,
-        LoopXTurnRoute.BLOCKED: LoopDisposition.WAIT,
-    }[route]
 
 
 class ValidatedTurnReceipt:
@@ -427,64 +412,228 @@ def _assert_predecessor_binding(
         )
 
 
-def _completion_disposition(
-    *,
-    receipt: ValidatedTurnReceipt,
-    decision: Mapping[str, Any],
-    decision_lineage: Mapping[str, str],
-    route: LoopXTurnRoute,
-) -> dict[str, Any]:
-    completion = dict(receipt.todo_completion or {})
-    continuation = str(completion.get("continuation") or "")
-    if continuation == "no_followup":
-        if (
-            decision.get("effective_action") != EffectiveAction.TERMINAL_NO_FOLLOWUP.value
-            or decision.get("state") != "terminal_no_followup"
-        ):
-            raise ValueError(
-                "no_followup completion requires fresh terminal Goal frontier evidence"
-            )
-        return _disposition(
-            LoopDisposition.TERMINAL,
-            reason="durable no-follow-up and fresh Goal frontier prove terminal closure",
-            lineage=receipt.lineage,
-        )
+class _ControllerInputs:
+    """Lazy semantic partitions and the existing ordered admission checks.
 
-    selected_todo_id = str(decision_lineage.get("todo_id") or "")
-    if not selected_todo_id:
-        raise ValueError("Todo completion continuation requires a fresh selected Todo")
-    if continuation == "successor":
-        successor_ids = completion.get("successor_todo_ids")
-        if not isinstance(successor_ids, list) or selected_todo_id not in successor_ids:
-            raise ValueError(
-                "stale_receipt: fresh decision is not a declared completion successor"
-            )
-    elif continuation == "active_goal" and selected_todo_id == receipt.lineage["todo_id"]:
-        raise ValueError(
-            "stale_receipt: active Goal continuation reselected the completed Todo"
-        )
+    Facts are read only when a contract row reaches them: a user gate need not
+    have a progress budget, and recovery routing need not inspect retry policy.
+    Receipt/budget constructors still own their shape and evidence validation.
+    No arbitrary predicates, callbacks or evaluation language are accepted.
+    """
 
-    if route is LoopXTurnRoute.USER_ACTION_REQUIRED:
-        return _disposition(
-            LoopDisposition.USER_ACTION_REQUIRED,
-            reason="fresh decision projects a concrete user action after Todo completion",
-            lineage=decision_lineage,
+    def __init__(
+        self,
+        receipt: ValidatedTurnReceipt | None,
+        decision: Mapping[str, Any],
+        predecessor: str | None,
+        budget: BoundedTurnBudget | None,
+    ) -> None:
+        self.receipt = receipt
+        self.decision = decision
+        self.predecessor = predecessor
+        self.budget = budget
+        self.route: LoopXTurnRoute
+        self.decision_lineage: dict[str, str]
+        self.effective_lineage: dict[str, str]
+        self.retry_state: Literal[
+            "available", "exhausted", "not_retryable", "not_applicable"
+        ] = "not_applicable"
+
+    def fact(self, name: str) -> str | bool:
+        if name == "receipt_present":
+            return self.receipt is not None
+        if name == "receipt_kind":
+            return self.receipt.result_kind.value if self.receipt else "absent"
+        if name == "route":
+            return self.route.value
+        if name == "terminal_action":
+            return (
+                str(self.decision.get("effective_action") or "")
+                == EffectiveAction.TERMINAL_NO_FOLLOWUP.value
+            )
+        if name == "completion":
+            if (
+                not self.receipt
+                or self.receipt.result_kind
+                is not LoopXTurnResultKind.VALIDATED_COMPLETION
+            ):
+                return "not_applicable"
+            return str((self.receipt.todo_completion or {}).get("continuation") or "")
+        if name == "budget_state":
+            if (
+                not self.receipt
+                or self.receipt.result_kind
+                is not LoopXTurnResultKind.VALIDATED_PROGRESS
+            ):
+                return "not_applicable"
+            if self.budget is None:
+                return "absent"
+            return "exhausted" if self.budget.remaining <= 0 else "available"
+        if name == "host_failure_present":
+            return bool(self.receipt and self.receipt.host_failure)
+        if name == "retry_state":
+            return self.retry_state
+        raise ValueError(f"unsupported controller partition: {name}")
+
+    def check(self, name: str) -> None:
+        receipt = self.receipt
+        if name == "envelope":
+            self.route = _envelope_route(self.decision)
+        elif name == "decision_actor":
+            self.decision_lineage = _decision_lineage(self.decision)
+            if (
+                not self.decision_lineage["goal_id"]
+                or not self.decision_lineage["agent_id"]
+            ):
+                raise ValueError("fresh quota decision is missing goal/agent lineage")
+            self.effective_lineage = dict(self.decision_lineage)
+        elif name == "receipt_binding":
+            assert receipt is not None
+            _assert_predecessor_binding(
+                receipt=receipt, predecessor_turn_key=self.predecessor
+            )
+            _assert_goal_agent_match(
+                receipt_lineage=receipt.lineage, decision_lineage=self.decision_lineage
+            )
+        elif name == "initial_terminal":
+            if self.decision.get("state") != "terminal_no_followup":
+                raise ValueError(
+                    "terminal no-follow-up requires fresh Goal frontier state"
+                )
+        elif name == "initial_todo":
+            if not self.decision_lineage["todo_id"] and _route_to_disposition(
+                self.route
+            ) not in {
+                LoopDisposition.WAIT,
+                LoopDisposition.USER_ACTION_REQUIRED,
+            }:
+                raise ValueError(
+                    "executable quota decision is missing selected Todo lineage"
+                )
+        elif name == "completion_terminal":
+            if (
+                self.decision.get("effective_action")
+                != EffectiveAction.TERMINAL_NO_FOLLOWUP.value
+                or self.decision.get("state") != "terminal_no_followup"
+            ):
+                raise ValueError(
+                    "no_followup completion requires fresh terminal Goal frontier evidence"
+                )
+        elif name == "completion_todo":
+            assert receipt is not None
+            selected = self.decision_lineage["todo_id"]
+            if not selected:
+                raise ValueError(
+                    "Todo completion continuation requires a fresh selected Todo"
+                )
+            completion = receipt.todo_completion or {}
+            if self.fact("completion") == "successor":
+                successors = completion.get("successor_todo_ids")
+                if not isinstance(successors, list) or selected not in successors:
+                    raise ValueError(
+                        "stale_receipt: fresh decision is not a declared completion successor"
+                    )
+            elif (
+                self.fact("completion") == "active_goal"
+                and selected == receipt.lineage["todo_id"]
+            ):
+                raise ValueError(
+                    "stale_receipt: active Goal continuation reselected the completed Todo"
+                )
+        elif name == "receipt_todo":
+            assert receipt is not None
+            if self.decision_lineage["todo_id"]:
+                _assert_same_todo(
+                    receipt_lineage=receipt.lineage,
+                    decision_lineage=self.decision_lineage,
+                )
+            elif (
+                receipt.result_kind is LoopXTurnResultKind.VALIDATED_PROGRESS
+                and self.route
+                not in {
+                    LoopXTurnRoute.USER_ACTION_REQUIRED,
+                    LoopXTurnRoute.WAIT,
+                }
+            ):
+                raise ValueError(
+                    "receipt-backed executable decision is missing selected Todo lineage"
+                )
+            else:
+                self.effective_lineage["todo_id"] = receipt.lineage["todo_id"]
+        elif name == "progress_budget":
+            if self.budget is None:
+                raise ValueError(
+                    "validated progress cannot continue without a proven bounded turn budget"
+                )
+            _assert_budget_lineage_match(
+                budget_lineage=self.budget.lineage,
+                decision_lineage=self.effective_lineage,
+            )
+        elif name == "host_retry":
+            assert receipt is not None and receipt.host_failure
+            if host_failure_retry_available(receipt.host_failure):
+                self.retry_state = "available"
+            elif receipt.host_failure.get("retryable") is True:
+                self.retry_state = "exhausted"
+            else:
+                self.retry_state = "not_retryable"
+        else:
+            raise ValueError(f"unsupported controller check: {name}")
+
+    def render(self, rule: Mapping[str, Any]) -> dict[str, Any]:
+        disposition = (
+            _route_to_disposition(self.route)
+            if rule["disposition"] == "project_route"
+            else LoopDisposition(rule["disposition"])
         )
-    disposition = _route_to_disposition(route)
-    if disposition is LoopDisposition.REPLAN:
-        return _replan_disposition(
-            reason="fresh decision requires replan after Todo completion",
-            decision_lineage=decision_lineage,
+        reason = rule["reason"]
+        if isinstance(reason, Mapping):
+            reason = reason.get(disposition.value, reason.get("default"))
+        if not isinstance(reason, str):
+            raise ValueError(
+                f"controller rule {rule['id']} has no reason for {disposition.value}"
+            )
+        failure = (self.receipt.host_failure or {}) if self.receipt else {}
+        reason = reason.format(
+            failure_kind=failure.get("kind"), receipt_kind=self.fact("receipt_kind")
         )
-    return _disposition(
-        disposition,
-        reason=(
-            "durable Todo completion continues through its declared successor"
-            if continuation == "successor"
-            else "durable Todo completion continues through the fresh Goal frontier"
-        ),
-        lineage=decision_lineage,
-    )
+        lineage = {
+            "decision": self.decision_lineage,
+            "effective": self.effective_lineage,
+            "receipt": self.receipt.lineage if self.receipt else {},
+        }[rule["lineage"]]
+        if disposition is LoopDisposition.REPLAN:
+            return _replan_disposition(reason=reason, decision_lineage=lineage)
+        extra = None
+        if rule.get("extra") == "capability":
+            extra = {
+                "capability_action": _mapping(
+                    _mapping(self.decision.get("action")).get("capability_intent")
+                )
+            }
+        elif rule.get("extra") == "iteration_stop":
+            extra = {
+                "stop_scope": "iteration",
+                "goal_terminal": False,
+                "continuation_required": False,
+            }
+        elif rule.get("extra") == "retry":
+            retry = _mapping(failure.get("retry"))
+            extra = {
+                "retry_continuation": {
+                    "same_turn": True,
+                    "retry_failed_turn": True,
+                    "strategy": retry["strategy"],
+                    "retry_after_seconds": retry["backoff_seconds"],
+                    "attempt": failure["attempt"],
+                    "max_attempts": retry["max_attempts"],
+                    "fresh_envelope_required": True,
+                    "model_fallback_allowed": False,
+                }
+            }
+        elif rule.get("extra") is not None:
+            raise ValueError(f"unsupported controller continuation: {rule['extra']}")
+        return _disposition(disposition, reason=reason, lineage=lineage, extra=extra)
 
 
 def decide_loop_disposition(
@@ -494,258 +643,31 @@ def decide_loop_disposition(
     predecessor_turn_key: str | None = None,
     bounded_turn_budget: BoundedTurnBudget | None = None,
 ) -> dict[str, Any]:
-    """Decide the next loop disposition from one validated receipt and a fresh decision.
+    """Evaluate the bundled ordered controller contract without side effects.
 
-    ``turn_receipt`` is a :class:`ValidatedTurnReceipt` (or ``None`` when no
-    prior Turn has committed). ``quota_decision`` is a fresh
-    ``loopx_turn_envelope_v0``. The outer adapter supplies a separate
-    ``predecessor_turn_key`` matching the receipt when one is present; this
-    keeps causal continuation out of the signed quota envelope schema.
-    ``bounded_turn_budget`` is required for ``validated_progress``.
+    Receipt and budget admission remain :class:`ValidatedTurnReceipt` and
+    :class:`BoundedTurnBudget`. The separate predecessor key proves causal
+    succession without adding an unsigned field to the quota envelope.
 
-    The function is pure: it launches no host, writes no state, and spends no
-    quota. Invalid or stale input raises ``ValueError`` at the typed-input
-    boundary; the transition output space is always one of the declared
-    :class:`LoopDisposition` values.
+    Each matching check must pass before evaluation proceeds; the first
+    matching return wins. The finite partitions and their precedence are in
+    ``turn_loop_controller_contract_v0.json``, including checks skipped by
+    earlier returns. Invalid or stale inputs raise, never become dispositions.
     """
 
-    route = _envelope_route(quota_decision)
-    decision_lineage = _decision_lineage(quota_decision)
-    if not decision_lineage["goal_id"] or not decision_lineage["agent_id"]:
-        raise ValueError(
-            "fresh quota decision is missing goal/agent lineage"
-        )
-
-    if route is LoopXTurnRoute.CAPABILITY_ACTION_REQUIRED and (
-        turn_receipt is None or turn_receipt.result_kind in _MATERIAL_PROGRESS_KINDS
-    ):
-        if turn_receipt is not None:
-            _assert_predecessor_binding(receipt=turn_receipt, predecessor_turn_key=predecessor_turn_key)
-            _assert_goal_agent_match(receipt_lineage=turn_receipt.lineage, decision_lineage=decision_lineage)
-        return _disposition(
-            LoopDisposition.CAPABILITY_ACTION_REQUIRED,
-            reason="fresh capability intent requires its adapter before a host turn",
-            lineage=decision_lineage,
-            extra={"capability_action": _mapping(_mapping(quota_decision.get("action")).get("capability_intent"))},
-        )
-
-    if turn_receipt is None:
-        if str(quota_decision.get("effective_action") or "") == EffectiveAction.TERMINAL_NO_FOLLOWUP.value:
-            if quota_decision.get("state") != "terminal_no_followup":
-                raise ValueError(
-                    "terminal no-follow-up requires fresh Goal frontier state"
-                )
-            return _disposition(
-                LoopDisposition.TERMINAL,
-                reason="fresh Goal frontier proves terminal no-follow-up",
-                lineage=decision_lineage,
-            )
-        disposition = _route_to_disposition(route)
-        if not decision_lineage["todo_id"] and disposition not in {
-            LoopDisposition.WAIT,
-            LoopDisposition.USER_ACTION_REQUIRED,
-        }:
-            raise ValueError("executable quota decision is missing selected Todo lineage")
-        if disposition is LoopDisposition.REPLAN:
-            return _replan_disposition(
-                reason="fresh decision requires replan",
-                decision_lineage=decision_lineage,
-            )
-        return _disposition(
-            disposition,
-            reason=_no_receipt_reason(disposition),
-            lineage=decision_lineage,
-        )
-
-    # Prove the envelope causally succeeds this exact receipt before any
-    # disposition is considered. This closes the stale-replay gap: an old
-    # receipt for the same todo cannot be replayed against a later envelope.
-    _assert_predecessor_binding(
-        receipt=turn_receipt,
-        predecessor_turn_key=predecessor_turn_key,
+    inputs = _ControllerInputs(
+        turn_receipt, quota_decision, predecessor_turn_key, bounded_turn_budget
     )
-    _assert_goal_agent_match(
-        receipt_lineage=turn_receipt.lineage,
-        decision_lineage=decision_lineage,
-    )
-
-    result_kind = turn_receipt.result_kind
-
-    if result_kind is LoopXTurnResultKind.VALIDATED_COMPLETION:
-        return _completion_disposition(
-            receipt=turn_receipt,
-            decision=quota_decision,
-            decision_lineage=decision_lineage,
-            route=route,
-        )
-
-    effective_lineage = dict(decision_lineage)
-    if decision_lineage["todo_id"]:
-        _assert_same_todo(
-            receipt_lineage=turn_receipt.lineage,
-            decision_lineage=decision_lineage,
-        )
-    elif (
-        result_kind is LoopXTurnResultKind.VALIDATED_PROGRESS
-        and route
-        not in {LoopXTurnRoute.USER_ACTION_REQUIRED, LoopXTurnRoute.WAIT}
-    ):
-        raise ValueError("receipt-backed executable decision is missing selected Todo lineage")
-    else:
-        # A valid user gate or quiet wait may intentionally have no runnable
-        # selected Todo. Preserve the committed predecessor lineage for that
-        # no-spend disposition instead of rejecting the envelope.
-        effective_lineage["todo_id"] = turn_receipt.lineage["todo_id"]
-
-    # Decision user action outranks every non-terminal disposition.
-    if route is LoopXTurnRoute.USER_ACTION_REQUIRED:
-        return _disposition(
-            LoopDisposition.USER_ACTION_REQUIRED,
-            reason="fresh decision projects a concrete user action",
-            lineage=effective_lineage,
-        )
-
-    if result_kind is LoopXTurnResultKind.VALIDATED_PROGRESS:
-        if bounded_turn_budget is None:
-            raise ValueError(
-                "validated progress cannot continue without a proven bounded turn budget"
-            )
-        _assert_budget_lineage_match(
-            budget_lineage=bounded_turn_budget.lineage,
-            decision_lineage=effective_lineage,
-        )
-        if bounded_turn_budget.remaining <= 0:
-            return _replan_disposition(
-                reason="bounded turn budget exhausted; replan before another Turn",
-                decision_lineage=effective_lineage,
-            )
-        disposition = _route_to_disposition(route)
-        if disposition is LoopDisposition.REPLAN:
-            return _replan_disposition(
-                reason="fresh decision requires replan after progress",
-                decision_lineage=effective_lineage,
-            )
-        return _disposition(
-            disposition,
-            reason=_progress_reason(disposition),
-            lineage=effective_lineage,
-        )
-
-    if result_kind is LoopXTurnResultKind.REPLAN_REQUIRED:
-        return _replan_disposition(
-            reason="turn receipt requires replan",
-            decision_lineage=effective_lineage,
-        )
-
-    if result_kind is LoopXTurnResultKind.REPAIR_REQUIRED:
-        return _disposition(
-            LoopDisposition.REPAIR,
-            reason="turn receipt requires repair",
-            lineage=effective_lineage,
-        )
-
-    if result_kind is LoopXTurnResultKind.USER_ACTION_REQUIRED:
-        return _disposition(
-            LoopDisposition.USER_ACTION_REQUIRED,
-            reason="turn receipt projects a concrete user action",
-            lineage=effective_lineage,
-        )
-
-    if result_kind is LoopXTurnResultKind.WAIT:
-        return _disposition(
-            LoopDisposition.WAIT,
-            reason="turn receipt is a typed no-spend wait",
-            lineage=effective_lineage,
-        )
-
-    if result_kind is LoopXTurnResultKind.ITERATION_FAILED:
-        return _disposition(
-            LoopDisposition.STOP,
-            reason=(
-                "the iteration reported failure and no typed continuation was "
-                "requested; stop this iteration without retry or successor"
-            ),
-            lineage=effective_lineage,
-            extra={
-                "stop_scope": "iteration",
-                "goal_terminal": False,
-                "continuation_required": False,
-            },
-        )
-
-    if result_kind is LoopXTurnResultKind.HOST_FAILURE and turn_receipt.host_failure:
-        if route is LoopXTurnRoute.REPLAN_REQUIRED:
-            return _replan_disposition(
-                reason="fresh decision requires replan after host failure",
-                decision_lineage=effective_lineage,
-            )
-        if route is LoopXTurnRoute.REPAIR_REQUIRED:
-            return _disposition(
-                LoopDisposition.REPAIR,
-                reason="fresh decision requires repair after host failure",
-                lineage=effective_lineage,
-            )
-        failure = turn_receipt.host_failure
-        if host_failure_retry_available(failure):
-            retry = _mapping(failure.get("retry"))
-            return _disposition(
-                LoopDisposition.WAIT,
-                reason=(
-                    f"retryable host failure {failure['kind']} requires bounded "
-                    "backoff before the same Turn is resumed"
-                ),
-                lineage=effective_lineage,
-                extra={
-                    "retry_continuation": {
-                        "same_turn": True,
-                        "retry_failed_turn": True,
-                        "strategy": retry["strategy"],
-                        "retry_after_seconds": retry["backoff_seconds"],
-                        "attempt": failure["attempt"],
-                        "max_attempts": retry["max_attempts"],
-                        "fresh_envelope_required": True,
-                        "model_fallback_allowed": False,
-                    }
-                },
-            )
-        if failure.get("retryable") is True:
-            return _disposition(
-                LoopDisposition.REPAIR,
-                reason=(
-                    f"retryable host failure {failure['kind']} exhausted its "
-                    "bounded attempt budget"
-                ),
-                lineage=effective_lineage,
-            )
-
-    # host_failure, validation_failed, writeback_failed, quota_spend_failed:
-    # the loop must not guess recovery on its own; hold for repair routing.
-    return _disposition(
-        LoopDisposition.REPAIR,
-        reason=(
-            f"turn receipt ended in {result_kind.value}; "
-            "route to repair before any successor turn"
-        ),
-        lineage=effective_lineage,
-    )
-
-
-def _no_receipt_reason(disposition: LoopDisposition) -> str:
-    return {
-        LoopDisposition.RUN_NOW: "no prior receipt and fresh decision allows delivery",
-        LoopDisposition.WAIT: "fresh decision is a quiet no-spend wait",
-        LoopDisposition.REPAIR: "fresh decision requires repair",
-        LoopDisposition.USER_ACTION_REQUIRED: "fresh decision projects a concrete user action",
-    }[disposition]
-
-
-def _progress_reason(disposition: LoopDisposition) -> str:
-    return {
-        LoopDisposition.RUN_NOW: "validated progress with fresh decision allowing the next turn",
-        LoopDisposition.WAIT: "validated progress but fresh decision does not allow the next turn yet",
-        LoopDisposition.REPAIR: "fresh decision requires repair after progress",
-        LoopDisposition.USER_ACTION_REQUIRED: "fresh decision projects a concrete user action",
-    }[disposition]
+    for rule in _LOOP_CONTROLLER_CONTRACT["rules"]:
+        if not all(
+            inputs.fact(name) in values for name, values in rule["when"].items()
+        ):
+            continue
+        if "check" in rule:
+            inputs.check(rule["check"])
+        else:
+            return inputs.render(rule)
+    raise ValueError("controller contract has no disposition for the qualified inputs")
 
 
 def _replan_disposition(

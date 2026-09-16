@@ -39,6 +39,7 @@ from loopx.semantics.production import (  # noqa: E402
 )
 from loopx.semantics.python_production import scan_python_production  # noqa: E402
 from scripts.generate_semantic_bindings import build_artifacts  # noqa: E402
+from loopx.canary.maintainability_ratchet import evaluate_maintainability_findings  # noqa: E402
 
 REGISTRY_PATH = REPO_ROOT / "loopx" / "semantics" / "vocabulary_v0.json"
 REGISTRY_SCHEMA_VERSION = "loopx_semantic_vocabulary_v0"
@@ -95,7 +96,7 @@ FORMAL_POLICY_KEYS = {"blocking_now", "blocking_next", "advisory", "unproved"}
 # silently; that is the gap the anchor exists to close.
 COVERAGE_ANCHOR = {
     "vocabularies": 26,
-    "owner_symbols": 49,
+    "owner_symbols": 51,
     "literal_scan_fields": 1,
     "projections": 1,
     "relations": 9,
@@ -108,7 +109,7 @@ PRODUCER_VOCABULARY_ANCHOR = {
 }
 RETURN_PRODUCER_ANCHOR = {
     "turn_route": {"loopx/control_plane/turn_driver/driver.py::_typed_route", "loopx/control_plane/turn_driver/loop_controller.py::_envelope_route", "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan"},
-    "loop_disposition": {"loopx/control_plane/turn_driver/loop_controller.py::_route_to_disposition"},
+    "loop_disposition": {"loopx/control_plane/turn_driver/turn_contract_generated.py::project_turn_route"},
     "effective_action": {"loopx/control_plane/quota/decision_summary.py::quota_effective_action", "loopx/control_plane/quota/decision_summary.py::_task_orchestration_effective_action"},
     "turn_result_kind": {"loopx/control_plane/turn_driver/executor.py::_task_validation_receipt"},
 }
@@ -166,6 +167,10 @@ RATCHET_KEYS = (
     "conflicting_values_semantic",
 )
 
+# Q7 shares the existing lifecycle, not canary's findings, targets or waivers.
+# No current inventory overrun justifies a reviewed exception.
+REVIEWED_SEMANTIC_INVENTORY_EXCEPTIONS: dict[str, dict[str, Any]] = {}
+
 
 
 class Drift(AssertionError):
@@ -217,8 +222,9 @@ def load_registry() -> dict[str, Any]:
             require(bool(producers) or set(vocabulary.get('compatibility_only', {})) == set(values), f"{name}: empty producers require every value to be compatibility-only")
             require(all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in producers), f"{name}: producers must be module::Symbol sites")
         if 'input_producer' in vocabulary:
-            require(name == 'turn_result_kind', f"{name}: no executable input producer verifier is implemented")
-            require(vocabulary['input_producer'] == 'loopx/control_plane/turn_driver/transaction.py::_result_kind', f"{name}: unrecognised input producer")
+            input_owners = {'turn_result_kind': 'loopx/control_plane/turn_driver/transaction.py::_result_kind',
+                            'loop_disposition': 'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition'}
+            require(vocabulary['input_producer'] == input_owners.get(name), f"{name}: unrecognised input producer")
         returns = vocabulary.get("return_producers", [])
         require(isinstance(returns, list) and all(isinstance(site, str) and OWNER_SHAPE.match(site) for site in returns), f"{name}: return_producers must be module::Symbol sites")
         require(set(returns) <= set(producers or []), f"{name}: return_producers must also be registered producers")
@@ -302,6 +308,9 @@ def check_coverage_floor(registry: dict[str, Any]) -> str:
         registry['vocabularies']['turn_result_kind'].get('input_producer') == 'loopx/control_plane/turn_driver/transaction.py::_result_kind',
         'turn_result_kind: input producer coverage must retain the anchored decoder',
     )
+    require(registry['vocabularies']['loop_disposition'].get('input_producer') ==
+            'loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition',
+            'controller input production must retain the anchored decision function')
     for name in PRODUCER_VOCABULARY_ANCHOR:
         require("producers" in registry["vocabularies"][name], f"{name}: producer coverage dropped below PRODUCER_VOCABULARY_ANCHOR")
     for name, required in RETURN_PRODUCER_ANCHOR.items():
@@ -493,16 +502,16 @@ def check_relations(registry: dict[str, Any]) -> None:
 def check_projections(registry: dict[str, Any]) -> None:
     projection = registry["projections"]["turn_route_to_loop_disposition"]
     from loopx.control_plane.turn_driver.driver import LoopXTurnRoute
-    from loopx.control_plane.turn_driver.loop_controller import LoopDisposition, _route_to_disposition
+    from loopx.control_plane.turn_driver.turn_contract_generated import LoopDisposition, project_turn_route
 
     mapping = projection["mapping"]
     routes = registry["vocabularies"]["turn_route"]["values"]
     require(sorted(mapping) == sorted(routes), "projection must name every turn_route exactly once")
     for route, expected in mapping.items():
         try:
-            actual = _route_to_disposition(LoopXTurnRoute(route))
-        except KeyError:
-            require(expected is None, f"route {route} is rejected by the controller but the registry maps it to {expected}")
+            actual = project_turn_route(LoopXTurnRoute(route))
+        except ValueError:
+            require(route == "contract_error" and expected is None, f"route {route} is rejected by the controller but the registry maps it to {expected}")
             continue
         require(expected is not None, f"route {route} is registered as rejected but projects {actual.value}")
         require(actual is LoopDisposition(expected), f"route {route} projects {actual.value}, registry says {expected}")
@@ -605,8 +614,36 @@ def check_dual_runtime_twins(registry: dict[str, Any]) -> str:
     require(entry["module_budget"] == TWIN_BUDGET_ANCHOR, "dual_runtime_twins budget differs from TWIN_BUDGET_ANCHOR")
     paths = {file.path for file in load_sources(REPO_ROOT, entry["root"])}
     twins = sorted(path for path in paths if path.endswith(".py") and not path.endswith("/__init__.py") and path[:-3] + ".ts" in paths)
-    require(len(twins) <= entry["module_budget"], f"{len(twins)} py/ts twin modules under {entry['root']}; budget is {entry['module_budget']}")
-    return f"twins={len(twins)}/{entry['module_budget']}"
+    from scripts.generate_turn_contract import verified_generated_paths
+    generated = verified_generated_paths()
+    generated_twins = [path for path in twins if path in generated and path[:-3] + '.ts' in generated]
+    maintained = len(twins) - len(generated_twins)
+    require(maintained <= entry['module_budget'], f"{maintained} independently maintained py/ts twins; budget is {entry['module_budget']}")
+    return f"twins_raw={len(twins)} generated_verified={len(generated_twins)} independently_maintained={maintained}/{entry['module_budget']}"
+
+
+def evaluate_inventory_budget_findings(
+    summary: dict[str, Any], semantic_multi_value_forks: int, ratchets: dict[str, Any],
+) -> dict[str, Any]:
+    """Adapt anchored inventory overruns to the existing reviewed lifecycle."""
+    findings = []
+    for key in RATCHET_KEYS:
+        actual = semantic_multi_value_forks if key == "multi_value_forks_semantic" else summary[key]
+        require(
+            ratchets[key] == BUDGET_ANCHOR[key],
+            f"inventory {key} budget is {ratchets[key]} but BUDGET_ANCHOR pins {BUDGET_ANCHOR[key]}; "
+            "the registry and the anchor move together in one diff (see BUDGET_ANCHOR in this smoke)",
+        )
+        if actual > ratchets[key]:
+            findings.append({
+                "id": f"semantic_inventory_budget:{key}",
+                "category": "semantic_inventory_budget",
+                "budget": ratchets[key],
+                "metrics": {key: actual},
+            })
+    return evaluate_maintainability_findings(
+        findings, reviewed_exceptions=REVIEWED_SEMANTIC_INVENTORY_EXCEPTIONS,
+    )
 
 
 def check_inventory(registry: dict[str, Any], sources: list[SourceFile]) -> tuple[dict[str, Any], str]:
@@ -618,16 +655,22 @@ def check_inventory(registry: dict[str, Any], sources: list[SourceFile]) -> tupl
     semantic_multi_value_forks = check_scope_declarations(registry, inventory)
     ratchets = registry["inventory_ratchets"]
     summary = inventory["summary"]
+    review = evaluate_inventory_budget_findings(summary, semantic_multi_value_forks, ratchets)
+    failures = [
+        f"inventory {key} grew to {actual}; budget is {finding['budget']} (unreviewed)"
+        for finding in review['unreviewed_findings'] for key, actual in finding['metrics'].items()
+    ]
+    failures += [f"invalid inventory exception: {key}" for key in review['invalid_exceptions']]
+    failures += [f"stale inventory exception: {item['id']}" for item in review['stale_exceptions']]
+    failures += [f"inventory exception magnitude exceeded: {item['id']} {item['metric_regressions']}"
+                 for item in review['magnitude_regressions']]
+    require(review['ok'], '; '.join(failures))
     parts = []
     for key in RATCHET_KEYS:
         actual = semantic_multi_value_forks if key == "multi_value_forks_semantic" else summary[key]
-        require(actual <= ratchets[key], f"inventory {key} grew to {actual}; budget is {ratchets[key]}")
-        require(
-            ratchets[key] == BUDGET_ANCHOR[key],
-            f"inventory {key} budget is {ratchets[key]} but BUDGET_ANCHOR pins {BUDGET_ANCHOR[key]}; "
-            "the registry and the anchor move together in one diff (see BUDGET_ANCHOR in this smoke)",
-        )
         parts.append(f"{key}={actual}/{ratchets[key]}")
+    if review['reviewed_exception_count']:
+        parts.append(f"reviewed_inventory_exceptions={review['reviewed_exception_count']}")
     return inventory, " ".join(parts)
 
 

@@ -1056,7 +1056,9 @@ def test_validated_receipt_carries_turn_key() -> None:
 
 
 def test_budget_schema_version() -> None:
-    assert _budget().to_mapping()["schema_version"] == BOUNDED_TURN_BUDGET_SCHEMA_VERSION
+    assert (
+        _budget().to_mapping()["schema_version"] == BOUNDED_TURN_BUDGET_SCHEMA_VERSION
+    )
 
 
 def test_validated_receipt_schema_version() -> None:
@@ -1064,3 +1066,227 @@ def test_validated_receipt_schema_version() -> None:
         _validated_receipt().to_mapping()["schema_version"]
         == VALIDATED_TURN_RECEIPT_SCHEMA_VERSION
     )
+
+
+# These expectations come from the continuation invariants, independently of
+# the controller table: a user gate blocks work; causal/actor identity must be
+# proved first; completion cannot manufacture a successor; exhaustion replans.
+@pytest.mark.parametrize("kind", list(LoopXTurnResultKind))
+def test_fresh_user_gate_outranks_every_nonterminal_result(kind) -> None:
+    kwargs = {}
+    if kind is LoopXTurnResultKind.TERMINAL_CLOSEOUT_FAILED:
+        kwargs = {
+            "completed_phases": _ALL_PHASES[:5],
+            "failed_phase": "terminal_closeout",
+        }
+    receipt = _validated_receipt(result_kind=kind, **kwargs)
+    # Completion needs a different Todo even when the fresh decision is a gate.
+    todo = "todo-next" if kind is LoopXTurnResultKind.VALIDATED_COMPLETION else "todo-1"
+    envelope = _envelope(
+        should_run=True,
+        selected_todo_id=todo,
+        user_action_required=True,
+        predecessor_turn_key=receipt.turn_key,
+    )
+    result = decide_loop_disposition(turn_receipt=receipt, quota_decision=envelope)
+    _assert_markers(result, "user_action_required")
+    assert "retry_continuation" not in result
+    assert "replan_continuation" not in result
+
+
+@pytest.mark.parametrize(
+    "action,should_run,quiet",
+    [
+        ("deliver", True, False),
+        ("workspace_repair", True, False),
+        ("autonomous_replan", True, False),
+        ("deliver", False, True),
+        ("deliver", False, False),
+    ],
+)
+def test_progress_exhaustion_outranks_fresh_work_and_wait(
+    action, should_run, quiet
+) -> None:
+    receipt = _validated_receipt()
+    result = decide_loop_disposition(
+        turn_receipt=receipt,
+        quota_decision=_envelope(
+            should_run=should_run,
+            effective_action=action,
+            quiet_noop_allowed=quiet,
+            predecessor_turn_key=receipt.turn_key,
+        ),
+        bounded_turn_budget=_budget(max_turns=1, completed_turns=1),
+    )
+    _assert_markers(result, "replan")
+    assert "exhausted" in result["reason"]
+
+
+@pytest.mark.parametrize(
+    "action,expected",
+    [
+        ("deliver", "wait"),
+        ("workspace_repair", "repair"),
+        ("autonomous_replan", "replan"),
+    ],
+)
+def test_host_failure_recovery_route_outranks_available_retry(action, expected) -> None:
+    receipt = _validated_receipt(
+        result_kind=LoopXTurnResultKind.HOST_FAILURE,
+        host_failure=build_host_failure_record("provider_capacity", attempt=1),
+    )
+    result = decide_loop_disposition(
+        turn_receipt=receipt,
+        quota_decision=_envelope(
+            should_run=True,
+            effective_action=action,
+            predecessor_turn_key=receipt.turn_key,
+        ),
+    )
+    _assert_markers(result, expected)
+    assert ("retry_continuation" in result) == (expected == "wait")
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        None,
+        LoopXTurnResultKind.VALIDATED_PROGRESS,
+        LoopXTurnResultKind.VALIDATED_COMPLETION,
+    ],
+)
+def test_capability_handoff_needs_no_todo_or_progress_budget(kind) -> None:
+    receipt = (
+        None
+        if kind is None
+        else _validated_receipt(result_kind=kind, continuation="no_followup")
+    )
+    envelope = _envelope(
+        should_run=True,
+        effective_action="governed_capability_intent",
+        selected_todo_id=None,
+        predecessor_turn_key=receipt.turn_key if receipt else None,
+    )
+    envelope["action"]["capability_intent"] = {
+        "schema_version": "pending_capability_intent_projection_v0",
+        "goal_id": "goal-1",
+        "agent_id": "agent-1",
+        "command": "fixture command",
+    }
+    result = decide_loop_disposition(turn_receipt=receipt, quota_decision=envelope)
+    _assert_markers(result, "capability_action_required")
+    assert result["lineage"]["todo_id"] == ""
+
+
+@pytest.mark.parametrize(
+    "mutation,expected",
+    [
+        ("signature", "envelope contract"),
+        ("actor_missing", "missing goal/agent"),
+        ("predecessor_missing", "missing predecessor_turn_key"),
+        ("predecessor_stale", "does not match the receipt turn_key"),
+        ("actor_stale", "on agent_id"),
+        ("todo_stale", "receipt Todo"),
+    ],
+)
+def test_rejection_precedence_before_user_gate_and_missing_budget(
+    mutation, expected
+) -> None:
+    receipt = _validated_receipt()
+    envelope = _envelope(
+        should_run=True,
+        user_action_required=True,
+        predecessor_turn_key=receipt.turn_key,
+    )
+    if mutation == "signature":
+        envelope["action_signature"] = {}
+        envelope["agent_id"] = ""
+        envelope.pop("predecessor_turn_key")
+    elif mutation == "actor_missing":
+        envelope["agent_id"] = ""
+        envelope.pop("predecessor_turn_key")
+    elif mutation == "predecessor_missing":
+        envelope.pop("predecessor_turn_key")
+        envelope["agent_id"] = "stale-agent"
+    elif mutation == "predecessor_stale":
+        envelope["predecessor_turn_key"] = "stale-turn"
+        envelope["agent_id"] = "stale-agent"
+    elif mutation == "actor_stale":
+        envelope["agent_id"] = "stale-agent"
+        envelope["action"]["selected_todo"] = {"todo_id": "stale-todo"}
+    else:
+        envelope["action"]["selected_todo"] = {"todo_id": "stale-todo"}
+    with pytest.raises(ValueError, match=expected):
+        decide_loop_disposition(turn_receipt=receipt, quota_decision=envelope)
+
+
+@pytest.mark.parametrize(
+    "continuation,todo,match",
+    [
+        ("no_followup", None, "terminal Goal frontier evidence"),
+        ("successor", None, "fresh selected Todo"),
+        ("successor", "undeclared", "declared completion successor"),
+        ("active_goal", "todo-1", "reselected the completed Todo"),
+    ],
+)
+def test_completion_admission_precedes_user_gate(continuation, todo, match) -> None:
+    receipt = _validated_receipt(
+        result_kind=LoopXTurnResultKind.VALIDATED_COMPLETION,
+        continuation=continuation,
+        successor_todo_ids=["todo-next"],
+    )
+    with pytest.raises(ValueError, match=match):
+        decide_loop_disposition(
+            turn_receipt=receipt,
+            quota_decision=_envelope(
+                should_run=True,
+                selected_todo_id=todo,
+                user_action_required=True,
+                predecessor_turn_key=receipt.turn_key,
+            ),
+        )
+
+
+def test_wait_and_blocked_differ_for_missing_progress_todo() -> None:
+    receipt = _validated_receipt()
+    for quiet in (True, False):
+        envelope = _envelope(
+            should_run=False,
+            quiet_noop_allowed=quiet,
+            selected_todo_id=None,
+            predecessor_turn_key=receipt.turn_key,
+        )
+        if quiet:
+            result = decide_loop_disposition(
+                turn_receipt=receipt,
+                quota_decision=envelope,
+                bounded_turn_budget=_budget(),
+            )
+            _assert_markers(result, "wait")
+            assert result["lineage"] == receipt.lineage
+        else:
+            with pytest.raises(ValueError, match="receipt-backed executable"):
+                decide_loop_disposition(
+                    turn_receipt=receipt,
+                    quota_decision=envelope,
+                    bounded_turn_budget=_budget(),
+                )
+
+
+def test_completion_terminal_evidence_accepts_the_string_enum_owner() -> None:
+    from loopx.control_plane.quota.effective_action import EffectiveAction
+
+    receipt = _validated_receipt(
+        result_kind=LoopXTurnResultKind.VALIDATED_COMPLETION,
+        continuation="no_followup",
+    )
+    result = decide_loop_disposition(
+        turn_receipt=receipt,
+        quota_decision=_envelope(
+            should_run=False,
+            effective_action=EffectiveAction.TERMINAL_NO_FOLLOWUP,
+            state="terminal_no_followup",
+            predecessor_turn_key=receipt.turn_key,
+        ),
+    )
+    _assert_markers(result, "terminal")

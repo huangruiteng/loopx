@@ -1,9 +1,9 @@
 from __future__ import annotations
+from .turn_contract_generated import LoopXTurnRoute  # compatibility re-export
 from ..quota.effective_action import EffectiveAction
 
 import json
 from collections.abc import Mapping
-from enum import Enum
 from hashlib import sha256
 from typing import Any
 
@@ -48,16 +48,6 @@ REPAIR_ACTIONS = {
     "workspace_repair",
 }
 
-
-class LoopXTurnRoute(str, Enum):
-    READY_FOR_HOST = "ready_for_host"
-    CAPABILITY_ACTION_REQUIRED = "capability_action_required"
-    REPAIR_REQUIRED = "repair_required"
-    REPLAN_REQUIRED = "replan_required"
-    USER_ACTION_REQUIRED = "user_action_required"
-    WAIT = "wait"
-    BLOCKED = "blocked"
-    CONTRACT_ERROR = "contract_error"
 
 
 class FailedTurnSessionRecoveryError(ValueError):

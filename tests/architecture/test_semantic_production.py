@@ -108,14 +108,14 @@ def test_declared_return_is_scanned_in_real_python_syntax():
 
 @pytest.mark.parametrize('vocabulary_name, module, original', [
     ('turn_route', 'loopx/control_plane/turn_driver/driver.py', 'return LoopXTurnRoute.CONTRACT_ERROR'),
-    ('loop_disposition', 'loopx/control_plane/turn_driver/loop_controller.py', 'LoopXTurnRoute.READY_FOR_HOST: LoopDisposition.RUN_NOW'),
+    ('loop_disposition', 'loopx/control_plane/turn_driver/turn_contract_generated.py', 'return LoopDisposition(value)'),
 ])
 def test_real_return_producer_rejects_an_unregistered_result(vocabulary_name, module, original):
     import json
     from loopx.semantics.inventory import load_sources
     v = json.loads((ROOT / 'loopx/semantics/vocabulary_v0.json').read_text())['vocabularies'][vocabulary_name]
     sources = load_sources(ROOT)
-    replacement = 'return "unknown_action"' if vocabulary_name == 'turn_route' else 'LoopXTurnRoute.READY_FOR_HOST: "unknown_action"'
+    replacement = 'return "unknown_action"'
     found = False
     mutated = []
     for source in sources:

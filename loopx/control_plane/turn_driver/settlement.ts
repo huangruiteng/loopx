@@ -46,22 +46,9 @@ type ProviderStepKind = (typeof PROVIDER_STEP_KINDS)[number];
 const PROVIDER_RESOLUTION_KINDS = ["committed", "absent", "unknown"] as const;
 type ProviderResolutionKind = (typeof PROVIDER_RESOLUTION_KINDS)[number];
 
-/** Public Turn outcome classifications shared with the Python adapter. */
-export const TURN_RESULT_KINDS = [
-  "validated_progress",
-  "validated_completion",
-  "repair_required",
-  "replan_required",
-  "user_action_required",
-  "wait",
-  "iteration_failed",
-  "host_failure",
-  "validation_failed",
-  "writeback_failed",
-  "quota_spend_failed",
-  "terminal_closeout_failed",
-] as const;
-export type TurnResultKind = (typeof TURN_RESULT_KINDS)[number];
+/** Compatibility exports; definitions are generated from the shared contract. */
+import { TURN_RESULT_KINDS, type TurnResultKind } from "./turn_contract_generated.ts";
+export { TURN_RESULT_KINDS, type TurnResultKind } from "./turn_contract_generated.ts";
 
 const FAILED_TURN_RESULT_KINDS = [
   "host_failure",
