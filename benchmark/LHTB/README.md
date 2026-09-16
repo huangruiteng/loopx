@@ -12,15 +12,18 @@ LoopX source from the current checkout (optionally pinned with LOOPX_EXPECTED_CO
 ```
 
 This runner includes one narrow scheduler compatibility fix in
-`scripts/external_scheduler_worker.py`: terminal scheduler packets may omit
-`cold_path_detail.local_scheduler`, so the worker must recognize terminal state
-before parsing a cadence that will never be used. A focused upstream test in
-`tests/test_external_scheduler_worker.py` covers this behavior.
+`scripts/external_scheduler_worker.py`: stop packets may omit
+`cold_path_detail.local_scheduler`, so the worker consumes the producer-owned
+`scheduler_hint.unchanged_poll.local_scheduler=stop` directive before parsing
+a cadence that will never be used. Focused unit and public smoke coverage guard
+both emitted stop actions.
 
 The runner keeps the LHTB task manifests authoritative for internet and
 verifier policy. It adds an internal model-only network for offline task
 containers and stages Codex and LoopX without downloading them in the task.
-It does not use the app-server heartbeat agent.
+It reuses the repository's existing
+`benchmark/swe-marathon/agents/codex_offline.py` staging adapter instead of
+owning a second copy. It does not use the app-server heartbeat agent.
 
 ## Run
 
@@ -196,6 +199,7 @@ authoritative captured stream when it does not.
 - `run.sh`: environment, LHTB networking, preflight, Harbor launch.
 - `configs/heartbeat-generic-cli.yaml`: immutable 46-task template.
 - `agents/codex_loopx_heartbeat.py`: Harbor lifecycle and LoopX Goal setup.
+- `../swe-marathon/agents/codex_offline.py`: shared native Codex staging.
 - `runtime/wake_once.py`: unique Turn, thin heartbeat body, fresh Codex exec.
 - `scripts/preflight.py`: fail-closed parity and safety checks.
 - `harbor_patch/`: opt-in model-only Docker networking patch.

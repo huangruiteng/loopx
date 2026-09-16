@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -34,12 +35,17 @@ def command(argv: list[str], timeout: int = 30) -> tuple[int, str]:
     return result.returncode, (result.stdout or "").strip()
 
 
-def load_wake_module(path: Path):
-    spec = importlib.util.spec_from_file_location("lhtb_loopx_wake_once", path)
+def load_module(path: Path, module_name: str):
+    spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
     return module
 
 
@@ -107,15 +113,55 @@ def main() -> int:
         (args.loopx_src / "scripts" / "external_scheduler_worker.py").is_file(),
         str(args.loopx_src / "scripts" / "external_scheduler_worker.py"),
     )
-    scheduler_source = (
-        args.loopx_src / "scripts" / "external_scheduler_worker.py"
-    ).read_text(encoding="utf-8")
-    terminal_branch = scheduler_source.find("if action in TERMINAL_ACTIONS:")
-    cadence_parse = scheduler_source.find("local = _extract_local_scheduler(payload)")
+    scheduler_path = args.loopx_src / "scripts" / "external_scheduler_worker.py"
+    try:
+        scheduler_worker = load_module(
+            scheduler_path, "lhtb_external_scheduler_worker_preflight"
+        )
+        stop_actions = (
+            "stop_until_explicit_resume",
+            "return_to_owner_until_material_change",
+        )
+        stop_decisions = [
+            scheduler_worker.parse_tick(
+                {
+                    "should_run": False,
+                    "effective_action": action,
+                    "scheduler_hint": {
+                        "action": action,
+                        "cadence_class": "terminal",
+                        "reason": "preflight",
+                        "unchanged_poll": {"local_scheduler": "stop"},
+                    },
+                }
+            )
+            for action in stop_actions
+        ]
+        terminal_compatible = all(
+            decision.terminal is True
+            and decision.after_limit == "stop_tick_loop"
+            and decision.unchanged_limit is None
+            for decision in stop_decisions
+        )
+        terminal_detail = ", ".join(
+            f"{decision.action}:terminal={decision.terminal}"
+            for decision in stop_decisions
+        )
+    except Exception as exc:
+        terminal_compatible = False
+        terminal_detail = str(exc)
     check(
         "terminal scheduler compatibility",
-        0 <= terminal_branch < cadence_parse,
-        "terminal packets do not require omitted cold-path cadence detail",
+        terminal_compatible,
+        terminal_detail,
+    )
+    shared_codex_adapter = (
+        args.loopx_src / "benchmark" / "swe-marathon" / "agents" / "codex_offline.py"
+    )
+    check(
+        "shared offline Codex adapter",
+        shared_codex_adapter.is_file(),
+        str(shared_codex_adapter),
     )
     rc, help_text = command([str(args.loopx_src / "scripts" / "loopx"), "configure-goal", "--help"])
     check(
@@ -126,7 +172,7 @@ def main() -> int:
 
     wake_path = args.config.resolve().parents[1] / "runtime" / "wake_once.py"
     try:
-        wake = load_wake_module(wake_path)
+        wake = load_module(wake_path, "lhtb_loopx_wake_once")
         turn_id = "preflight-unique-turn"
         heartbeat = wake.build_heartbeat_argv(
             cli="/opt/loopx",
