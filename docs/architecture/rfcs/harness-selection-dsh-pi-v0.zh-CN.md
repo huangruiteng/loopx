@@ -468,6 +468,10 @@ Todo 创建、quota 或 goal policy——复用预览点名的身份，不得扩
   出一个管家专用 directory。两类受众遵守同样的边界：观察与投递不授予任何东西；一次有界
   等待会 pin 它已解析的身份、并要求观察到的状态确实向前变过；"现在谁需要决策"的 rollup
   只排序注意力，不分配任何工作。
+  该契约的首个本地 producer 已出货：`loopx agent-directory --goal-id <goal>
+  [--agent-id <caller>]`，它复用既有的 agent management projection 而不第二次读取
+  registry；在没有 presence provider 注册时不报告 presence；调用方若不是该 Goal 的已注册
+  Agent，得到的是 typed scope gap 而不是行。
 - **每条 lane 的权威回读是对齐投影。** 计划落地后，一条 lane 的状态就是该 Agent 的
   `shared_goal_alignment_v0` 投影（`loopx shared-goal-alignment --goal-id <goal> --agent-id
   <agent>`）：规范修订、frontier basis、claim 与租约事实、可领取的未认领工作。apply 的回执

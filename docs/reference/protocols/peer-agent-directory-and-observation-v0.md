@@ -279,6 +279,34 @@ LoopX ships no requirement that a provider exists. With no provider, the
 directory degenerates to registered identity plus durable work state, presence
 is omitted, and delivery remains available through the durable hand-off path.
 
+### Local producer (shipped)
+
+The first producer is `loopx agent-directory --goal-id <goal> [--agent-id
+<caller>]` (`loopx/cli_commands/agent_directory.py` over
+`loopx/control_plane/agents/directory.py`). It reads the Goal's existing agent
+management projection, so identity, work, claims and staleness keep their
+current owners and the packet adds no second read of the registry or a lease
+store. It is the same surface for both audiences: a peer Agent inside the Goal
+and the steward channel call one command.
+
+What it emits, and what it refuses to imply:
+
+- one row per registered Agent, whether or not that Agent holds projected work,
+  and no `presence` block at all while no provider is registered;
+- explicit `limitations` (`presence_provider_unavailable`,
+  `presence_is_advisory`, `lease_state_not_projected`,
+  `caller_identity_not_supplied`, `rows_truncated_at_cap`) together with
+  `registered_agent_count` and `omitted_row_count`, so a truncated directory
+  cannot be read as a complete one;
+- a typed scope gap (`audience_not_authorized`) and zero rows when the named
+  caller is not a registered Agent of the Goal, instead of a listing that caller
+  has no scope over;
+- a typed-only rollup that orders attention by projected work state and assigns
+  nothing.
+
+It writes nothing. Reading it grants no claim, no lease, no priority and no work
+edit.
+
 ## Reference Implementation: Herdr
 
 [Herdr](https://github.com/herdrdev/herdr) is a terminal-space provider whose

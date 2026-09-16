@@ -608,6 +608,11 @@ State Providers](./shared-goal-authority-state-provider-v0.md).
   limits: observation and delivery grant nothing, a bounded wait pins the
   identity it resolved and requires the observed state to move, and a "who needs
   a decision now" rollup orders attention without assigning work.
+  The contract's first local producer ships as `loopx agent-directory --goal-id
+  <goal> [--agent-id <caller>]`, which re-projects the existing agent management
+  projection instead of reading the registry twice, reports no presence while no
+  presence provider is registered, and returns a typed scope gap instead of rows
+  to a caller that is not a registered Agent of that Goal.
 - **The authoritative per-lane readback is the alignment projection.** Once a
   plan lands, a lane's state is what `shared_goal_alignment_v0` reports for that
   Agent (`loopx shared-goal-alignment --goal-id <goal> --agent-id <agent>`):

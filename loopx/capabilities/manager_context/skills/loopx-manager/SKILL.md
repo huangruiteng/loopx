@@ -55,6 +55,16 @@ For a routine report or priority question, focus on active Goals. Do not
 inspect stopped Goals just to fill a report. The filter uses Core activation
 state, never age, stale progress, missing evidence or lack of recent activity.
 
+For "who else is working on this Goal", or which peer needs a decision, the
+in-space read is the peer directory: `loopx agent-directory --goal-id <goal>
+--agent-id <your own agent id>`. It lists each registered Agent of that Goal
+with the work it currently holds. Read its `limitations` before answering: while
+no presence provider is registered the packet carries registry identity and
+durable work state only, so it cannot say whether a peer is running right now,
+and a caller that is not a registered Agent of that Goal receives a scope gap
+instead of rows. Reading the directory grants no claim, lease or priority over
+the work it shows.
+
 For an all-Goal report, inspect relevant Goals and dates, then synthesize their
 concrete results. For "what needs me", read current owner tasks and explain
 the decision, consequence and work that can continue. Group related findings;
