@@ -1516,6 +1516,14 @@ function PersonalGoalHome({
   const managerQuickPrompts = ["我现在该做什么？", "哪些 Goal 在等我？", "Agent 在做什么？"];
   const contextMessages = messagesByContext[contextId] ?? [];
   const contextProposals = proposalsByContext[contextId] ?? [];
+
+  // Who is speaking in the transcript. The manager channel answers as the LoopX
+  // Manager: the executor that served the turn (and the model behind it) belongs
+  // to the machine-capability chip, so a person reading an answer is never told
+  // the CLI brand of whatever host happened to run it. Goal channels still name
+  // the Goal's own Agent.
+  const answerIdentityLabel = (targetContextId: string, goalFallback: string) =>
+    targetContextId === "manager" ? t("header.manager") : goalFallback;
   const goalUserTodos = selectedGoal
     ? model.userTodos.filter((todo) => todo.goalId === selectedGoal.goalId)
     : model.userTodos;
@@ -1607,7 +1615,8 @@ function PersonalGoalHome({
           if (!fresh.length && !deliveryChanged) return current;
           return { ...current, [contextId]: [...updated, ...fresh.map((row) => ({
             id: managerMessageId.current++, sourceMessageId: row.message_id,
-            role: "assistant" as const, agentLabel: selectedAgent.label,
+            role: "assistant" as const,
+            agentLabel: answerIdentityLabel(contextId, selectedAgent.label),
             sourceLabel: "管家交接回执", text: visibleAgentMessage(row.text), lines: [],
             returnDelivery: row.return_delivery,
           }))] };
@@ -1703,7 +1712,9 @@ function PersonalGoalHome({
             ...current,
             [targetContextId]: history.messages.map((message) => ({
               sourceMessageId: message.message_id,
-              agentLabel: message.role === "user" ? undefined : selectedAgent.label,
+              agentLabel: message.role === "user"
+                ? undefined
+                : answerIdentityLabel(targetContextId, selectedAgent.label),
               attachments: workspaceImageAttachments(message.attachments),
               id: managerMessageId.current++,
               lines: [],
@@ -1713,7 +1724,9 @@ function PersonalGoalHome({
                 ? undefined
                 : message.role === "error"
                   ? "本地会话记录"
-                  : `恢复的 ${selectedAgent.label} 会话`,
+                  : targetContextId === "manager"
+                    ? `恢复的${t("header.manager")}会话`
+                    : `恢复的 ${selectedAgent.label} 会话`,
               text: message.role === "user" ? message.text : visibleAgentMessage(message.text),
             })),
           };
@@ -1778,10 +1791,12 @@ function PersonalGoalHome({
         let streamedText = "";
         const streamingMessageId = appendManagerAssistantMessage(targetContextId, {
           activity: ["正在恢复进行中的 Agent 回合"],
-          agentLabel: selectedAgent.label,
+          agentLabel: answerIdentityLabel(targetContextId, selectedAgent.label),
           lines: [],
           pending: true,
-          sourceLabel: `恢复的 ${selectedAgent.label} 会话`,
+          sourceLabel: targetContextId === "manager"
+            ? `恢复的${t("header.manager")}会话`
+            : `恢复的 ${selectedAgent.label} 会话`,
           text: "",
         });
         try {
@@ -1813,7 +1828,9 @@ function PersonalGoalHome({
               ? [streamed.response.gate.summary, streamed.response.gate.next_action].filter(Boolean).slice(0, 2)
               : [],
             pending: false,
-            text: streamed.response.message || streamedText.trim() || `${selectedAgent.label} 已完成分析。`,
+            text: streamed.response.message
+              || streamedText.trim()
+              || `${answerIdentityLabel(targetContextId, selectedAgent.label)} 已完成分析。`,
           });
           const recoveryGoal = model.goals.find((goal) => goal.goalId === activeSnapshot?.session.goal_id)
             ?? selectedGoal
@@ -2136,13 +2153,13 @@ function PersonalGoalHome({
       }
       let streamedText = "";
       streamingMessageId = appendManagerAssistantMessage(targetContextId, {
-        activity: ["正在连接 Agent"],
-        agentLabel: selectedRoute.label,
+        activity: [targetContextId === "manager" ? "正在连接管家" : "正在连接 Agent"],
+        agentLabel: answerIdentityLabel(targetContextId, selectedRoute.label),
         lines: [],
         pending: true,
         sourceLabel: targetContextId !== "manager"
           ? `${selectedRoute.label} Agent · ${personalGoalTitle(targetGoal!.goalId)}`
-          : `${selectedRoute.label} 管家 · 跨 Goal`,
+          : `${t("header.manager")} · 跨 Goal`,
         text: "",
       });
       const streamed = await sendChatTurnStreaming(sessionId, question, {
@@ -2189,7 +2206,8 @@ function PersonalGoalHome({
       updateManagerAssistantMessage(targetContextId, streamingMessageId, {
         lines: response.gate ? [response.gate.summary, response.gate.next_action].filter(Boolean).slice(0, 2) : [],
         pending: false,
-        text: visibleAgentMessage(response.message || streamedText.trim()) || `${selectedRoute.label} 已完成分析。`,
+        text: visibleAgentMessage(response.message || streamedText.trim())
+          || `${answerIdentityLabel(targetContextId, selectedRoute.label)} 已完成分析。`,
       });
       if (response.proposals.length > 0 && !targetGoal) {
         updateManagerAssistantMessage(targetContextId, streamingMessageId, {
@@ -2223,10 +2241,12 @@ function PersonalGoalHome({
       const userInterrupted = interruptedContexts.current.delete(targetContextId);
       if (userInterrupted) {
         const interruptedMessage = {
-          agentLabel: selectedRoute.label,
+          agentLabel: answerIdentityLabel(targetContextId, selectedRoute.label),
           lines: [],
           pending: false,
-          sourceLabel: `${selectedRoute.label} 会话`,
+          sourceLabel: targetContextId === "manager"
+            ? `${t("header.manager")}会话`
+            : `${selectedRoute.label} 会话`,
           text: "已中断。你可以在当前会话继续发送消息。",
         };
         if (streamingMessageId === null) {
@@ -2255,14 +2275,16 @@ function PersonalGoalHome({
         ? String((gate as { summary?: unknown }).summary ?? "")
         : "";
       const failureMessage = {
-        agentLabel: selectedRoute.label,
+        agentLabel: answerIdentityLabel(targetContextId, selectedRoute.label),
         lines: gateSummary ? [gateSummary] : [],
         pending: false,
         reconnect: payloadError?.reconnectable === true,
         sourceLabel: "LoopX Chat 本地后端",
         text: payloadError?.error_code === "resume_failed"
-          ? `原 ${selectedRoute.label} 会话无法恢复。本地历史已经保留，请在运行详情里选择“重试恢复”或“开始新 Session”。`
-          : error instanceof Error ? error.message : `${selectedRoute.label} 会话暂时不可用。`,
+          ? `原 ${answerIdentityLabel(targetContextId, selectedRoute.label)} 会话无法恢复。本地历史已经保留，请在运行详情里选择“重试恢复”或“开始新 Session”。`
+          : error instanceof Error
+            ? error.message
+            : `${answerIdentityLabel(targetContextId, selectedRoute.label)} 会话暂时不可用。`,
       };
       if (streamingMessageId === null) {
         appendManagerAssistantMessage(targetContextId, failureMessage);
