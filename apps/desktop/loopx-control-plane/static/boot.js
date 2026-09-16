@@ -3,6 +3,10 @@ const status = document.querySelector("#status");
 const bootElapsed = document.querySelector("#boot-elapsed");
 const bootDetail = document.querySelector("#boot-detail");
 const pageStarted = performance.now();
+// The App publishes this phase when the CLI runtime installed on this host and
+// the snapshot bundled with the App are different revisions. It is a decision
+// the operator owns, never an error to wait through.
+const DECISION_PHASE = "runtime_pairing_required";
 let lastTiming = null;
 let timingObservedAt = pageStarted;
 let bootState = null;
@@ -32,6 +36,8 @@ function updateStartupElapsed() {
   bootElapsed.textContent = `${lastTiming === null ? "此页面已等待" : "启动已用时"} ${seconds} 秒`;
   bootDetail.textContent = bootState?.phase === "installing_runtime"
     ? "正在安装此 App 随附的组件，并切换本机运行时；无需重复打开 App。"
+    : bootState?.phase === DECISION_PHASE
+      ? "选择后同一个窗口会继续启动，不需要重新打开 App。"
     : bootState?.phase === "service_error"
       ? "启动器会自动重试；可展开「恢复与更新」查看诊断。"
       : seconds >= 15
@@ -40,11 +46,15 @@ function updateStartupElapsed() {
 }
 setInterval(updateStartupElapsed, 1000);
 window.loopxBootFailed = (message) => {
+  // The pairing decision owns this state: it is a question for the operator,
+  // not a startup failure, and the polled snapshot is its only source.
+  if (bootState?.phase === DECISION_PHASE || bootState?.phase === "connecting") return;
   panel.dataset.state = "error";
   panel.setAttribute("aria-busy", "false");
   status.textContent = message;
 };
 window.loopxBootRetrying = () => {
+  if (bootState?.phase === DECISION_PHASE) return;
   panel.dataset.state = "loading";
   panel.setAttribute("aria-busy", "true");
   status.textContent = "正在重新连接本地控制面";
@@ -54,15 +64,27 @@ const channel = document.querySelector("#channel");
 const repair = document.querySelector("#repair");
 const rollback = document.querySelector("#rollback");
 const updateStatus = document.querySelector("#update-status");
+const pairing = document.querySelector("#pairing");
+const pairingInstalled = document.querySelector("#pairing-installed");
+const pairingBundled = document.querySelector("#pairing-bundled");
+const pairingStatus = document.querySelector("#pairing-status");
+const pairingUpdate = document.querySelector("#pairing-update");
+const pairingAlign = document.querySelector("#pairing-align");
 let nextAction = "check";
 let working = false;
 let channelInitialized = false;
+// Set once the App reports that the installed CLI runtime and the bundled
+// snapshot disagree. It stays visible while the operator's chosen action runs
+// and until services connect, so the decision cannot scroll out of the way.
+let pairingOwned = false;
+const pairingRevisions = { installed: "未检测到", bundled: "未知" };
 document.querySelector("#retry").onclick = () => location.reload();
 channel.onchange = () => { channelInitialized = true; render({phase:"idle"}); };
 const labels = {
   idle: "检查当前通道，不会自动安装。",
   service_error: "运行时已安装，但服务尚未连接。可检查更新、修复或恢复上版；连接仍会自动重试。",
   runtime_required: "本机组件与 App 版本尚未对齐。可检查 App 更新，或点击修复安装当前匹配组件。",
+  runtime_pairing_required: "本机 CLI 运行时与 App 自带运行时不一致，请选择如何对齐。",
   checking: "正在检查更新…",
   available: "App 与匹配运行时可一起更新。",
   up_to_date: "当前通道暂无更新。",
@@ -96,6 +118,7 @@ const errors = {
   app_install_failed: "App 安装未能完成，本次更新未生效；已确认当前版本完好且与运行时匹配，可直接重启继续使用，或重新检查更新后再试。",
   app_install_incomplete: "App 安装中断，且无法确认当前版本是否完整，请勿直接重启。请在恢复与更新面板还原上一版本（或重新安装）后再试。",
   backup_failed: "无法备份当前版本，更新已停止。请检查磁盘空间后重试。",
+  runtime_pairing_required: "本机 CLI 运行时与这个 App 自带的运行时不一致，本地服务需要两者一致才能启动。请选择「升级：更新 App 与运行时」，或「回退 CLI：改用本 App 自带运行时」。Goal 数据不会被删除。",
 };
 function codeText(code, phase) {
   if (typeof code === "string" && /^runtime_install_exit_(\d+|signal)$/.test(code)) {
@@ -109,8 +132,31 @@ function codeText(code, phase) {
   }
   return Object.hasOwn(errors, code) ? errors[code] : labels[phase] || "";
 }
+function shortRevision(value) {
+  return typeof value === "string" && /^[0-9a-f]{7,40}$/.test(value) ? value.slice(0, 12) : null;
+}
+// The chooser is state, not decoration: it appears with the decision, stays up
+// while the chosen action runs, and disappears once services connect.
+function renderPairing(state) {
+  if (state.phase === DECISION_PHASE) pairingOwned = true;
+  if (["connecting", "ready"].includes(state.phase)) pairingOwned = false;
+  const installed = shortRevision(state.details?.installed_revision);
+  const bundled = shortRevision(state.details?.bundled_revision);
+  if (installed) pairingRevisions.installed = installed;
+  if (bundled) pairingRevisions.bundled = bundled;
+  pairing.hidden = !pairingOwned;
+  if (!pairingOwned) return;
+  pairingInstalled.textContent = pairingRevisions.installed;
+  pairingBundled.textContent = pairingRevisions.bundled;
+  pairingStatus.textContent = codeText(state.details?.code, state.phase);
+  pairingUpdate.disabled = working;
+  pairingAlign.disabled = working;
+  if (state.phase === DECISION_PHASE) status.textContent = "需要你选择 App 与 CLI 运行时的对齐方式";
+  panel.dataset.state = "decision";
+  panel.setAttribute("aria-busy", "false");
+}
 function render(state) {
-  if (!state?.phase) return;
+  if (!state?.phase) return state;
   if (state.phase === "available" && state.details?.channel !== channel.value) state = {phase:"idle"};
   working = ["checking","downloading","installing_app","installing_runtime","connecting"].includes(state.phase);
   update.disabled = working;
@@ -120,6 +166,8 @@ function render(state) {
   nextAction = state.phase === "available" ? "apply" : state.phase === "restart_required" ? "restart" : "check";
   update.textContent = nextAction === "apply" ? "更新并准备重启 / Install update" : nextAction === "restart" ? "重启完成更新 / Restart" : "检查更新 / Check for updates";
   updateStatus.textContent = codeText(state.details?.code, state.phase);
+  renderPairing(state);
+  return state;
 }
 const diagnostics = document.querySelector("#diagnostics");
 function safeCode(code) {
@@ -144,7 +192,7 @@ function renderDiagnostics(result) {
   const failure = result.last_failure ?? result.state;
   const text = JSON.stringify({
     schema_version: "desktop_recovery_diagnostics_v2",
-    failure_phase: ["error", "runtime_required", "service_error"].includes(failure?.phase) ? failure.phase : null,
+    failure_phase: ["error", "runtime_required", "runtime_pairing_required", "service_error"].includes(failure?.phase) ? failure.phase : null,
     app_version: /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(result.app_version) ? result.app_version : "unknown",
     error_code: safeCode(failure?.details?.code),
     installed_identity_available: typeof failure?.details?.installed_identity_available === "boolean" ? failure.details.installed_identity_available : null,
@@ -162,18 +210,36 @@ document.querySelector("#copy-diagnostics").onclick = async () => {
     document.querySelector("#copy-status").textContent = "请按 ⌘C / Ctrl+C 复制已选中的诊断。";
   }
 };
-async function run(action) {
-  if (working) return;
+async function invokeUpdate(action) {
   // Match the phase the backend publishes for each action (rollback restores
   // the previous app; restart keeps the required-restart state) instead of
   // previewing a download that is not happening.
-  render({phase: action === "check" ? "checking" : action === "repair" ? "installing_runtime" : action === "rollback" ? "installing_app" : action === "restart" ? "restart_required" : "downloading"});
-  try { render(await window.__TAURI__.core.invoke("desktop_update", {action,channel:channel.value})); }
-  catch (error) { render({phase:"error", details:{code: safeCode(error)}}); }
+  render({phase: action === "check" ? "checking" : action === "repair" || action === "align_runtime" ? "installing_runtime" : action === "rollback" ? "installing_app" : action === "restart" ? "restart_required" : "downloading"});
+  try { return render(await window.__TAURI__.core.invoke("desktop_update", {action,channel:channel.value})); }
+  catch (error) { return render({phase:"error", details:{code: safeCode(error)}}); }
+}
+async function run(action) {
+  if (working) return;
+  return invokeUpdate(action);
+}
+// "Upgrade" is one operator intent, not two clicks: check the channel this App
+// already targets and, when a build exists, continue into the verified install.
+// A channel with nothing newer says so and leaves the CLI choice standing.
+async function upgradeBoth() {
+  if (working) return;
+  const checked = await invokeUpdate("check");
+  if (!checked) return;
+  if (checked.phase === "available") return run("apply");
+  if (checked.phase === "restart_required") return run("restart");
+  if (checked.phase === "up_to_date") {
+    pairingStatus.textContent = "当前通道没有更新的 App 构建：可「回退 CLI」对齐，或先安装更新的桌面 App。";
+  }
 }
 update.onclick = () => run(nextAction);
 repair.onclick = () => run("repair");
 rollback.onclick = () => run("rollback");
+pairingUpdate.onclick = () => void upgradeBoth();
+pairingAlign.onclick = () => void run("align_runtime");
 // The main status line keeps its loading shape while the supervisor retries.
 // A snapshot that stays in a terminal phase for several polls is the only
 // front-end-derived error projection: the page pulls it from
@@ -199,6 +265,13 @@ async function refresh() {
   } catch { renderDiagnostics({state:{phase:"error",details:{code:"desktop_status_unavailable"}}}); }
 }
 function escalateFromSnapshot(state) {
+  // The pairing chooser renders itself and stays interactive; escalation is
+  // only for silent terminal phases that would leave the loading shape up.
+  if (state?.phase === DECISION_PHASE) {
+    terminalRounds = 0;
+    escalated = false;
+    return;
+  }
   const terminal = TERMINAL_PHASES.includes(state?.phase);
   terminalRounds = terminal ? terminalRounds + 1 : 0;
   if (terminal && terminalRounds >= ERROR_ESCALATION_ROUNDS) escalated = true;

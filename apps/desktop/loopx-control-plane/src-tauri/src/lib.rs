@@ -27,6 +27,12 @@ fn maintenance_origin(url: &Url) -> String {
 // echo verbatim into the boot surface, where it names the recovery panel's
 // actionable diagnostics instead of a misleading fixed message.
 fn boot_failure_message(error: &str) -> String {
+    // The pairing decision is not a failure: the window is waiting for the
+    // operator to choose between updating the App and aligning the CLI.
+    if error == "runtime_pairing_required" {
+        return "本机 LoopX 运行时与 App 自带的运行时不一致，请在上方选择「更新 App 与运行时」或「回退 CLI 到本 App 版本」后继续。"
+            .to_string();
+    }
     let is_stable_code = !error.is_empty()
         && error.chars().all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
@@ -219,9 +225,16 @@ mod tests {
         assert!(style.contains("@keyframes mark-breathe"));
         assert!(style.contains("prefers-reduced-motion: reduce"));
         assert!(style.contains("main[data-state=\"error\"] .progress::after"));
+        assert!(style.contains("main[data-state=\"decision\"] .progress"));
         assert!(style.contains("--warning: #f5a623"));
         assert!(script.contains("desktop_update_status"));
         assert!(script.contains("window.loopxBootRetrying"));
+        // The first screen must offer both operator choices, not a repair path
+        // that silently replaces the CLI runtime.
+        assert!(html.contains("id=\"pairing-align\""));
+        assert!(html.contains("回退 CLI"));
+        assert!(script.contains("runtime_pairing_required"));
+        assert!(script.contains("\"align_runtime\""));
         // The boot surface must derive its error projection from the polled
         // snapshot itself and name the known fresh-Mac installer failure.
         assert!(script.contains("runtime_install_exit_2"));
@@ -231,6 +244,12 @@ mod tests {
     #[test]
     fn boot_failure_message_appends_stable_codes_only() {
         use super::boot_failure_message;
+        // The pairing decision names both operator choices instead of the
+        // generic startup failure text.
+        let pairing = boot_failure_message("runtime_pairing_required");
+        assert!(pairing.contains("更新 App 与运行时"));
+        assert!(pairing.contains("回退 CLI 到本 App 版本"));
+        assert!(!pairing.contains("错误码"));
         assert_eq!(
             boot_failure_message("runtime_install_exit_2"),
             "本地服务暂时无法启动，请检查安装或端口占用。（错误码 runtime_install_exit_2，详见恢复与更新面板）"

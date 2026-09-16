@@ -54,7 +54,13 @@ impl Maintenance {
     }
     fn publish(&self, phase: &str, details: Value) -> Value {
         let value = json!({"phase": phase, "details": details});
-        if matches!(phase, "error" | "runtime_required" | "service_error") {
+        // The pairing decision belongs with the other blocked states: the
+        // recovery panel keeps it for diagnostics even after the operator
+        // resolves it in the same App process.
+        if matches!(
+            phase,
+            "error" | "runtime_required" | "runtime_pairing_required" | "service_error"
+        ) {
             *self.last_failure.lock().unwrap() = value.clone();
         }
         let mut snapshot = self.snapshot.lock().unwrap();
@@ -86,12 +92,13 @@ impl Maintenance {
 
     fn prepare_runtime(
         &self,
-        matches: bool,
+        step: RuntimeStep,
         explicit_override: bool,
         now: Instant,
+        pairing: Value,
         install: impl FnOnce() -> Result<(), String>,
     ) -> Result<(), String> {
-        if matches {
+        if step == RuntimeStep::AlreadyPaired {
             *self.runtime_retry.lock().unwrap() = RuntimeRetry::default();
             return Ok(());
         }
@@ -101,6 +108,13 @@ impl Maintenance {
                 json!({"code":"runtime_identity_mismatch", "revision_matches":false}),
             );
             return Err("runtime_identity_mismatch".into());
+        }
+        if step == RuntimeStep::AskOperator {
+            // Replacing a different installed runtime is the operator's call:
+            // the boot surface offers updating the App or aligning the CLI to
+            // this App's snapshot. Fail closed without installing anything.
+            self.publish("runtime_pairing_required", pairing);
+            return Err("runtime_pairing_required".into());
         }
         if !self.runtime_retry.lock().unwrap().admit(now) {
             // Keep the last actionable install error while the live supervisor
@@ -151,7 +165,7 @@ impl Maintenance {
             Err(error) => {
                 let runtime_error = matches!(
                     self.snapshot.lock().unwrap()["phase"].as_str(),
-                    Some("error" | "runtime_required")
+                    Some("error" | "runtime_required" | "runtime_pairing_required")
                 );
                 if !runtime_error {
                     self.publish("service_error", json!({"code":"service_start_failed"}));
@@ -271,7 +285,7 @@ pub async fn desktop_update(
     let url = endpoint(&channel)?;
     if !matches!(
         action.as_str(),
-        "check" | "apply" | "repair" | "restart" | "rollback"
+        "check" | "apply" | "repair" | "align_runtime" | "restart" | "rollback"
     ) {
         return Err("invalid_update_action".into());
     }
@@ -312,6 +326,29 @@ impl Maintenance {
         self.publish("error", details)
     }
 }
+// Bounded reinstall of this App's bundled snapshot, shared by the recovery
+// action and the operator's pairing choice. The version-scoped journal keeps an
+// interrupted install resumable and can only ever authorize this App's own
+// snapshot.
+async fn reinstall_bundled_runtime(app: &AppHandle) -> Result<Value, String> {
+    let state = app.state::<Maintenance>();
+    state.publish("installing_runtime", json!({}));
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        bundled_runtime::record_pending(
+            &handle,
+            &handle.package_info().version.to_string(),
+            "bundled",
+        )?;
+        bundled_runtime::install(&handle)?;
+        bundled_runtime::resume_pending(&handle).map(|_| ())
+    })
+    .await
+    .map_err(|_| "runtime_install_failed".to_string())??;
+    *state.runtime_retry.lock().unwrap() = RuntimeRetry::default();
+    Ok(state.publish("connecting", json!({})))
+}
+
 async fn perform(
     app: &AppHandle,
     action: &str,
@@ -357,26 +394,14 @@ async fn perform(
             .map_err(|_| "rollback_failed")??;
         return Ok(state.publish("restart_required", json!({})));
     }
-    if action == "repair" {
-        state.publish("installing_runtime", json!({}));
-        let handle = app.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            bundled_runtime::record_pending(
-                &handle,
-                &handle.package_info().version.to_string(),
-                "bundled",
-            )?;
-            // Explicit repair must reinstall even when the manifest matches:
-            // missing/corrupt runtime files are not an identity mismatch.
-            bundled_runtime::install(&handle)?;
-            bundled_runtime::resume_pending(&handle).map(|_| ())
-        })
-        .await
-        .map_err(|_| "runtime_install_failed")??;
-        *state.runtime_retry.lock().unwrap() = RuntimeRetry::default();
-        // Only replacing the App binary needs a process restart. The live
-        // supervisor will connect this same window after runtime repair.
-        return Ok(state.publish("connecting", json!({})));
+    if action == "repair" || action == "align_runtime" {
+        // `repair` reinstalls this App's snapshot for recovery and
+        // `align_runtime` is the operator's explicit pairing choice; both mean
+        // "install what this App carries", and both must install even when a
+        // manifest matches: missing or corrupt runtime files are not an
+        // identity mismatch. Only replacing the App binary needs a process
+        // restart, so the live supervisor connects this same window.
+        return reinstall_bundled_runtime(app).await;
     }
     let update = state
         .pending
@@ -532,6 +557,49 @@ fn runtime_revisions_pair(bundled: Option<&Value>, installed: Option<&Value>) ->
     }
 }
 
+// What this start may do about the runtime, decided before the bounded install
+// budget and the explicit `LOOPX_BIN` override are applied.
+#[derive(Debug, PartialEq, Eq)]
+enum RuntimeStep {
+    /// The installed runtime already is this App's snapshot.
+    AlreadyPaired,
+    /// Installing the bundled snapshot replaces nothing the operator chose: no
+    /// runtime is installed yet, or an approved journal already carries their
+    /// consent for this App's snapshot.
+    InstallBundled,
+    /// A different runtime is installed and nobody has chosen yet. This is a
+    /// decision, not a failure: the CLI may be the newer layer, so the App
+    /// asks instead of replacing it.
+    AskOperator,
+}
+
+fn classify_runtime_step(
+    bundled: &Value,
+    installed: Option<&Value>,
+    approved_journal: bool,
+) -> RuntimeStep {
+    if runtime_revisions_pair(Some(bundled), installed) {
+        RuntimeStep::AlreadyPaired
+    } else if installed.is_none() || approved_journal {
+        RuntimeStep::InstallBundled
+    } else {
+        RuntimeStep::AskOperator
+    }
+}
+
+// Bounded, non-PII evidence for the operator choice: the two revisions, never
+// a path, command or environment value.
+fn pairing_details(bundled: &Value, installed: Option<&Value>, app_version: &str) -> Value {
+    json!({
+        "code": "runtime_pairing_required",
+        "app_version": app_version,
+        "installed_revision": installed.and_then(|value| value["source_revision"].as_str()),
+        "bundled_revision": bundled["source_revision"],
+        "installed_identity_available": installed.is_some(),
+        "revision_matches": false,
+    })
+}
+
 // Shared App/runtime pairing gate for both release startup entrances: the
 // journal-absent path and the start that just discarded a stale journal may
 // connect only when the installed runtime pairs with the bundled snapshot.
@@ -539,18 +607,33 @@ fn require_paired_runtime(state: &Maintenance, app: &AppHandle) -> Result<(), St
     let bundled = bundled_runtime::identity(app)?;
     let installed =
         crate::services::runtime_identity_for_executable(&crate::services::loopx_executable());
-    if !runtime_revisions_pair(Some(&bundled), installed.as_ref()) {
-        state.publish(
-            "runtime_required",
-            json!({
-                "code":"runtime_setup_required",
-                "installed_identity_available": installed.is_some(),
-                "revision_matches": false
-            }),
-        );
-        return Err("runtime_setup_required".into());
+    // A journal that reached this gate was just discarded, so no approval
+    // applies to the runtime that is still on disk.
+    match classify_runtime_step(&bundled, installed.as_ref(), false) {
+        RuntimeStep::AlreadyPaired => Ok(()),
+        RuntimeStep::AskOperator => {
+            state.publish(
+                "runtime_pairing_required",
+                pairing_details(
+                    &bundled,
+                    installed.as_ref(),
+                    &app.package_info().version.to_string(),
+                ),
+            );
+            Err("runtime_pairing_required".into())
+        }
+        RuntimeStep::InstallBundled => {
+            state.publish(
+                "runtime_required",
+                json!({
+                    "code":"runtime_setup_required",
+                    "installed_identity_available": false,
+                    "revision_matches": false
+                }),
+            );
+            Err("runtime_setup_required".into())
+        }
     }
-    Ok(())
 }
 
 // Startup decision after the journal has been resolved. The pairing gate is
@@ -587,11 +670,22 @@ fn resume_runtime(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<Maintenance>();
     let _guard = state.acquire()?;
     let bundled = bundled_runtime::identity(app)?;
-    let matches = bundled_runtime::selected_revision_matches(&bundled);
+    let installed =
+        crate::services::runtime_identity_for_executable(&crate::services::loopx_executable());
+    let pairing = pairing_details(
+        &bundled,
+        installed.as_ref(),
+        &app.package_info().version.to_string(),
+    );
     let explicit_override = std::env::var("LOOPX_BIN").is_ok_and(|v| !v.trim().is_empty());
     // Validate an existing approved target before any automatic installation.
     // A journal for another App must never authorize this App's bundle.
     let journal = bundled_runtime::journal(app)?;
+    // A journal naming *this* App version is the operator's standing consent to
+    // install the snapshot the App carries -- it is how an App update they
+    // approved finishes. Only a journal for another App is discarded; that path
+    // must then pass the same gate as a start with no journal at all.
+    let mut approved_journal = false;
     if journal.exists() {
         let pending: Value = serde_json::from_slice(
             &std::fs::read(&journal).map_err(|_| "update_state_unavailable")?,
@@ -602,17 +696,25 @@ fn resume_runtime(app: &AppHandle) -> Result<(), String> {
             let resolved = bundled_runtime::resume_pending(app);
             return startup_after_resume(&state, resolved, || require_paired_runtime(&state, app));
         }
+        approved_journal = true;
     }
-    state.prepare_runtime(matches, explicit_override, Instant::now(), || {
-        if !journal.exists() {
-            bundled_runtime::record_pending(
-                app,
-                &app.package_info().version.to_string(),
-                "bundled",
-            )?;
-        }
-        bundled_runtime::resume_pending(app).map(|_| ())
-    })?;
+    let step = classify_runtime_step(&bundled, installed.as_ref(), approved_journal);
+    state.prepare_runtime(
+        step,
+        explicit_override,
+        Instant::now(),
+        pairing,
+        || {
+            if !journal.exists() {
+                bundled_runtime::record_pending(
+                    app,
+                    &app.package_info().version.to_string(),
+                    "bundled",
+                )?;
+            }
+            bundled_runtime::resume_pending(app).map(|_| ())
+        },
+    )?;
     if journal.exists() {
         // Idempotent completion after a crash between promotion and journal
         // removal: do not reinstall an already matching runtime.
@@ -668,34 +770,48 @@ mod tests {
     fn runtime_failure_can_recover_without_restarting_the_supervisor() {
         let state = Maintenance::default();
         let now = Instant::now();
-        let attempt = |matches, now, install: fn() -> Result<(), String>| {
+        let attempt = |relation, now, install: fn() -> Result<(), String>| {
             state.reconcile_services(|| {
-                state.prepare_runtime(matches, false, now, install)?;
+                state.prepare_runtime(relation, false, now, json!({}), install)?;
                 Ok(())
             })
         };
-        assert!(attempt(false, now, || Err("runtime_install_exit_1".into())).is_err());
+        assert!(attempt(
+            RuntimeStep::InstallBundled,
+            now,
+            || Err("runtime_install_exit_1".into())
+        )
+        .is_err());
         assert!(
             state.acquire().is_ok(),
             "failed automatic install releases maintenance"
         );
-        assert!(attempt(false, now + Duration::from_secs(2), || panic!(
-            "backoff must not reinstall"
-        ))
-        .is_err());
+        assert!(
+            attempt(RuntimeStep::InstallBundled, now + Duration::from_secs(2), || panic!(
+                "backoff must not reinstall"
+            ))
+            .is_err()
+        );
         assert_eq!(
             state.snapshot.lock().unwrap()["details"]["code"],
             "runtime_install_exit_1"
         );
         assert_eq!(
-            attempt(false, now + Duration::from_secs(31), || Ok(())).unwrap(),
+            attempt(
+                RuntimeStep::InstallBundled,
+                now + Duration::from_secs(31),
+                || Ok(())
+            )
+            .unwrap(),
             Some(())
         );
         assert_eq!(state.snapshot.lock().unwrap()["phase"], "ready");
         assert_eq!(
-            attempt(true, now + Duration::from_secs(32), || panic!(
-                "matching runtime must not reinstall"
-            ))
+            attempt(
+                RuntimeStep::AlreadyPaired,
+                now + Duration::from_secs(32),
+                || panic!("matching runtime must not reinstall")
+            )
             .unwrap(),
             Some(())
         );
@@ -708,20 +824,32 @@ mod tests {
         let now = Instant::now();
         for seconds in [0, 31, 62] {
             assert!(state
-                .prepare_runtime(false, false, now + Duration::from_secs(seconds), || Err(
-                    "runtime_install_exit_1".into()
-                ))
+                .prepare_runtime(
+                    RuntimeStep::InstallBundled,
+                    false,
+                    now + Duration::from_secs(seconds),
+                    json!({}),
+                    || Err("runtime_install_exit_1".into())
+                )
                 .is_err());
         }
         assert!(state
-            .prepare_runtime(false, false, now + Duration::from_secs(1000), || panic!(
-                "retry budget exhausted"
-            ))
+            .prepare_runtime(
+                RuntimeStep::InstallBundled,
+                false,
+                now + Duration::from_secs(1000),
+                json!({}),
+                || panic!("retry budget exhausted")
+            )
             .is_err());
         assert!(state
-            .prepare_runtime(true, false, now + Duration::from_secs(1001), || panic!(
-                "external correction needs no install"
-            ))
+            .prepare_runtime(
+                RuntimeStep::AlreadyPaired,
+                false,
+                now + Duration::from_secs(1001),
+                json!({}),
+                || panic!("external correction needs no install")
+            )
             .is_ok());
     }
 
@@ -730,14 +858,24 @@ mod tests {
         let state = Maintenance::default();
         assert_eq!(
             state
-                .prepare_runtime(false, true, Instant::now(), || panic!(
-                    "explicit selection must be respected"
-                ))
+                .prepare_runtime(
+                    RuntimeStep::InstallBundled,
+                    true,
+                    Instant::now(),
+                    json!({}),
+                    || panic!("explicit selection must be respected")
+                )
                 .unwrap_err(),
             "runtime_identity_mismatch"
         );
         assert!(state
-            .prepare_runtime(true, true, Instant::now(), || panic!("already matches"))
+            .prepare_runtime(
+                RuntimeStep::AlreadyPaired,
+                true,
+                Instant::now(),
+                json!({}),
+                || panic!("already matches")
+            )
             .is_ok());
     }
 
@@ -786,7 +924,7 @@ mod tests {
     }
     #[test]
     fn replaced_app_requires_restart_before_another_transaction() {
-        for action in ["check", "apply", "repair", "rollback"] {
+        for action in ["check", "apply", "repair", "align_runtime", "rollback"] {
             assert!(allow_action("restart_required", action).is_err());
         }
         assert!(allow_action("restart_required", "restart").is_ok());
@@ -933,6 +1071,127 @@ mod tests {
         // is never paired: fail closed.
         assert!(!runtime_revisions_pair(Some(&bundled("a")), None));
         assert!(!runtime_revisions_pair(None, Some(&bundled("a"))));
+    }
+
+    #[test]
+    fn only_replacing_nothing_is_installed_without_the_operator() {
+        let bundled = json!({"source_revision": "b".repeat(40)});
+        let installed = |revision: &str| json!({"source_revision": revision});
+        assert_eq!(
+            classify_runtime_step(&bundled, Some(&installed(&"b".repeat(40))), false),
+            RuntimeStep::AlreadyPaired
+        );
+        assert_eq!(
+            classify_runtime_step(&bundled, Some(&installed(&"a".repeat(40))), false),
+            RuntimeStep::AskOperator
+        );
+        // No readable runtime identity at all: nothing is replaced, so the
+        // App may install its own snapshot (fresh machine bootstrap).
+        assert_eq!(
+            classify_runtime_step(&bundled, None, false),
+            RuntimeStep::InstallBundled
+        );
+        // An approved journal for this App version is standing consent: the
+        // update the operator started must finish instead of asking again.
+        assert_eq!(
+            classify_runtime_step(&bundled, Some(&installed(&"a".repeat(40))), true),
+            RuntimeStep::InstallBundled
+        );
+        assert_eq!(
+            classify_runtime_step(&bundled, Some(&installed(&"b".repeat(40))), true),
+            RuntimeStep::AlreadyPaired
+        );
+    }
+
+    #[test]
+    fn different_installed_runtime_asks_instead_of_replacing_it() {
+        let state = Maintenance::default();
+        let now = Instant::now();
+        let pairing = json!({
+            "code": "runtime_pairing_required",
+            "installed_revision": "a".repeat(40),
+            "bundled_revision": "b".repeat(40),
+        });
+        // Reinstalling here would silently move the host CLI backwards, so the
+        // install closure must never run -- not even after the retry window,
+        // which stays untouched because this is a decision, not a failure.
+        for seconds in [0, 31, 62, 1000] {
+            assert_eq!(
+                state
+                    .prepare_runtime(
+                        RuntimeStep::AskOperator,
+                        false,
+                        now + Duration::from_secs(seconds),
+                        pairing.clone(),
+                        || panic!("a different installed runtime must never be replaced"),
+                    )
+                    .unwrap_err(),
+                "runtime_pairing_required"
+            );
+        }
+        let snapshot = state.snapshot.lock().unwrap().clone();
+        assert_eq!(snapshot["phase"], "runtime_pairing_required");
+        assert_eq!(snapshot["details"], pairing);
+        // Diagnostics keep the decision reachable for the recovery panel.
+        assert_eq!(state.last_failure.lock().unwrap()["phase"], "runtime_pairing_required");
+    }
+
+    #[test]
+    fn pairing_evidence_carries_only_the_two_revisions() {
+        let bundled = json!({"source_revision": "b".repeat(40), "sha256": "PRIVATE"});
+        let installed = json!({"source_revision": "a".repeat(40)});
+        let details = pairing_details(&bundled, Some(&installed), "1.0.5");
+        assert_eq!(details["app_version"], "1.0.5");
+        assert_eq!(details["installed_revision"], "a".repeat(40));
+        assert_eq!(details["bundled_revision"], "b".repeat(40));
+        assert_eq!(details["revision_matches"], false);
+        assert_eq!(details["installed_identity_available"], true);
+        assert!(!details.to_string().contains("PRIVATE"));
+        let mut keys: Vec<&str> = details
+            .as_object()
+            .expect("pairing details object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "app_version",
+                "bundled_revision",
+                "code",
+                "installed_identity_available",
+                "installed_revision",
+                "revision_matches"
+            ]
+        );
+        // An unreadable installed identity is reported as absent, never as a
+        // fabricated revision.
+        let absent = pairing_details(&bundled, None, "1.0.5");
+        assert_eq!(absent["installed_revision"], Value::Null);
+        assert_eq!(absent["installed_identity_available"], false);
+    }
+
+    #[test]
+    fn pairing_decision_survives_the_service_failure_classifier() {
+        // The gate's Err reaches reconcile_services as a runtime state, not as
+        // a service-start failure: the choice must not be relabelled.
+        let state = Maintenance::default();
+        assert!(state
+            .reconcile_services(|| {
+                state.prepare_runtime(
+                    RuntimeStep::AskOperator,
+                    false,
+                    Instant::now(),
+                    json!({"code":"runtime_pairing_required"}),
+                    || panic!("must not install"),
+                )
+            })
+            .is_err());
+        assert_eq!(
+            state.snapshot.lock().unwrap()["phase"],
+            "runtime_pairing_required"
+        );
     }
 
     #[test]

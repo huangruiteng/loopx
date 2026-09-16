@@ -2,7 +2,7 @@ import { ChevronUp, Download, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useWorkspaceI18n } from "./i18n";
 
-type Phase = "idle" | "runtime_required" | "connecting" | "service_error" | "checking" | "available" | "up_to_date" | "downloading" | "installing_app" | "installing_runtime" | "restart_required" | "ready" | "error";
+type Phase = "idle" | "runtime_required" | "runtime_pairing_required" | "connecting" | "service_error" | "checking" | "available" | "up_to_date" | "downloading" | "installing_app" | "installing_runtime" | "restart_required" | "ready" | "error";
 type UpdateState = { phase: Phase; details?: { version?: string; channel?: string; received?: number; total?: number; code?: string } };
 type DesktopWindow = Window & { __TAURI__?: { core: { invoke: <T>(command: string, args?: Record<string, string>) => Promise<T> } } };
 const workingPhases: Phase[] = ["checking", "connecting", "downloading", "installing_app", "installing_runtime"];
@@ -83,6 +83,7 @@ export function DesktopUpdate() {
   }
   const message: Record<Phase, string> = {
     service_error: zh ? "运行时已安装，但服务尚未连接。可重试更新、修复或恢复上版。" : "Runtime installed, but services are unavailable. Retry updates, repair, or restore the previous version.",
+    runtime_pairing_required: zh ? "本机 CLI 运行时与 App 自带运行时不一致。回到 App 启动界面可「更新 App 与运行时」或「回退 CLI」。" : "This host's CLI runtime and the App's bundled runtime differ. On the App boot screen, update both or use the App's runtime.",
     idle: zh ? "App 会检查可用更新，不会自动安装。" : "Updates are checked automatically, never installed without confirmation.",
     runtime_required: zh ? "请完成匹配组件安装，或检查 App 更新。" : "Install matching components or check for an App update.",
     connecting: zh ? "正在连接更新后的服务…" : "Connecting to updated services…",
