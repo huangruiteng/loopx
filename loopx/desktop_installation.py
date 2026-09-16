@@ -79,7 +79,7 @@ def desktop_installation_status(
         "scope": "standard_macos_install_locations",
         "running_app_verified": False,
         "recommended_action": (
-            "Update the desktop App and its bundled runtime together; opening a mismatched App may replace the CLI runtime. Verify running services after restarting the App."
+            "Update the desktop App and its bundled runtime together. Current App builds ask before replacing a different CLI runtime: update the App and its runtime, or align the CLI to the App's bundled runtime. Verify running services after restarting the App."
             if status in {"mismatch", "unknown"}
             else None
         ),
