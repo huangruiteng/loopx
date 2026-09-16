@@ -26,6 +26,28 @@ decision or turn-settlement logic; they give refactor and test code one
 stable abstraction for reading the effect program shape across packet
 families.
 
+The action slot depends on the packet family:
+
+| Observation | Verdict | `effective_action` |
+| --- | --- | --- |
+| Quota should-run | Quota decision | Existing decision/frontier action string |
+| Turn result | `decision` carries `result_kind` | Always JSON `null` / Python `None` |
+| Journal replay | `replay_legal` or `replay_blocked` | Omitted from the internal replay observation |
+
+Turn-result readers must use `decision` for the result verdict. The result lens
+ignores a host-supplied action; it cannot create a quota decision. The TS result
+type fixes its action to null, while the generic quota type retains its default
+string action. This changes the transient result projection, not persisted
+host results, receipts, or journal plans. See the
+[semantic vocabulary RFC](../architecture/rfcs/semantic-vocabulary-convergence-v0.md#m1-action-domains-and-compatibility)
+for the versioned frontier migration and its compatibility boundary.
+
+动作槽位按 packet family 区分：quota 保留决策/前沿动作字符串；Turn result 的
+判决从 `decision` 读取，`effective_action` 固定为 `null`（Python 为 `None`）；
+journal replay 使用自己的判决，不再输出动作字段。host 提供的 action 不会被
+解释为 quota 决策。这只改变瞬时结果投射，不重写落盘的 host result、receipt
+或 journal plan。
+
 ## Turn Journal Lens
 
 `interpret_turn_journal` reads an existing fenced Turn journal and returns an
