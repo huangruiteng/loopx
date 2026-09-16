@@ -17,7 +17,7 @@ from __future__ import annotations
 import ast
 import tomllib
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -154,7 +154,7 @@ def _import_names(node: ast.Import | ast.ImportFrom) -> set[str]:
             names.add(alias.asname)
         elif isinstance(node, ast.Import):
             names.add(alias.name.split(".")[0])
-        else:
+        elif alias.name != "*":
             names.add(alias.name)
     return names
 
@@ -176,7 +176,7 @@ def _defined_names(body: Sequence[ast.stmt]) -> set[str]:
         elif isinstance(node, ast.If):
             names |= _defined_names(node.body)
             names |= _defined_names(node.orelse)
-        elif isinstance(node, ast.Try):
+        elif isinstance(node, (ast.Try, ast.TryStar)):
             names |= _defined_names(node.body)
             for handler in node.handlers:
                 names |= _defined_names(handler.body)
@@ -276,14 +276,7 @@ def _resolve(entrypoint: DeclaredEntrypoint, repo_root: Path) -> DeclaredEntrypo
                 f"{pyproject.relative_to(repo_root).as_posix()}",
             )
         module, symbol = _split_reference(target)
-        entrypoint = DeclaredEntrypoint(
-            kind=entrypoint.kind,
-            manifest_path=entrypoint.manifest_path,
-            location=entrypoint.location,
-            reference=entrypoint.reference,
-            module=module or None,
-            symbol=symbol or None,
-        )
+        entrypoint = replace(entrypoint, module=module or None, symbol=symbol or None)
 
     if not entrypoint.module:
         return _unresolved(entrypoint, f"`{entrypoint.reference}` names no module")
@@ -292,15 +285,7 @@ def _resolve(entrypoint: DeclaredEntrypoint, repo_root: Path) -> DeclaredEntrypo
     if source_path is None:
         return _unresolved(entrypoint, f"module `{entrypoint.module}` has no source file in this repository")
 
-    entrypoint = DeclaredEntrypoint(
-        kind=entrypoint.kind,
-        manifest_path=entrypoint.manifest_path,
-        location=entrypoint.location,
-        reference=entrypoint.reference,
-        module=entrypoint.module,
-        symbol=entrypoint.symbol,
-        source_path=source_path,
-    )
+    entrypoint = replace(entrypoint, source_path=source_path)
 
     if entrypoint.kind is EntrypointKind.PYTHON_MODULE:
         return _resolved(entrypoint)
@@ -316,38 +301,11 @@ def _resolve(entrypoint: DeclaredEntrypoint, repo_root: Path) -> DeclaredEntrypo
 
 
 def _resolved(entrypoint: DeclaredEntrypoint) -> DeclaredEntrypoint:
-    return _replace_status(entrypoint, EntrypointStatus.RESOLVED, "")
+    return replace(entrypoint, status=EntrypointStatus.RESOLVED, reason="")
 
 
 def _unresolved(entrypoint: DeclaredEntrypoint, reason: str) -> DeclaredEntrypoint:
-    return _replace_status(entrypoint, EntrypointStatus.UNRESOLVED, reason)
-
-
-def _replace_status(
-    entrypoint: DeclaredEntrypoint,
-    status: EntrypointStatus,
-    reason: str,
-) -> DeclaredEntrypoint:
-    return DeclaredEntrypoint(
-        kind=entrypoint.kind,
-        manifest_path=entrypoint.manifest_path,
-        location=entrypoint.location,
-        reference=entrypoint.reference,
-        module=entrypoint.module,
-        symbol=entrypoint.symbol,
-        source_path=entrypoint.source_path,
-        status=status,
-        reason=reason,
-    )
-
-
-def collect_declared_entrypoints(repo_root: Path) -> list[DeclaredEntrypoint]:
-    repo_root = repo_root.resolve()
-    entrypoints: list[DeclaredEntrypoint] = []
-    for manifest_path in bundled_manifest_paths(repo_root):
-        manifest = load_extension_manifest(manifest_path)
-        entrypoints.extend(_collect_from_manifest(manifest_path, manifest))
-    return entrypoints
+    return replace(entrypoint, status=EntrypointStatus.UNRESOLVED, reason=reason)
 
 
 def resolve_declared_entrypoints(repo_root: Path) -> EntrypointSurfaceReport:

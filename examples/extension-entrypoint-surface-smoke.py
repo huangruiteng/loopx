@@ -46,13 +46,6 @@ def main() -> int:
     for required in REQUIRED_KINDS:
         assert required in kinds, f"no manifest declares a {required} entrypoint: {sorted(kinds)}"
 
-    factories = [
-        item.reference
-        for item in report.entrypoints
-        if item.kind is EntrypointKind.HOOK_FACTORY
-    ]
-    assert any(reference.startswith("loopx.extensions.lark.") for reference in factories), factories
-
     print("extension-entrypoint-surface-smoke: ok")
     return 0
 

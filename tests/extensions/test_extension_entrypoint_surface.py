@@ -53,8 +53,9 @@ def _demo_repo(
     *,
     runtime_block: str,
     extra_blocks: tuple[str, ...] = (),
+    manifest_dir: str = "loopx/extensions/demo",
 ) -> Path:
-    manifest_path = tmp_path / "loopx" / "extensions" / "demo" / "extension.toml"
+    manifest_path = tmp_path / manifest_dir / "extension.toml"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     runtime_section = f'[runtime]\nprotocol = "demo_extension_v0"\n{runtime_block}'
     sections = "\n\n".join(block for block in (runtime_section, *extra_blocks))
@@ -212,3 +213,63 @@ def test_console_script_target_symbol_is_resolved(tmp_path: Path) -> None:
     assert item.module == "demo_provider.cli"
     assert item.symbol == "main"
     assert "no longer defines" in item.reason
+
+
+def test_import_error_fallback_counts_as_defined(tmp_path: Path) -> None:
+    root = _demo_repo(
+        tmp_path,
+        runtime_block='python_module = "demo_provider.provider"',
+        extra_blocks=(HOOK_ADAPTER_BLOCK,),
+    )
+    _write_module(root, "demo_provider.provider", "def main() -> None:\n    return None\n")
+    _write_module(root, "demo_provider.compat", "def build_adapter() -> None:\n    return None\n")
+    _write_module(
+        root,
+        "demo_provider.hooks",
+        """\
+        try:
+            from demo_provider.fast import build_adapter
+        except ImportError:
+            from demo_provider.compat import build_adapter
+        """,
+    )
+
+    assert resolve_declared_entrypoints(root).ok is True
+
+
+def test_colocated_package_resolves_through_src_and_own_pyproject(tmp_path: Path) -> None:
+    root = _demo_repo(
+        tmp_path,
+        runtime_block='entrypoint = "demo-entrypoint"',
+        extra_blocks=(HOOK_ADAPTER_BLOCK,),
+        manifest_dir="packages/demo-pkg",
+    )
+    src = root / "packages" / "demo-pkg" / "src"
+    _write_module(src, "demo_provider.cli", "def main() -> None:\n    return None\n")
+    _write_module(src, "demo_provider.hooks", "def build_adapter() -> None:\n    return None\n")
+    (root / "packages" / "demo-pkg" / "pyproject.toml").write_text(
+        textwrap.dedent(
+            """\
+            [project]
+            name = "demo-pkg"
+
+            [project.scripts]
+            demo-entrypoint = "demo_provider.cli:main"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    report = resolve_declared_entrypoints(root)
+
+    assert report.problems == []
+    assert report.ok is True, [item.as_dict(root) for item in report.unresolved]
+    resolved_kinds = {item.kind for item in report.entrypoints}
+    assert EntrypointKind.CONSOLE_SCRIPT in resolved_kinds
+    assert EntrypointKind.HOOK_FACTORY in resolved_kinds
+
+    _write_module(src, "demo_provider.hooks", "def build_adapter_v2() -> None:\n    return None\n")
+    report = resolve_declared_entrypoints(root)
+
+    assert not report.ok
+    assert report.unresolved[0].kind is EntrypointKind.HOOK_FACTORY
