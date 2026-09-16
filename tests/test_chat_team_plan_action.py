@@ -122,6 +122,9 @@ def test_a_confirmed_plan_creates_each_ready_lane_first_todo(tmp_path: Path) -> 
     lane_todo_ids = receipt["resource_ids"]["lane_todo_ids"]
     assert len(lane_todo_ids) == 1 and lane_todo_ids[0].startswith("todo_")
     assert receipt["resource_ids"]["todo_id"] == lane_todo_ids[0]
+    # The readback names the canonical revision these lanes were created
+    # against, so the owner sees what the new work is meant to advance.
+    assert receipt["intent_basis"].startswith("sha256:")
     state = _todos(project)
     assert "Advance the intake contract" in state
     assert f"claimed_by={AGENT_ID}" in state

@@ -44,9 +44,10 @@ _RECEIPT_FIELDS = {
 # closed and a new field is admitted only as an explicitly bounded addition
 # that an older receipt may still omit. `lane_todo_ids` is the readback of a
 # team plan: every lane Todo the settlement ensured, not just the first one.
-_OPTIONAL_RECEIPT_FIELDS = {"lane_todo_ids"}
+_OPTIONAL_RECEIPT_FIELDS = {"lane_todo_ids", "intent_basis"}
 _LANE_TODO_ID_LIMIT = 8
 _LANE_TODO_ID = re.compile(r"^todo_[A-Za-z0-9]{1,40}$")
+_INTENT_BASIS = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 TransitionCheckpoint = Callable[[list[dict[str, Any]]], None]
@@ -152,6 +153,14 @@ def validate_governed_transition_receipts(
             raise ValueError(
                 "governed transition proposal receipt lane_todo_ids is invalid"
             )
+        intent_basis = receipt.get("intent_basis")
+        if intent_basis is not None and (
+            not isinstance(intent_basis, str)
+            or not _INTENT_BASIS.fullmatch(intent_basis)
+        ):
+            raise ValueError(
+                "governed transition proposal receipt intent_basis is invalid"
+            )
         validate_public_safe_value(receipt, path=f"transition_receipts[{index}]")
         receipts.append(receipt)
     return receipts
@@ -254,6 +263,48 @@ def _upsert_monitor(
     }
 
 
+def _intent_basis_for(
+    *,
+    goal_id: str,
+    goal: Mapping[str, Any],
+    registry_path: Path,
+    preview: Mapping[str, Any],
+) -> str | None:
+    """Read the canonical source basis one work-graph edit is applied against.
+
+    The source basis is a Goal-level fact, so any of the Goal's Agents reads the
+    same one; a ready lane is preferred because that is where the work will live.
+    A Goal whose basis cannot be read omits the field rather than inventing one.
+    """
+
+    lanes = preview.get("lanes") or []
+    basis_agent = next(
+        (
+            str(lane.get("agent_id"))
+            for lane in lanes
+            if lane.get("staffing") == "ready"
+        ),
+        str(lanes[0].get("agent_id")) if lanes else "",
+    )
+    if not basis_agent:
+        return None
+    try:
+        from ...control_plane.goals.shared_goal_alignment import (
+            project_shared_goal_alignment,
+        )
+
+        alignment = project_shared_goal_alignment(
+            goal_id=goal_id,
+            agent_id=basis_agent,
+            project=Path(str(goal.get("repo") or ".")).expanduser(),
+            registry_path=Path(registry_path),
+        )
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        return None
+    basis = (alignment.get("source_basis") or {}).get("source_basis_digest")
+    return str(basis) if basis else None
+
+
 def _apply_team_plan(
     *,
     registry_path: Path,
@@ -299,6 +350,11 @@ def _apply_team_plan(
         registered_agent_ids=registered_agent_ids_for_goal(goal),
         supported_action_kinds=sorted(TODO_ACTION_KIND_ADVANCEMENT_VALUES),
     )
+    # Traceability is read before the edit: the receipt names the canonical
+    # basis this work-graph edit was applied against, so the lanes could not
+    # make the basis describe their own creation. A Goal whose basis cannot be
+    # read omits the field instead of inventing one.
+    intent_basis = _intent_basis_for(goal_id=goal_id, goal=goal, registry_path=registry_path, preview=preview)
     created: list[str] = []
     reused: list[str] = []
     for lane in preview["lanes"]:
@@ -330,6 +386,7 @@ def _apply_team_plan(
         "target_key": None,
         "created_todo_ids": created,
         "lane_todo_ids": lane_todo_ids,
+        "intent_basis": intent_basis,
         "reused_lane_count": len(reused),
         "gap_count": len(preview["gaps"]),
     }
@@ -458,6 +515,11 @@ def settle_governed_transition_proposals(
             # The apply ensured every ready lane's first Todo; a receipt that
             # named only the first one could not be read as "what exists now".
             receipt["lane_todo_ids"] = [str(item) for item in lane_todo_ids]
+        if result.get("intent_basis"):
+            # The work-graph edit this receipt records is traceable to the
+            # canonical basis it was applied against, so a lane Todo can be tied
+            # back to the intent revision it was meant to advance.
+            receipt["intent_basis"] = str(result["intent_basis"])
         validate_public_safe_value(receipt, path="transition_receipt")
         receipts.append(receipt)
         by_proposal_id[proposal_id] = receipt

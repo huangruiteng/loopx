@@ -555,13 +555,16 @@ Shipped enforcement, in delivery order:
    staffing has drifted.
 
 What is still missing is the surface that sends that confirmation and the
-traceability behind it: a multi-lane preview has no frontend confirmation
-surface yet, and a materialized lane Todo does not carry the canonical intent
-revision it is meant to advance. The readback is no longer one of those gaps: the
-apply publishes every lane Todo it ensured under a bounded `lane_todo_ids` field,
-that field is the one additive exception to the closed, persisted receipt field
-set so a receipt written before it still validates, and a team-plan receipt
-carries no monitor key because a plan is not a monitor.
+per-Goal coverage behind it: a multi-lane preview has no frontend confirmation
+surface yet. Traceability is recorded rather than implied: the settlement reads
+the Goal's canonical source basis before it writes, and the receipt carries it as
+a bounded `intent_basis`, so each lane Todo can be tied to the revision it was
+meant to advance even though the Todo row itself does not carry the field. The
+readback is no longer a gap either: the apply publishes every lane Todo it ensured
+under a bounded `lane_todo_ids` field, both fields are additive exceptions to the
+closed, persisted receipt field set so a receipt written before them still
+validates, and a team-plan receipt carries no monitor key because a plan is not a
+monitor.
 
 ### Relationship to the multi-agent and shared-authority contracts
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -286,6 +287,46 @@ def test_the_lane_readback_is_optional_bounded_and_additive() -> None:
         validate_governed_transition_receipts([_receipt(unexpected_field=1)])
     with pytest.raises(ValueError, match="monitor_key is invalid"):
         validate_governed_transition_receipts([_receipt(monitor_key=None)])
+
+
+def test_the_receipt_records_the_intent_basis_it_was_applied_against(
+    tmp_path: Path,
+) -> None:
+    """A work-graph edit is traceable to the canonical basis it advanced."""
+
+    from loopx.control_plane.goals.shared_goal_alignment import (
+        project_shared_goal_alignment,
+    )
+
+    project, registry_path = _fixture(tmp_path)
+
+    def basis() -> str:
+        return project_shared_goal_alignment(
+            goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
+            project=project,
+            registry_path=registry_path,
+        )["source_basis"]["source_basis_digest"]
+
+    before = basis()
+    receipts = _settle(registry_path, _proposal())
+    recorded = receipts[0]["intent_basis"]
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", recorded)
+    # The receipt names the revision the edit was applied against, not the one
+    # the edit itself produced, and it is the canonical basis rather than a
+    # digest this module invented.
+    assert recorded == before
+    assert basis() != before
+    assert len(validate_governed_transition_receipts(receipts)) == 1
+
+    for malformed in ("sha256:short", "2836abc7", "sha256:" + "A" * 64):
+        with pytest.raises(ValueError, match="intent_basis is invalid"):
+            validate_governed_transition_receipts([_receipt(intent_basis=malformed)])
+    assert len(
+        validate_governed_transition_receipts(
+            [_receipt(intent_basis="sha256:" + "a" * 64)]
+        )
+    ) == 1
 
 
 def test_a_team_plan_receipt_must_not_invent_a_monitor_key() -> None:

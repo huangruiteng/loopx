@@ -967,6 +967,7 @@ class ChatActionService(
         )
         settlement = settlements[0]
         lane_todo_ids = [str(item) for item in (settlement.get("lane_todo_ids") or [])]
+        intent_basis = str(settlement.get("intent_basis") or "")
         receipt = {
             "receipt_id": _digest(
                 {
@@ -987,6 +988,10 @@ class ChatActionService(
                 "lane_todo_ids": lane_todo_ids,
             },
         }
+        if intent_basis:
+            # The canonical revision these lanes were created against, so the
+            # owner's readback can name what the work advances.
+            receipt["intent_basis"] = intent_basis
         stored = self.store.apply(
             proposal_id, current_state_fingerprint=current_fingerprint, receipt=receipt
         )
