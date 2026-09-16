@@ -112,13 +112,17 @@ test("legal terminal replay is projected without effects or private fields", () 
   assert.deepEqual(input, before);
 });
 
-test("journal interpretation preserves the canonical Effect Program slots", () => {
+test("journal replay uses its own decision without a quota action slot", () => {
   const turn = interpretTurnJournalEffect(request());
 
   assert.equal(turn.request.kind, "turn_journal");
   assert.equal(turn.interpretation.route, "turn_journal_replay");
   assert.equal(turn.observation.decision, "replay_legal");
   assert.equal(turn.observation.should_run, false);
+  assert.equal("effective_action" in turn.observation, false);
+  const blocked = interpretTurnJournalEffect({...request(), agent_id: "other-agent"});
+  assert.equal(blocked.observation.decision, "replay_blocked");
+  assert.equal("effective_action" in blocked.observation, false);
   assert.deepEqual(turn.next_effect.cli_actions, []);
   assert.deepEqual(interpretTurnJournal(request()), {
     ok: true,

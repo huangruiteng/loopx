@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -227,7 +228,7 @@ def apply_unsettled_host_turn_recovery_if_required(
             "decision": "unsettled_host_turn_recovery",
             "should_run": True,
             "state": "eligible",
-            "effective_action": "unsettled_host_turn_recovery",
+            "effective_action": EffectiveAction.UNSETTLED_HOST_TURN_RECOVERY.value,
             "actionable_by_codex": True,
             "normal_delivery_allowed": False,
             "recovery_delivery_allowed": False,

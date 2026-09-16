@@ -7,6 +7,7 @@ import {
   SETTLEMENT_IDENTITY_SCHEMA_VERSION,
   SETTLEMENT_PLAN_SCHEMA_VERSION,
   settlementIdentityFromPlan,
+  type EffectObservation,
   type EffectTurn,
 } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
@@ -93,10 +94,14 @@ export interface TurnJournalEffectContext {
   last_recovery: TurnRecoveryAudit | null;
 }
 
-export type TurnJournalEffect = EffectTurn<
+// Replay has its own verdict. It is not a quota decision and must not manufacture
+// a second action vocabulary in the should-run effective_action slot.
+export type TurnJournalEffect = Omit<EffectTurn<
   TurnJournalEffectContext,
   "replay_legal" | "replay_blocked"
->;
+>, "observation"> & {
+  observation: Omit<EffectObservation<"replay_legal" | "replay_blocked">, "effective_action">;
+};
 
 export const transactionPhases = Object.freeze([...transactionContract.phases]);
 export const supportedJournalStatuses: ReadonlySet<string> = new Set([
@@ -653,7 +658,6 @@ export function interpretTurnJournalEffect(
     observation: {
       decision,
       should_run: false,
-      effective_action: replayLegal ? "observe_replay" : "block_replay",
       recommended_action: replayLegal
         ? "Retain the terminal Turn journal tombstone."
         : "Inspect the structured Turn journal violations before replay.",

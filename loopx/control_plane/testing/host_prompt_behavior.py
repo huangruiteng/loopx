@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from ...heartbeat_prompt import build_heartbeat_prompt
+from ..quota.effective_action import EffectiveAction
 from .model_tool_behavior import DoubaoExecToolClient
 
 
@@ -25,7 +26,10 @@ def cases() -> list[dict]:
         "packet": {
             "ok": True,
             "should_run": work,
-            "effective_action": "autonomous_replan_required" if replan else "run" if work else "wait",
+            "effective_action": (
+                EffectiveAction.AUTONOMOUS_REPLAN_REQUIRED.value if replan
+                else EffectiveAction.NORMAL_RUN.value if work else EffectiveAction.QUOTA_SKIP.value
+            ),
             "execution_obligation": {"must_attempt_work": work},
             "heartbeat_recommendation": {"agent_must_attempt": work},
             "autonomous_replan_obligation": {"required": replan},

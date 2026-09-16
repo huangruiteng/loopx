@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .effective_action import EffectiveAction
 
 from typing import Any
 
@@ -216,7 +217,7 @@ def build_runtime_capability_user_gate_repair_hint(
             "trigger": RUNTIME_CAPABILITY_USER_GATE_REPAIR_TRIGGER,
             "schema_version": "runtime_capability_user_gate_repair_v0",
             "recommended_mode": "repair_user_gate_projection",
-            "effective_action": "runtime_user_gate_projection_repair",
+            "effective_action": EffectiveAction.RUNTIME_USER_GATE_PROJECTION_REPAIR.value,
             "blocked_action_scope": "user_gate_projection",
             "allowed": True,
             "notify": "DONT_NOTIFY",
@@ -297,7 +298,7 @@ def build_quota_stall_self_repair_hint(
                 "source": "quota.should-run",
                 "trigger": "health_blocker",
                 "recommended_mode": "repair_control_plane_health",
-                "effective_action": "control_plane_health_repair",
+                "effective_action": EffectiveAction.CONTROL_PLANE_HEALTH_REPAIR.value,
                 "allowed": True,
                 "notify": "DONT_NOTIFY",
                 "reason": (
@@ -334,7 +335,7 @@ def build_quota_stall_self_repair_hint(
             "source": "quota.should-run",
             "trigger": "waiting_without_owner_projection",
             "recommended_mode": "repair_waiting_projection",
-            "effective_action": "control_plane_projection_repair",
+            "effective_action": EffectiveAction.CONTROL_PLANE_PROJECTION_REPAIR.value,
             "allowed": True,
             "notify": "DONT_NOTIFY",
             "reason": (

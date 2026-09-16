@@ -1,3 +1,4 @@
+import { EffectiveAction } from "./effective_action.generated.ts";
 import { createHash } from "node:crypto";
 
 import {
@@ -575,7 +576,7 @@ function actionProjection(payload: JsonObject, protocolActionFields: JsonObject)
   const interaction = object(payload.interaction_contract);
   const agentChannel = object(interaction.agent_channel);
   const cliChannel = object(interaction.cli_channel);
-  const capabilityIntent = payload.effective_action === "governed_capability_intent"
+  const capabilityIntent = payload.effective_action === EffectiveAction.GOVERNED_CAPABILITY_INTENT
     ? projectPendingCapabilityIntent(payload.pending_capability_intent) : null;
   // A governed capability action has already won the live decision. Stale
   // replan/host-reentry projections must not replace its exact command.

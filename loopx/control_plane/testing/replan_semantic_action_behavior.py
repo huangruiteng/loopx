@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ...heartbeat_prompt import build_heartbeat_prompt
+from ..quota.effective_action import EffectiveAction
 from ..quota.turn_envelope import quota_action_signature_document
 from ..work_items.progress_observation import (
     ProgressResultClass,
@@ -561,7 +562,7 @@ def _successor_reentry_observation(
         raise ValueError("successor_reentry_replan_not_closed")
     if not (
         packet.get("decision") == "run"
-        and packet.get("effective_action") == "normal_run"
+        and packet.get("effective_action") == EffectiveAction.NORMAL_RUN.value
     ):
         raise ValueError("successor_reentry_not_runnable")
 
@@ -622,7 +623,7 @@ def _semantic_reentry_observation(
         else None
     )
     future_monitor_wait = bool(
-        packet.get("effective_action") == "monitor_quiet_skip"
+        packet.get("effective_action") == EffectiveAction.MONITOR_QUIET_SKIP.value
         and isinstance(frontier, Mapping)
         and frontier.get("replan_required") is False
         and isinstance(monitor_lanes, Mapping)

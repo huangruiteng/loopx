@@ -11,24 +11,24 @@ SMOKE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SMOKE_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.scheduler.execution_context import (
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402 - standalone smoke bootstraps repo imports
     SchedulerRuntimeProfile,
     scheduler_execution_context_for_runtime_profile,
 )
-from loopx.control_plane.todos.contract import (
+from loopx.control_plane.todos.contract import (  # noqa: E402 - standalone smoke bootstraps repo imports
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
 )
-from loopx.quota import (
+from loopx.quota import (  # noqa: E402 - standalone smoke bootstraps repo imports
     build_quota_should_run as _build_quota_should_run,
     render_quota_should_run_markdown,
 )
-from loopx.status import (
+from loopx.status import (  # noqa: E402 - standalone smoke bootstraps repo imports
     compact_todo_group,
     compact_post_handoff_run,
     normalize_todo_task_class,
 )
-from work_lane_contract_fixtures import (
+from work_lane_contract_fixtures import (  # noqa: E402 - standalone smoke bootstraps repo imports
     FUTURE_DUE_AT,
     GOAL_ID,
     PAST_DUE_AT,
@@ -1393,8 +1393,9 @@ def assert_peer_requires_reassignment_when_only_other_peer_has_claimed_work() ->
     assert guard["effective_action"] == "reassignment_required", guard
     assert "agent_lane_next_action" not in guard, guard
     frontier = guard["agent_scope_frontier"]
-    assert frontier["schema_version"] == "agent_scope_frontier_v0", frontier
+    assert frontier["schema_version"] == "agent_scope_frontier_v1", frontier
     assert frontier["action"] == "reassignment_required", frontier
+    assert "effective_action" not in frontier, frontier
     assert frontier["agent_id"] == "codex-side-bypass", frontier
     assert "primary_agent" not in frontier, frontier
     assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0, frontier
