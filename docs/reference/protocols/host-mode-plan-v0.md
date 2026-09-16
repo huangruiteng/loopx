@@ -121,9 +121,11 @@ as an executor.
   "selected_connector_id": "loopx_turn",
   "selected_turn_mapping": {
     "host": "generic-cli",
+    "host_selection": "resolved_default",
     "execution_mode": "isolated-headless",
     "scheduler_owner": "outer_controller",
-    "plan_command": "loopx turn plan --goal-id loopx-meta --agent-id codex-main-control --host generic-cli --execution-mode isolated-headless --scheduler-owner outer_controller"
+    "plan_command": "loopx turn plan --goal-id loopx-meta --agent-id codex-main-control --execution-mode isolated-headless --scheduler-owner outer_controller",
+    "plan_command_rollback": "loopx turn plan --goal-id loopx-meta --agent-id codex-main-control --host generic-cli --execution-mode isolated-headless --scheduler-owner outer_controller"
   },
   "next_preview_command": "loopx turn plan ...",
   "mode_options": [],
@@ -140,6 +142,28 @@ Each `mode_options[]` entry includes the connector id, readiness, required
 host capabilities, Turn mapping when one exists, scheduler execution context,
 quota guard command, and required proofs.
 
+`selected_turn_mapping` fields mean:
+
+- `host` is the mode's **declared** host: the scheduler context the readiness
+  statement and capability requirements are written against. It is not a claim
+  that this concrete host has already been resolved for the run; the runtime
+  resolves the concrete host from its own explicit product default
+  (`loopx/control_plane/turn_driver/host_binding.py`) when `plan_command` runs,
+  and `LOOPX_TURN_HOST` or an explicit `--host` re-points that default. That
+  default is resolved from the operator credential, so this preview stays
+  deliberately credential-invariant: it pins no host and reports the resolution
+  as undone, instead of freezing one machine's credential facts into a plan that
+  other lanes read.
+- `host_selection` is `resolved_default` when the command deliberately leaves
+  host resolution to `loopx turn plan`/`run-once`, and `pinned` when the command
+  carries an explicit `--host`.
+- `plan_command` is the command to run for this mapping. When `host_selection`
+  is `resolved_default` it pins no host, so it cannot freeze the compatibility
+  adapter path as the product default.
+- `plan_command_rollback` is the pinned compatibility variant for an operator
+  who deliberately wants that path instead of the resolved default. It is
+  present only when the mapping resolves its host.
+
 ## Functional Points
 
 The selector provides four concrete functions:
@@ -148,7 +172,8 @@ The selector provides four concrete functions:
    users and agents to infer visible/headless/gateway/timer behavior manually.
 2. **Turn mapping:** for unattended execution, print the exact `loopx turn plan`
    preview that preserves host, execution mode, scheduler owner, agent id, and
-   available capabilities.
+   available capabilities, while leaving the concrete host to the runtime's
+   resolved default and reporting the pinned variant as the rollback command.
 3. **Readiness surface:** report which advertised capabilities are missing
    before a mode can be trusted.
 4. **Safe handoff plan:** name transitions such as visible bootstrap to
@@ -161,8 +186,11 @@ A fixture or implementation is acceptable when:
 
 1. `schema_version=host_mode_plan_v0` and `mode=dry_run_host_mode_selector`;
 2. the five canonical modes are present and intent selects the expected mode;
-3. `isolated_headless_turn` maps to `loopx turn plan --host generic-cli
-   --execution-mode isolated-headless --scheduler-owner outer_controller`;
+3. `isolated_headless_turn` maps to the shipped host resolution: the preview
+   command is `loopx turn plan --execution-mode isolated-headless
+   --scheduler-owner outer_controller` with no pinned `--host`, and the pinned
+   compatibility variant is reported as `plan_command_rollback`
+   (`--host generic-cli`);
 4. scoped identity flows into Turn and quota preview commands as `--agent-id`;
 5. the no-spend policy covers selector previews, Turn plan previews, quiet
    monitors, cadence-only changes, and final/readiness checks;

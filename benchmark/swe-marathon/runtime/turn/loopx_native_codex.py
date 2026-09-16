@@ -330,8 +330,7 @@ def run(name, args):
 
 run("bootstrap", ["bootstrap", "--project", a.project, "--goal-id", a.goal_id,
                   "--objective", "Complete the software engineering task described "
-                  "in the task file and commit the finished work.",
-                  "--no-onboarding-scan"])
+                  "in the task file and commit the finished work."])
 run("configure_goal", ["configure-goal", "--goal-id", a.goal_id,
                        "--registered-agent", a.agent_id, "--execute"])
 prompt = run("heartbeat_prompt",

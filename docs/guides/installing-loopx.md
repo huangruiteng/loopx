@@ -292,6 +292,12 @@ not necessarily active in an installed release. Archive maintainers may use
 the tagged package channel and wait for the corresponding release instead of
 trying to switch an installed distribution to `main`.
 
+An install taken from a pinned full commit SHA needs no separate lineage
+lookup: `loopx update check --ref <40-hex-commit>` compares that commit with the
+installed manifest source commit and reports `runtime_active` when they match,
+so the readback you would use to confirm your own pinned install stays
+actionable.
+
 For an installation owned by another Python package manager, `update plan`
 reports that owner and its command; LoopX fails closed instead of guessing a
 pip mutation. For a live source checkout, it reports the contributor installer

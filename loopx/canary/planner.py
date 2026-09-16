@@ -977,19 +977,18 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
-        "id": "new-user-onboarding-lifecycle",
-        "title": "New-user onboarding lifecycle",
+        "id": "first-connect-contract",
+        "title": "First-connect contract",
         "quality_risk": "high",
         "purpose": (
-            "Check fresh no-scan connection, structured todo projection, "
+            "Check fresh connection state, absence of first-connect todos, "
             "state-gap detection, and domain-adapter routing ownership."
         ),
         "catalog_families": ["Work Routing", "State And Boundary"],
         "trigger_hints": (
             "new user onboarding",
-            "onboarding lifecycle",
-            "no-onboarding-scan",
-            "onboarding_connection_validation",
+            "first connect",
+            "first-connect contract",
             "state projection gap",
             "start-goal",
             "loopx/bootstrap.py",
@@ -1002,11 +1001,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/project/onboarding-no-scan-projection-smoke.py",
+                "command": "python3 examples/project/first-connect-contract-smoke.py",
                 "tier": "default",
                 "reason": (
-                    "guards fresh connection-to-todo parity, state-gap warnings, "
-                    "and domain-adapter routing ownership"
+                    "guards fresh connection state, first-connect todo absence, "
+                    "state-gap warnings, and domain-adapter routing ownership"
                 ),
             },
         ],

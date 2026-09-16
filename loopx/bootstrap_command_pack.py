@@ -675,8 +675,7 @@ def _bootstrap_command(
         "  --project . \\",
         f"  --goal-id {shell_arg(goal_id)} \\",
         f"  --adapter-kind {shell_arg(DEFAULT_HANDOFF_ADAPTER_KIND)} \\",
-        f"  --adapter-status {shell_arg(DEFAULT_HANDOFF_ADAPTER_STATUS)} \\",
-        "  --codex-app-heartbeat ask",
+        f"  --adapter-status {shell_arg(DEFAULT_HANDOFF_ADAPTER_STATUS)}",
     ]
     if fine_grained:
         lines[-1] += " \\"

@@ -86,8 +86,7 @@ def test_complete_with_next_todo_uses_registered_agent():
         gid = "cc-lifecycle"
         state_file = f".claude/goals/{gid}/ACTIVE_GOAL_STATE.md"
         r = loopx(["bootstrap", "--project", str(proj), "--goal-id", gid,
-                   "--objective", "lifecycle smoke", "--state-file", state_file,
-                   "--no-onboarding-scan"], home=home)
+                   "--objective", "lifecycle smoke", "--state-file", state_file], home=home)
         assert r.returncode == 0, f"bootstrap failed:\n{r.stdout}\n{r.stderr}"
         registry = str(proj / ".loopx" / "registry.json")
         # /loopx registers only `cc` (primary + registered)

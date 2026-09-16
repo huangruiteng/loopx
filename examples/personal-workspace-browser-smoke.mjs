@@ -11,6 +11,7 @@ import {
 } from "./dashboard-browser-smoke-support.mjs";
 import { writeDashboardBrowserCoverage } from "./dashboard-browser-coverage.mjs";
 import { chatRecoveryScenario } from "./personal-workspace-browser/chat-recovery.mjs";
+import { executionChipScenario } from "./personal-workspace-browser/execution-chip.mjs";
 import {
   collectCoverage,
   dashboardDir,
@@ -23,7 +24,7 @@ import {
 import { navigationSortingScenario } from "./personal-workspace-browser/navigation-sorting.mjs";
 import { typedActionsScenario } from "./personal-workspace-browser/typed-actions.mjs";
 
-const scenarioCatalog = [navigationSortingScenario, chatRecoveryScenario, typedActionsScenario];
+const scenarioCatalog = [navigationSortingScenario, chatRecoveryScenario, typedActionsScenario, executionChipScenario];
 const requestedScenario = process.env.LOOPX_PERSONAL_WORKSPACE_SCENARIO;
 const scenarios = requestedScenario
   ? scenarioCatalog.filter((scenario) => scenario.id === requestedScenario)

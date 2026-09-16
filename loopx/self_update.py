@@ -11,8 +11,13 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from .activation_qualification import (
+    RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION,
+    runtime_activation_qualification,
+)
 from .doctor import collect_doctor
 from .install_contract import NO_CLONE_INSTALL_URL
+from .runtime_activation import restart_services_for_runtime_activation
 from .self_update_download import run_archive_installer
 
 
@@ -21,9 +26,6 @@ DEFAULT_UPDATE_REPO = "huangruiteng/loopx"
 DEFAULT_UPDATE_REF = "stable"
 ROLLBACK_PREVIOUS_ALIAS = "previous"
 SOURCE_VERSION_CHECK_SCHEMA_VERSION = "loopx_source_version_check_v0"
-RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION = (
-    "loopx_runtime_activation_qualification_v0"
-)
 SOURCE_VERSION_CHECK_TIMEOUT_SECONDS = 3
 SOURCE_VERSION_READ_LIMIT_BYTES = 64 * 1024
 PERSISTED_PYTHON_FILENAME = ".loopx-python"
@@ -210,93 +212,6 @@ def _source_version_check(source: dict[str, Any]) -> dict[str, Any]:
         "version": version,
         "version_tag": f"v{version}",
         "source_url": source_url,
-    }
-
-
-def _runtime_activation_qualification(
-    *,
-    install_freshness: dict[str, Any],
-    source: dict[str, Any],
-) -> dict[str, Any]:
-    installed_commit = install_freshness.get("manifest_source_git_commit")
-    target_commit = install_freshness.get("freshness_source_git_commit")
-    revision_relation = install_freshness.get("manifest_source_freshness_relation")
-    qualified_repo = install_freshness.get("manifest_source_repo")
-    qualified_ref = install_freshness.get("manifest_source_ref")
-    selected_repo = source.get("repo")
-    selected_ref = source.get("ref")
-    package_matches_runtime = install_freshness.get(
-        "manifest_package_version_matches_runtime"
-    )
-    requires_upgrade = install_freshness.get("requires_upgrade")
-    has_commit_pair = all(
-        isinstance(commit, str) and bool(commit)
-        for commit in (installed_commit, target_commit)
-    )
-    source_identity_matches = all(
-        isinstance(value, str) and bool(value)
-        for value in (qualified_repo, qualified_ref, selected_repo, selected_ref)
-    ) and (
-        str(qualified_repo).removesuffix(".git").lower()
-        == str(selected_repo).removesuffix(".git").lower()
-        and str(qualified_ref).removeprefix("refs/heads/")
-        == str(selected_ref).removeprefix("refs/heads/")
-    )
-
-    if package_matches_runtime is False:
-        decision = "release_or_install_successor_required"
-        runtime_active: bool | None = False
-        successor_kind = "release_or_install"
-        reason = "release manifest package version does not match the active runtime"
-    elif not source_identity_matches:
-        decision = "activation_qualification_required"
-        runtime_active = None
-        successor_kind = "activation_qualification"
-        reason = "trusted source lineage does not identify the selected update source"
-    elif has_commit_pair and (
-        installed_commit == target_commit or revision_relation == "installed_ahead"
-    ):
-        decision = "runtime_active"
-        runtime_active = True
-        successor_kind = None
-        reason = "installed source contains the trusted target source commit"
-    elif has_commit_pair and revision_relation in {"installed_behind", "diverged"}:
-        decision = "release_or_install_successor_required"
-        runtime_active = False
-        successor_kind = "release_or_install"
-        reason = "installed source does not contain the trusted target source commit"
-    else:
-        decision = "activation_qualification_required"
-        runtime_active = None
-        successor_kind = "activation_qualification"
-        reason = "trusted installed-versus-target source lineage is unavailable"
-
-    return {
-        "schema_version": RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION,
-        "decision": decision,
-        "runtime_active": runtime_active,
-        "installed_release_id": install_freshness.get("release_id"),
-        "installed_version": install_freshness.get("current_version"),
-        "installed_source_commit": installed_commit,
-        "target_source_label": install_freshness.get("freshness_source_label"),
-        "target_source_commit": target_commit,
-        "revision_relation": revision_relation,
-        "qualified_source": {
-            "repo": qualified_repo,
-            "ref": qualified_ref,
-        },
-        "source_identity_matches": source_identity_matches,
-        "package_version_matches_runtime": package_matches_runtime,
-        "requires_upgrade": requires_upgrade,
-        "selected_source": {
-            "repo": selected_repo,
-            "ref": selected_ref,
-        },
-        "successor": {
-            "required": runtime_active is not True,
-            "kind": successor_kind,
-        },
-        "reason": reason,
     }
 
 
@@ -650,7 +565,7 @@ def build_update_plan(
             else None
         )
     runtime_activation = (
-        _runtime_activation_qualification(
+        runtime_activation_qualification(
             install_freshness=install_freshness,
             source=source,
         )
@@ -857,41 +772,6 @@ def build_update_plan(
     }
 
 
-def restart_managed_loopx_services() -> list[str]:
-    """Best-effort restart of user LaunchAgent-managed LoopX services on macOS.
-
-    After ``loopx update`` replaces the installed release, running status/chat
-    services still belong to the previous release. Restarting the managed
-    LaunchAgents makes them run the new ``loopx`` immediately, so the dashboard
-    and desktop shell keep working without a release-identity mismatch.
-    """
-    if sys.platform != "darwin":
-        return []
-    agents_dir = Path.home() / "Library" / "LaunchAgents"
-    if not agents_dir.is_dir():
-        return []
-    labels: list[str] = []
-    for plist in sorted(agents_dir.glob("*.plist")):
-        stem = plist.stem.lower()
-        if "loopx" not in stem and "goal-harness" not in stem:
-            continue
-        if not (stem.endswith(".status") or stem.endswith(".chat")):
-            continue
-        labels.append(plist.stem)
-    restarted: list[str] = []
-    uid = os.getuid() if hasattr(os, "getuid") else 0
-    for label in labels:
-        result = subprocess.run(
-            ["launchctl", "kickstart", "-k", f"gui/{uid}/{label}"],
-            capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-            timeout=30,
-        )
-        if result.returncode == 0:
-            restarted.append(label)
-    return restarted
-
-
 def _execute_python_distribution_update(
     payload: dict[str, Any],
     *,
@@ -991,28 +871,48 @@ def _execute_python_distribution_update(
         execution[f"{step}_stdout_tail"] = result.stdout[-2000:]
         execution[f"{step}_stderr_tail"] = result.stderr[-2000:]
 
-    required_steps = (
+    runtime_steps = (
         "install",
         "workflow_skills",
         "slash_commands",
         "doctor",
-        "extension_doctor",
     )
-    ok = all(
-        step in results and results[step].returncode == 0 for step in required_steps
+    runtime_ready = all(
+        step in results and results[step].returncode == 0 for step in runtime_steps
+    )
+    extension_ready = (
+        "extension_doctor" in results and results["extension_doctor"].returncode == 0
     )
     updated = dict(payload)
     updated["execution"] = execution
-    updated["ok"] = ok
+    updated["ok"] = runtime_ready and extension_ready
     updated["changes_applied"] = results["install"].returncode == 0
-    if ok:
-        execution["restarted_services"] = restart_managed_loopx_services()
+    execution.update(
+        restart_services_for_runtime_activation(
+            changes_applied=updated["changes_applied"],
+            runtime_ready=runtime_ready,
+        )
+    )
+    if updated["ok"]:
         updated["recommended_action"] = (
             "PyPI update and host-material readback passed; use the new LoopX process"
         )
         updated["next_action"] = {
             "kind": "use_updated_runtime",
             "command": "loopx doctor",
+            "mutating": False,
+            "requires_explicit_approval": False,
+            "reason": updated["recommended_action"],
+        }
+    elif runtime_ready:
+        updated["recommended_action"] = (
+            "the updated runtime is installed and serving; repair the blocked "
+            "enabled extension providers, then rerun "
+            "`loopx extension doctor --all-enabled --execute`"
+        )
+        updated["next_action"] = {
+            "kind": "repair_blocked_extensions",
+            "command": "loopx extension doctor --all-enabled --execute",
             "mutating": False,
             "requires_explicit_approval": False,
             "reason": updated["recommended_action"],
@@ -1140,15 +1040,35 @@ def execute_update_plan(
         )
     else:
         execution["extension_doctor_status"] = "skipped_release_update_failed"
+    runtime_ready = install_result.returncode == 0 and doctor_result.returncode == 0
     updated = dict(payload)
     updated["execution"] = execution
     updated["ok"] = (
-        install_result.returncode == 0
-        and doctor_result.returncode == 0
+        runtime_ready
         and extension_doctor_result is not None
         and extension_doctor_result.returncode == 0
     )
     updated["changes_applied"] = install_result.returncode == 0
+    execution.update(
+        restart_services_for_runtime_activation(
+            changes_applied=updated["changes_applied"],
+            runtime_ready=runtime_ready,
+        )
+    )
+    if not updated["ok"] and runtime_ready:
+        updated["recommended_action"] = (
+            "the updated runtime is installed and serving; repair the blocked "
+            "enabled extension providers, then rerun "
+            "`loopx extension doctor --all-enabled --execute`"
+        )
+        updated["next_action"] = {
+            "kind": "repair_blocked_extensions",
+            "command": "loopx extension doctor --all-enabled --execute",
+            "mutating": False,
+            "requires_explicit_approval": False,
+            "reason": updated["recommended_action"],
+        }
+        return updated
     if not updated["ok"]:
         updated["recommended_action"] = (
             "inspect update execution tails and restore from rollback plan if needed"
@@ -1162,7 +1082,6 @@ def execute_update_plan(
             "reason": updated["recommended_action"],
         }
         return updated
-    execution["restarted_services"] = restart_managed_loopx_services()
     updated["recommended_action"] = (
         "archive update and readback passed; use the new LoopX process"
     )

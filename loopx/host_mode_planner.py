@@ -120,6 +120,21 @@ SUPPORTED_HOST_CAPABILITIES = [
 ]
 _INTENT_PRIMARY_MODE = {meta["intent"]: mode for mode, meta in _MODE_METADATA.items()}
 
+# The headless Turn modes preview the *shipped* host resolution instead of
+# pinning one host. `loopx turn plan`/`run-once` resolve one shipped default,
+# owned by `control_plane.turn_driver.host_binding.selected_turn_host`, which
+# `LOOPX_TURN_HOST` or an explicit `--host` re-points; that default is itself
+# resolved from the operator credential, so a preview that pinned
+# `generic-cli` would quietly ask every operator for the compatibility adapter
+# path instead of the host their own machine will run. The declared host stays
+# in the mapping and in the rollback command, because the mode's scheduler
+# context and capability requirements are still stated for it.
+RESOLVED_DEFAULT_TURN_HOST_MODES = frozenset(
+    {MODE_ISOLATED_HEADLESS_TURN, MODE_SHELL_SERVICE}
+)
+TURN_HOST_SELECTION_PINNED = "pinned"
+TURN_HOST_SELECTION_RESOLVED_DEFAULT = "resolved_default"
+
 # Typed host identity -> runtime connector catalog id. Only identities with a
 # registered catalog connector may emit a host-specific visible mapping; any
 # other identity fails closed instead of fabricating a connector id.
@@ -260,6 +275,7 @@ def _turn_plan_command(
     cli_bin: str,
     available_capabilities: list[str] | None,
     host_identity: str | None,
+    pin_host: bool = True,
 ) -> str | None:
     meta = _MODE_METADATA[mode]
     turn_host = meta.get("turn_host")
@@ -303,9 +319,10 @@ def _turn_plan_command(
     )
     scheduler_owner = meta.get("scheduler_owner")
     scheduler_arg = f" --scheduler-owner {shell_arg(scheduler_owner)}" if scheduler_owner else ""
+    host_arg = f" --host {shell_arg(turn_host)}" if pin_host else ""
     return (
-        f"{shell_arg(cli_bin)} turn plan --goal-id {shell_arg(goal_id)}{agent_arg} "
-        f"--host {shell_arg(turn_host)} --execution-mode {shell_arg(execution_mode)}"
+        f"{shell_arg(cli_bin)} turn plan --goal-id {shell_arg(goal_id)}"
+        f"{agent_arg}{host_arg} --execution-mode {shell_arg(execution_mode)}"
         f"{scheduler_arg}{capability_args}"
     )
 
@@ -526,6 +543,7 @@ def _build_mode_option(
     visible_unresolved = (
         mode == MODE_VISIBLE_TUI and host_identity not in VISIBLE_HOST_CONNECTOR_IDS
     )
+    resolves_default_host = mode in RESOLVED_DEFAULT_TURN_HOST_MODES
     turn_plan_command = (
         None
         if visible_unresolved
@@ -536,7 +554,24 @@ def _build_mode_option(
             cli_bin=cli_bin,
             available_capabilities=available_capabilities,
             host_identity=host_identity,
+            pin_host=not resolves_default_host,
         )
+    )
+    # A mode that previews the shipped resolution still names the pinned host it
+    # would use instead, so an operator who wants the compatibility adapter path
+    # reads one command rather than re-deriving the flags.
+    turn_plan_command_rollback = (
+        _turn_plan_command(
+            goal_id=goal_id,
+            agent_id=agent_id,
+            mode=mode,
+            cli_bin=cli_bin,
+            available_capabilities=available_capabilities,
+            host_identity=host_identity,
+            pin_host=True,
+        )
+        if resolves_default_host
+        else None
     )
     quota_guard_command = _mode_quota_guard(
         mode=mode,
@@ -614,9 +649,15 @@ def _build_mode_option(
         "recommended_next_steps": recommended_next_steps,
         "turn_mapping": {
             "host": effective_turn_host,
+            "host_selection": (
+                TURN_HOST_SELECTION_RESOLVED_DEFAULT
+                if resolves_default_host
+                else TURN_HOST_SELECTION_PINNED
+            ),
             "execution_mode": meta.get("turn_execution_mode"),
             "scheduler_owner": meta.get("scheduler_owner"),
             "plan_command": turn_plan_command,
+            "plan_command_rollback": turn_plan_command_rollback,
         },
         "scheduler_execution_context": _scheduler_context(mode, host_identity),
         "quota_guard_command": quota_guard_command,
@@ -641,6 +682,7 @@ def _transitions(
                 cli_bin=cli_bin,
                 available_capabilities=available_capabilities,
                 host_identity=host_identity,
+                pin_host=to_mode not in RESOLVED_DEFAULT_TURN_HOST_MODES,
             )
         except HostModePlanError:
             # A visible target without a catalog-registered identity has no

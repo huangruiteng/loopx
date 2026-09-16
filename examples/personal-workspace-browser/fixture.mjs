@@ -288,7 +288,7 @@ function filterStatusFixtureToScope(fixture, statusGeneration, scope) {
   }
 }
 
-export async function installApi(page, { goalSubagentConfigurationEnabled = true, initialActionProposals = [] } = {}) {
+export async function installApi(page, { goalSubagentConfigurationEnabled = true, initialActionProposals = [], managerChannelBinding = null } = {}) {
   let turnCounter = 0;
   const runtime = page.__loopxRuntime ??= { actionProposals: new Map(), goalSubagentConfigurations: new Map(), larkConnections: [], messages: new Map(), sessions: new Map(), turnMessages: new Map() };
   const actionProposals = runtime.actionProposals;
@@ -1169,6 +1169,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
           scope: "owner_global",
           model: "gpt-6-astra",
           reasoning_effort: "high",
+          ...(managerChannelBinding ? { channel_binding: managerChannelBinding } : {}),
           runtime: {
             schema_version: "manager_runtime_effective_profile_v0",
             runtime_profile: "restricted",

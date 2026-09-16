@@ -175,7 +175,6 @@ def test_missing_project_stops_before_mutation() -> None:
         assert isinstance(next_step, dict)
         assert next_step["requires_user_confirmation"] is True
         assert "--dry-run" in str(next_step["dry_run_command"])
-        assert "--codex-app-heartbeat ask" in str(next_step["dry_run_command"])
         assert "--dry-run" not in str(next_step["after_confirmation_command"])
         assert "/loopx-summary-all" not in json.dumps(payload)
 
@@ -223,7 +222,7 @@ def test_goal_text_invocation_plans_ranked_todos_before_activation() -> None:
         assert "--objective 'Ship the lightweight issue triage workflow'" in str(
             next_step["connect_command_if_needed"]
         )
-        assert "--no-onboarding-scan" in str(next_step["connect_command_if_needed"])
+        assert "--no-onboarding-scan" not in str(next_step["connect_command_if_needed"])
 
         goal_start = payload["goal_start_contract"]
         assert isinstance(goal_start, dict)
@@ -758,7 +757,6 @@ def test_start_goal_guided_derives_display_name_from_goal_text() -> None:
             "derived-display-goal",
             "--objective",
             "修复 scheduler state path 覆盖问题",
-            "--no-onboarding-scan",
             "--no-global-sync",
         )
         registry = json.loads(

@@ -214,7 +214,7 @@ def test_bootstrap_replacement_preserves_existing_authority(caller: Caller, repl
     w = caller
     w.add('Existing canonical state')
     args = ('bootstrap', '--project', str(w.path), '--state-file', 'STATE.md',
-            '--objective', 'Replacement objective', '--no-onboarding-scan', '--no-global-sync')
+            '--objective', 'Replacement objective', '--no-global-sync')
     assert w.call(*args, '--dry-run')['ok'] is True
     if replacement == 'missing':
         w.state.unlink()

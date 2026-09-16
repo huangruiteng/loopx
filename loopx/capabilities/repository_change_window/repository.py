@@ -193,19 +193,93 @@ def _path_count(repo: Path, *args: str) -> int:
     return len([item for item in output.split(b"\0") if item])
 
 
+# A wholly-untracked directory arrives from ``git ls-files --others`` as one
+# entry, and ``git hash-object`` refuses a directory path. Descending into every
+# such tree is unbounded -- a build or dependency directory can be large -- so a
+# directory entry contributes a bounded, sorted inventory of the files inside
+# it, and says plainly when that inventory was cut short.
+UNTRACKED_DIRECTORY_ENTRY_LIMIT = 512
+
+
+def _untracked_directory_entries(repo: Path, path: str) -> tuple[list[str], bool]:
+    """Return the bounded file inventory inside one untracked directory entry."""
+
+    entries: list[str] = []
+    truncated = False
+    for current, dirnames, filenames in os.walk(os.path.join(repo, path)):
+        dirnames.sort()
+        for name in sorted(filenames):
+            if len(entries) >= UNTRACKED_DIRECTORY_ENTRY_LIMIT:
+                truncated = True
+                break
+            entries.append(os.path.relpath(os.path.join(current, name), repo))
+        if truncated:
+            break
+    return entries, truncated
+
+
+def _untracked_directory_digest(repo: Path, path: str) -> bytes:
+    """Digest one untracked directory by its bounded, sorted file inventory."""
+
+    entries, truncated = _untracked_directory_entries(repo, path)
+    digest = hashlib.sha256()
+    digest.update(b"untracked_directory\0")
+    digest.update(path.encode("utf-8", "surrogateescape"))
+    for entry in entries:
+        digest.update(b"\0")
+        digest.update(entry.encode("utf-8", "surrogateescape"))
+    if truncated:
+        digest.update(b"\0truncated")
+    return digest.hexdigest().encode("ascii")
+
+
+def _untracked_symlink_digest(repo: Path, path: str) -> bytes:
+    """Digest a symlink by the target text git would store as its blob.
+
+    ``git hash-object`` refuses a symlink whose target is a directory, so a
+    checkout holding one linked directory used to fail the whole repository
+    fingerprint instead of describing it.
+    """
+
+    digest = hashlib.sha256()
+    digest.update(b"symlink\0")
+    digest.update(os.readlink(os.path.join(repo, path)).encode("utf-8", "surrogateescape"))
+    return digest.hexdigest().encode("ascii")
+
+
 def _untracked_content_digest(repo: Path, names: bytes) -> str:
     paths = [os.fsdecode(item) for item in names.split(b"\0") if item]
     combined = hashlib.sha256(names)
-    for offset in range(0, len(paths), 128):
+    directories: list[str] = []
+    symlinks: list[str] = []
+    files: list[str] = []
+    for path in paths:
+        # An entry ``git hash-object`` cannot read still has to contribute to
+        # the fingerprint, because skipping it would drop content from the
+        # ledger. Each kind is digested by the fact that describes it.
+        target = os.path.join(repo, path)
+        if os.path.islink(target):
+            symlinks.append(path)
+        elif os.path.isdir(target):
+            directories.append(path)
+        else:
+            files.append(path)
+    for offset in range(0, len(files), 128):
         object_ids = git(
             repo,
             "hash-object",
             "--no-filters",
             "--",
-            *paths[offset : offset + 128],
+            *files[offset : offset + 128],
         ).stdout
         combined.update(b"\0")
         combined.update(object_ids)
+    for path in directories:
+        combined.update(b"\0")
+        combined.update(_untracked_directory_digest(repo, path))
+    for path in symlinks:
+        combined.update(b"\0")
+        combined.update(_untracked_symlink_digest(repo, path))
     return combined.hexdigest()
 
 

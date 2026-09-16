@@ -61,7 +61,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "product-entry-workflows",
         "cross-runtime-impl-review-demo",
         "host-command-entry",
-        "new-user-onboarding-lifecycle",
+        "first-connect-contract",
         "runtime-connector-catalog",
         "frontstage-rollout",
         "auto-research-demo",
@@ -678,16 +678,16 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
             "loopx/contract.py",
         ],
         surfaces=[
-            "new user onboarding no-onboarding-scan state projection gap start-goal"
+            "new user onboarding first connect contract state projection gap start-goal"
         ],
     )
     onboarding_profiles = {
         profile["id"]: profile for profile in onboarding_payload["domain_profiles"]
     }
-    assert "new-user-onboarding-lifecycle" in onboarding_profiles, onboarding_payload
-    onboarding_profile = onboarding_profiles["new-user-onboarding-lifecycle"]
+    assert "first-connect-contract" in onboarding_profiles, onboarding_payload
+    onboarding_profile = onboarding_profiles["first-connect-contract"]
     assert [check["command"] for check in onboarding_profile["checks"]] == [
-        "python3 examples/project/onboarding-no-scan-projection-smoke.py"
+        "python3 examples/project/first-connect-contract-smoke.py"
     ], onboarding_profile
     assert all(check["tier"] == "default" for check in onboarding_profile["checks"])
     assert onboarding_profile["deep_checks_available"] is False, onboarding_profile

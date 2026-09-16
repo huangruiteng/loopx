@@ -94,7 +94,6 @@ def assert_help_surfaces() -> None:
         for option in (
             "--fork-goal",
             "--execution-minimum-scale",
-            "--accept-onboarding-agent-todos",
             "--replace-state",
             "--no-global-sync",
         ):

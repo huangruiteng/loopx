@@ -124,6 +124,13 @@ commit with the trusted source lineage reported by `loopx doctor`:
   belongs to a different `repo/ref`; the runtime-active claim must fail closed
   until identity is refreshed.
 
+A pinned full commit SHA is its own trusted target, so
+`loopx update check --ref <40-hex-commit>` qualifies against the installed
+manifest source commit without waiting for a branch lineage lookup. Installed
+and pinned commits match: the receipt is `runtime_active`. They differ: the
+receipt stays `activation_qualification_required` and names the installed
+commit difference instead of the generic lineage message.
+
 Closing a PR monitor after latest-`main` validation is valid, but the closeout
 must not say the fix is active in the installed runtime unless this receipt is
 `runtime_active`. Publishing a release remains a separate maintainer action.
@@ -590,6 +597,28 @@ path, and canary route rather than as a user-facing release baseline.
   #4289, #4292, #4348, #4351). The published wheel, source distribution,
   macOS, Windows, checksum, signed-update, and PyPI artifacts were verified
   against the exact release source before `stable` fast-forwarded.
+- `v1.0.5` on 2026-09-16 03:14 +08:00: first-connect registration and explicit
+  host selection hot-fix release at the matching `v1.0.5` tag (`0c3971fea`).
+  `connect`/`bootstrap` register the goal and write the active state only, so a
+  freshly connected goal is immediately eligible instead of parking on a
+  generated owner gate, and the eight first-connect bootstrap options plus the
+  `onboarding_*` payload fields and the `adapter.connection_validation`
+  annotation are removed (#4465). Managed execution is selected rather than
+  inferred: the managed Turn host (#4443, #4451) and the steward channel
+  endpoint (#4446, #4419) come from explicit configuration, PR-review CI
+  waiting is configurable per machine or goal (#4452) under a documented review
+  frame (#4434), and update activation is qualified from an immutable source
+  commit (#4460) while the serving runtime publishes its identity with a
+  restart path (#4423). Quota window-slot spend clamps against the voids that
+  target it (#4384), the held coordination fence survives an authority-source
+  change (#4429), and a goal frontier missing its final-outcome claims is
+  diagnosed (#4341). Community contributions cover text-mode subprocess
+  decoding (#4396), stale executor revisions rejected before persisting
+  (#4398), CLI dash options (#4428), manager delegation reconciliation (#4372),
+  window-slot clamping (#4384), the semantic vocabulary registry and its
+  governance (#4433, #4453), and the Codex App autonomous goal guide (#4442).
+  The published wheel, source distribution, checksum, and PyPI artifacts were
+  verified against the exact release source before `stable` fast-forwarded.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.

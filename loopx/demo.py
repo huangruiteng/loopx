@@ -69,7 +69,6 @@ def run_demo(
         max_children=3,
         allowed_domains=[],
         write_scope=[],
-        onboarding_scan_enabled=False,
         force=False,
         dry_run=False,
         sync_global=False,

@@ -252,7 +252,6 @@ def register_project_goal(
         goal_doc=None,
         adapter_kind="read_only_project_map_v0",
         adapter_status="connected",
-        onboarding_connection_validation="agent",
         next_probe=None,
         spawn_allowed=False,
         max_children=0,

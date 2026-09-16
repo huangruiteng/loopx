@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, Eye, Info, Menu, RefreshCw, SlidersHorizontal } from "lucide-react";
 
 import { localizedGoalState, useWorkspaceI18n } from "./i18n";
-import type { ManagerRuntimeSessionReadback } from "../../data/chat";
+import type { ManagerChannelBinding, ManagerRuntimeSessionReadback } from "../../data/chat";
 import type { WorkspaceAgentOption, WorkspaceGoal, WorkspaceGoalTab } from "./personal-workspace-model";
 import { goalUsageLabel } from "./personal-workspace-model";
 import { WorkspaceSelect } from "./workspace-select";
 
 export function ChannelHeader({
   agents,
+  managerChannelBinding,
   managerChatOpen,
   managerRuntime,
   mobileNavigationOpen,
@@ -27,6 +28,7 @@ export function ChannelHeader({
   selectedGoalTab,
 }: {
   agents: WorkspaceAgentOption[];
+  managerChannelBinding?: ManagerChannelBinding | null;
   managerChatOpen?: boolean;
   managerRuntime?: ManagerRuntimeSessionReadback | null;
   mobileNavigationOpen?: boolean;
@@ -84,6 +86,41 @@ export function ChannelHeader({
       tokens: t("drawer.tokensShort"),
     })
     : null;
+  // The chip reports the selected executor, whose credential pays for it, and
+  // the resolved model, so an executor and a model that disagree are visible
+  // instead of arriving as one silent configuration.
+  const managerExecutionKindLabel = managerChannelBinding
+    ? managerChannelBinding.executor_kind === "individual"
+      ? t("header.managerExecutorKindIndividual")
+      : managerChannelBinding.executor_kind === "managed"
+        ? t("header.managerExecutorKindManaged")
+        : t("header.managerExecutorKindRegistered")
+    : null;
+  const managerExecutionUnavailable = managerChannelBinding?.available === false;
+  // Name the reason instead of one hardcoded host: the channel can hold the
+  // managed host through its segment transport now, so "this channel needs
+  // codex" would be both wrong and unactionable. An unknown reason stays
+  // unclaimed rather than being rendered as a reason this build invented.
+  const managerExecutionUnavailableReason = managerChannelBinding?.available === false
+    ? managerChannelBinding.unavailable_reason
+    : null;
+  const managerExecutionUnavailableKey = managerExecutionUnavailableReason === "operator_credential_unconfigured"
+    ? "header.managerExecutionUnavailableCredential"
+    : managerExecutionUnavailableReason === "dsh_runtime_unavailable"
+      ? "header.managerExecutionUnavailableRuntime"
+      : managerExecutionUnavailableReason === "invalid_reasoning_effort"
+        ? "header.managerExecutionUnavailableEffort"
+        : "header.managerExecutionUnavailable";
+  // The shipped default is conditional, so the chip says which branch it took
+  // and why; without this a steward on codex looks identical whether the
+  // operator chose it or the machine simply had no credential.
+  const managerExecutionDefaultReason = managerChannelBinding
+    && managerChannelBinding.executor_endpoint_source === "product_default"
+    && (managerChannelBinding.executor_endpoint_default_reason ?? "") !== ""
+    ? managerChannelBinding.executor_endpoint_default_reason === "operator_credential_absent"
+      ? "header.managerEndpointWithoutCredential"
+      : "header.managerEndpointFromCredential"
+    : null;
 
   return (
     <header className="personal-channel-header">
@@ -100,6 +137,28 @@ export function ChannelHeader({
               profile: managerRuntime.runtime_profile,
               sandbox: managerRuntime.sandbox,
             })}</p>
+        ) : null}
+        {!selectedGoal && managerChannelBinding ? (
+          <p className="personal-manager-execution">
+            <span className={managerExecutionUnavailable ? "personal-execution-chip is-unavailable" : "personal-execution-chip"}>
+              <span className="personal-execution-chip-endpoint">{managerChannelBinding.executor_endpoint}</span>
+              {managerExecutionKindLabel ? <span className="personal-execution-chip-kind">{managerExecutionKindLabel}</span> : null}
+              <span className="personal-execution-chip-model">{managerChannelBinding.model}</span>
+            </span>
+            {managerExecutionUnavailable ? (
+              <span className="personal-execution-note">
+                {t(managerExecutionUnavailableKey, {
+                  executor: managerChannelBinding.executor_endpoint,
+                  credential: managerChannelBinding.credential_env_var,
+                })}
+              </span>
+            ) : null}
+            {managerExecutionDefaultReason ? (
+              <span className="personal-execution-rule-note">
+                {t(managerExecutionDefaultReason, { executor: managerChannelBinding.executor_endpoint })}
+              </span>
+            ) : null}
+          </p>
         ) : null}
         {selectedGoal ? <p>{selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : `${selectedGoal.agentLaneCount && selectedGoal.agentLaneCount > 1
             ? t("header.workAgentCount", { count: selectedGoal.agentLaneCount })

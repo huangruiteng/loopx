@@ -421,10 +421,10 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         },
     },
     {
-        "surface_id": "new-user-onboarding",
-        "title": "New-user goal start and host activation",
+        "surface_id": "first-connect",
+        "title": "First-connect state and host activation",
         "risk": "high",
-        "canary_profile_id": "new-user-onboarding-lifecycle",
+        "canary_profile_id": "first-connect-contract",
         "owner_paths": [
             "loopx/agent_onboarding.py",
             "loopx/bootstrap_command_pack.py",
@@ -446,9 +446,9 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
                 "tests/control_plane/test_onboarding_model_behavior_qualification.py",
             ),
             "durable_smoke": _covered(
-                "examples/project/onboarding-no-scan-projection-smoke.py"
+                "examples/project/first-connect-contract-smoke.py"
             ),
-            "catalog_canary": _covered("new-user-onboarding-lifecycle"),
+            "catalog_canary": _covered("first-connect-contract"),
             "host_upgrade": _covered(
                 "examples/control_plane/agent-onboard-host-loop-activation-smoke.py"
             ),
@@ -457,7 +457,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
                 "onboarding_actual_behavior_qualification_v0"
             ),
             "release_gate": _covered(
-                "loopx canary premerge --profile new-user-onboarding-lifecycle"
+                "loopx canary premerge --profile first-connect-contract"
             ),
         },
     },

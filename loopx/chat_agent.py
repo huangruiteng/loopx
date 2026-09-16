@@ -47,30 +47,45 @@ def _host_tool_gate(summary: str, next_action: str) -> dict[str, str]:
     }
 
 
-# The managed Turn host runs one bounded work segment per request and has no
-# interactive Chat transport, so a session request for it is a known outcome
-# rather than an unknown endpoint.
-MANAGED_TURN_HOST_IDS = frozenset({"dsh"})
-MANAGED_HOST_CHAT_TRANSPORT_UNSUPPORTED = "managed_host_chat_transport_unsupported"
+# One typed endpoint-unavailability error plus the next step for each reason the
+# executor readback can publish. A surface that cannot serve a request names the
+# blocking fact and what clears it, so an operator never has to infer why an
+# endpoint that is listed as a capability refused the session.
+AGENT_ENDPOINT_UNAVAILABLE = "agent_endpoint_unavailable"
+AGENT_ENDPOINT_NEXT_ACTIONS = {
+    "dsh_runtime_unavailable": (
+        "Install the DeepSeek Harness runtime (`python -m pip install "
+        "'loopx[deepseek-harness]'`) and restart LoopX Chat."
+    ),
+    "operator_credential_unconfigured": (
+        "Set the managed executor credential (DEEPSEEK_API_KEY, with "
+        "DEEPSEEK_BASE_URL when the endpoint is not the provider default) in the "
+        "LoopX Chat service environment, then restart it."
+    ),
+    "invalid_reasoning_effort": (
+        "Fix the configured reasoning effort (LOOPX_MANAGER_REASONING_EFFORT or "
+        "LOOPX_TURN_REASONING_EFFORT) and restart LoopX Chat."
+    ),
+}
 
 
-def agent_endpoint_error(agent_id: str) -> ValueError:
-    """Return the typed error for an Agent id this runtime cannot hold.
+def agent_endpoint_error(agent_id: str, *, reason: str = "") -> ValueError:
+    """Return the typed error for an Agent id this runtime cannot serve.
 
-    A managed Turn host keeps a typed host-tool gate and an actionable next
-    step, so the steward channel never half-connects to a host it cannot hold.
-    Every other unknown id keeps the existing untyped fallback.
+    A known blocking reason becomes a typed host-tool gate with an actionable
+    next step; an unrestricted id keeps the existing untyped fallback.
     """
 
-    if agent_id in MANAGED_TURN_HOST_IDS:
+    if reason:
         return CodexChatAgentError(
-            f"The managed host '{agent_id}' runs bounded LoopX Turns and cannot "
-            "hold an interactive Chat session yet.",
-            error_code=MANAGED_HOST_CHAT_TRANSPORT_UNSUPPORTED,
+            f"The Agent endpoint '{agent_id}' cannot serve this request: {reason}.",
+            error_code=AGENT_ENDPOINT_UNAVAILABLE,
             gate=_host_tool_gate(
-                f"'{agent_id}' has no LoopX Chat transport; it is a bounded Turn host.",
-                "Select a chat-capable Agent endpoint for this session, or run "
-                "the managed host through `loopx turn`.",
+                f"'{agent_id}' is unavailable: {reason}.",
+                AGENT_ENDPOINT_NEXT_ACTIONS.get(
+                    reason,
+                    "Select another Agent endpoint for this session.",
+                ),
             ),
         )
     return ValueError(f"unknown Agent endpoint: {agent_id}")

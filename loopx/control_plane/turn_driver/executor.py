@@ -30,6 +30,7 @@ from .command_validation import (
 from .driver import selected_turn_todo
 from .host_binding import (
     managed_executor_payload_entry,
+    managed_executor_remediation_projection,
     managed_executor_unavailable_payload,
 )
 from .host_failure import BuiltInHostError, project_host_failure, record_host_failure
@@ -802,6 +803,7 @@ def _execution_payload(
         ),
         **({"todo_completion": todo_completion} if todo_completion else {}),
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
+        **managed_executor_remediation_projection(journal),
         **project_host_failure(journal),
         **({"recovery": dict(recovery)} if isinstance(recovery, Mapping) else {}),
     }

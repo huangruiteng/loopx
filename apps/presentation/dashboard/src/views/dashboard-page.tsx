@@ -57,6 +57,7 @@ import {
   type ChatSessionSummary,
   type ChatImageAttachment,
   type ChatVisibleMessage,
+  type ManagerChannelBinding,
   type ManagerRuntimeSessionReadback,
   type ProtectedActionProposal,
   type TodoProposal,
@@ -1399,6 +1400,7 @@ function PersonalGoalHome({
   }>>([]);
   const [goalSubagentConfigurationEnabled, setGoalSubagentConfigurationEnabled] = useState(false);
   const [managerRuntime, setManagerRuntime] = useState<ManagerRuntimeSessionReadback | null>(null);
+  const [managerChannelBinding, setManagerChannelBinding] = useState<ManagerChannelBinding | null>(null);
   const model = useMemo(() => {
     const base = buildPersonalHomeModel(payload, rows, t, goalSubagentConfigurationEnabled);
     if (!progress) return base;
@@ -1636,6 +1638,7 @@ function PersonalGoalHome({
       setRuntimeAgents([]);
       setGoalSubagentConfigurationEnabled(false);
       setManagerRuntime(null);
+      setManagerChannelBinding(null);
       return;
     }
     let cancelled = false;
@@ -1644,6 +1647,7 @@ function PersonalGoalHome({
         if (!cancelled) {
           setRuntimeAgents(capabilities.adapters ?? []);
           const runtime = capabilities.manager?.runtime;
+          setManagerChannelBinding(capabilities.manager?.channel_binding ?? null);
           setManagerRuntime(runtime ? {
             schema_version: "manager_runtime_session_readback_v0",
             runtime_profile: runtime.runtime_profile,
@@ -1688,7 +1692,7 @@ function PersonalGoalHome({
     void (async () => {
       try {
         const history = await fetchChatHistory({
-          agentId: selectedAgent.agentId,
+          agentId: contextKind === "manager" ? undefined : selectedAgent.agentId,
           channelId,
           goalId: selectedGoal?.goalId,
         });
@@ -1729,9 +1733,13 @@ function PersonalGoalHome({
         }
         const sessionGoalId = contextKind === "manager" ? "" : selectedGoal?.goalId ?? "";
         if (contextKind === "goal" && !sessionGoalId) return;
+        // The steward channel owns its executor default; only a pick the owner
+        // actually made for this context is sent.
+        const sessionEndpoint =
+          contextKind === "manager" ? selectedAgents[targetContextId] : selectedAgent.agentId;
         const created = await createChatSession(
           sessionGoalId,
-          selectedAgent.agentId,
+          sessionEndpoint,
           "resume_latest",
           contextKind,
         );
@@ -1745,7 +1753,7 @@ function PersonalGoalHome({
         );
         const activeTurnId = activeSnapshot?.session.active_turn_id ?? "";
         recordRuntimeBinding(targetContextId, {
-          agentId: selectedAgent.agentId,
+          agentId: created.agent_id || selectedAgent.agentId,
           resumable: true,
           sessionId: created.session_id,
           status: activeTurnId ? "running" : "ready",
@@ -1873,7 +1881,7 @@ function PersonalGoalHome({
       cancelled = true;
       recoveryController?.abort();
     };
-  }, [contextId, model.goals[0]?.goalId, readOnly, selectedGoal?.goalId, selectedAgent.agentId, selectedAgent.available, selectedAgent.label]);
+  }, [contextId, model.goals[0]?.goalId, readOnly, selectedGoal?.goalId, selectedAgent.agentId, selectedAgent.available, selectedAgent.label, selectedAgents]);
 
   useEffect(() => {
     if (readOnly) return;
@@ -2105,9 +2113,11 @@ function PersonalGoalHome({
       let sessionId = sessionIds.current.get(sessionKey);
       if (!sessionId) {
         const mode = newSessionRequired.current.has(sessionKey) ? "new" : "resume_latest";
+        const sessionEndpoint =
+          targetContextId === "manager" ? selectedAgents[targetContextId] : selectedRoute.agentId;
         const session = await createChatSession(
           targetContextId === "manager" ? "" : targetGoal!.goalId,
-          selectedRoute.agentId,
+          sessionEndpoint,
           mode,
           targetContextId === "manager" ? "manager" : "goal",
         );
@@ -2117,7 +2127,7 @@ function PersonalGoalHome({
         sessionId = session.session_id;
         sessionIds.current.set(sessionKey, sessionId);
         recordRuntimeBinding(targetContextId, {
-          agentId: selectedRoute.agentId,
+          agentId: session.agent_id || selectedRoute.agentId,
           resumable: true,
           sessionId,
           status: "ready",
@@ -2831,6 +2841,7 @@ function PersonalGoalHome({
           onStartNewRunSession: startNewManagerSession,
         }}
         goalArchiveLoadState={goalArchiveLoadState}
+        managerChannelBinding={managerChannelBinding}
         managerRuntime={managerRuntime}
         model={workspaceModel}
         readOnly={readOnly}

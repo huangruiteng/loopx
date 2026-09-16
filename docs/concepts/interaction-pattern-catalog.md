@@ -1333,7 +1333,7 @@ todo and the automation drifts into monitor-only no-ops.
 **Validation**
 
 - `examples/state-projection-gap-smoke.py`
-- `examples/project/onboarding-no-scan-projection-smoke.py`
+- `examples/project/first-connect-contract-smoke.py`
 - `docs/project-agent-todo-contract.md`
 
 #### IP-006 Checkpointed Scope Mismatch

@@ -100,9 +100,9 @@ class LoopxSession:
         "cannot be used because goal has no coordination.registered_agents list"，
         而它仍然退出 0，很容易被当成渲染成功。
 
-        两个 onboarding 开关也不能省。不加的话闸门会一直回
-        "operator gate blocks gated delivery"，should_run 恒为 false——无人值守
-        环境下没有 operator 去放行，整轮会静默空转出零产物却不报错。
+        bootstrap 不再写入任何首连 onboarding todo（user gate / 候选 todo /
+        connection validation 都已删除），所以接 goal 之后闸门里不会再有
+        需要人工放行的条目，无人值守环境也不会静默空转。
         """
 
         boot = self._run([
@@ -110,12 +110,6 @@ class LoopxSession:
             "--project", ".",
             "--goal-id", self.goal_id,
             "--objective", objective,
-            # 把 onboarding 提出的 agent todos 直接写进去，并记录允许自主推进；
-            # 否则等一个永远不会出现的人工放行。
-            "--accept-onboarding-agent-todos",
-            "--begin-autonomous-advance",
-            # 不让 bootstrap 去问要不要建 Codex App 心跳自动化：本工作区没有真 App。
-            "--codex-app-heartbeat", "no",
         ])
         self._run([
             "configure-goal",
@@ -128,10 +122,10 @@ class LoopxSession:
     def add_task_todo(self, task_text: str, *, todo_id: str = "wen-task") -> dict[str, Any]:
         """把任务正文作为一条 P0 agent todo 写进 goal。
 
-        这一步不能省，也不能只靠 turn/start 的输入。实测过：只把任务放进 turn
-        输入、goal 里只有 onboarding todo 时，模型会老老实实按 body 的指示去推进
-        **onboarding todo**，900 秒里只建了 .loopx/ 和 .codex/，任务文件一个字没改，
-        而且不报错——闸门放行、Goal 活着、收据干净，看起来一切正常。
+        这一步不能省，也不能只靠 turn/start 的输入：闸门是按 todo 选工作的，
+        任务不在 todo 里就不会被选中。实测过只把任务放进 turn 输入的情况，900 秒
+        里只建了 .loopx/ 和 .codex/，任务文件一个字没改，而且不报错——闸门放行、
+        Goal 活着、收据干净，看起来一切正常。
 
         闸门是按 todo 选工作的，任务不在 todo 里就不会被选中。
         """

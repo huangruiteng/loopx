@@ -147,7 +147,7 @@ def assert_diagnose_markdown_separates_status_and_packet_goal_counts() -> None:
     assert "contract_warnings_truncated: total=4" in markdown, markdown
 
 
-def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding: bool) -> dict:
+def bootstrap_project(project: Path, runtime: Path, goal_id: str) -> dict:
     args = [
         "--runtime-root",
         str(runtime),
@@ -164,8 +164,6 @@ def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding:
         "diagnose_fixture_v0",
         "--no-global-sync",
     ]
-    if not onboarding:
-        args.append("--no-onboarding-scan")
     return run_cli(*args)
 
 
@@ -316,7 +314,7 @@ def main() -> int:
         runtime = root / "runtime"
 
         ready_project = write_project(root, "ready-project")
-        bootstrap_project(ready_project, runtime, GOAL_ID, onboarding=False)
+        bootstrap_project(ready_project, runtime, GOAL_ID)
         registry = ready_project / ".loopx" / "registry.json"
         added = run_cli(
             "--registry",
@@ -380,15 +378,37 @@ def main() -> int:
 
         gated_project = write_project(root, "gated-project")
         gated_goal_id = "diagnose-smoke-gated"
-        bootstrap_project(gated_project, runtime, gated_goal_id, onboarding=True)
+        bootstrap_project(gated_project, runtime, gated_goal_id)
         gated_registry = gated_project / ".loopx" / "registry.json"
+        # ``connect`` no longer seeds an owner gate, so the fixture writes the
+        # user gate it wants to diagnose by itself.
+        user_gate_text = "[P1] Confirm the release window before autonomous delivery."
+        run_cli(
+            "--registry",
+            str(gated_registry),
+            "todo",
+            "add",
+            "--goal-id",
+            gated_goal_id,
+            "--role",
+            "user",
+            "--text",
+            user_gate_text,
+            "--task-class",
+            "user_gate",
+            "--action-kind",
+            "owner_decision",
+            "--global-gate",
+            "--execute",
+        )
         gated_packet = run_cli("--registry", str(gated_registry), "diagnose", "--goal-id", gated_goal_id)
         gated_selected = gated_packet["selected"]
         assert gated_selected["machine_signal"] == "user_or_controller_attention", gated_selected
         assert gated_selected["todo_evidence"]["user_open_count"] == 1, gated_selected
         assert gated_selected["quota_signals"]["action_required"] is True, gated_selected
         assert gated_selected["quota_signals"]["open_count"] == 1, gated_selected
-        assert "autonomous=yes/no" in str(gated_selected["user_question"]), gated_selected
+        assert user_gate_text in str(gated_selected["user_question"]), gated_selected
+        assert gated_selected["recommended_action"] == user_gate_text, gated_selected
         assert "can_self_drive" not in gated_selected, gated_selected
 
         scoped_registry = write_agent_scoped_registry(root, runtime)

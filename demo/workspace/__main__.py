@@ -139,8 +139,6 @@ def seed_story(root: Path, story: dict, notice: str) -> dict:
             max_children=0,
             allowed_domains=[],
             write_scope=[],
-            onboarding_scan_enabled=False,
-            codex_app_heartbeat="no",
             force=False,
             dry_run=False,
             sync_global=False,

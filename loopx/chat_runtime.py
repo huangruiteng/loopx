@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import shutil
 import threading
 import time
 from typing import Any, Callable, Mapping, Protocol
@@ -21,12 +20,14 @@ from .capabilities.manager_runtime import (
 )
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError, agent_endpoint_error
+from .chat_dsh import DshChatAdapter
+from .chat_endpoint_catalog import builtin_chat_endpoints
 from .chat_endpoints import AgentEndpointRegistry
+from .control_plane.turn_driver.host_binding import MANAGED_TURN_HOST
+from .control_plane.turn_driver.execution_profile import managed_execution_profile
 from .kiro_cli_goal_mode import (
     KIRO_CLI_BIN,
-    KIRO_CLI_CHAT_ADAPTER_KIND,
     KIRO_CLI_CHAT_AGENT_ID,
-    KIRO_CLI_CHAT_DISPLAY_NAME,
     kiro_cli_chat_command,
 )
 from .chat_store import (
@@ -278,78 +279,11 @@ class ChatRuntimeController:
         )
 
     def capabilities(self) -> list[dict[str, Any]]:
-        builtins = [
-            {
-                "agent_id": "codex",
-                "display_name": "Codex",
-                "adapter_kind": "codex_app_server",
-                "available": bool(shutil.which(self.codex_bin)),
-                "streaming": True,
-                "resume": True,
-                "interrupt": True,
-                "tool_calls": True,
-                "trust_scope": "read_only",
-                "source": "builtin",
-            },
-            {
-                "agent_id": "claude-code",
-                "display_name": "Claude Code",
-                "adapter_kind": "claude_code_cli",
-                "available": bool(shutil.which(self.claude_bin)),
-                "streaming": True,
-                "resume": True,
-                "interrupt": True,
-                "tool_calls": True,
-                "trust_scope": "read_only",
-                "source": "builtin",
-            },
-            {
-                # Kiro CLI ships an ACP stdio agent (`kiro-cli acp`), so it is
-                # reachable through the existing ACP adapter without a new
-                # transport. It is a built-in row rather than something the
-                # owner must hand-register, because LoopX already owns the
-                # host's facts; `available` stays a live PATH probe so an
-                # uninstalled host renders as needing configuration instead of
-                # failing at session open.
-                "agent_id": KIRO_CLI_CHAT_AGENT_ID,
-                "display_name": KIRO_CLI_CHAT_DISPLAY_NAME,
-                "adapter_kind": KIRO_CLI_CHAT_ADAPTER_KIND,
-                "available": bool(shutil.which(self.kiro_cli_bin)),
-                "streaming": True,
-                "resume": True,
-                "interrupt": True,
-                "tool_calls": True,
-                # Kiro owns its persistent permission rules. LoopX cancels
-                # interactive ACP permission requests, but cannot turn an
-                # existing host-level `allow` rule into a read-only sandbox.
-                "trust_scope": "workspace_write",
-                "source": "builtin",
-            },
-            {
-                "agent_id": "anthropic-api",
-                "display_name": "Claude API",
-                "adapter_kind": "anthropic_messages_api",
-                "available": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
-                "streaming": False,
-                "resume": True,
-                "interrupt": False,
-                "tool_calls": True,
-                "trust_scope": "read_only",
-                "source": "builtin",
-            },
-            {
-                "agent_id": "openai-api",
-                "display_name": "OpenAI API",
-                "adapter_kind": "openai_messages_api",
-                "available": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
-                "streaming": False,
-                "resume": True,
-                "interrupt": False,
-                "tool_calls": True,
-                "trust_scope": "read_only",
-                "source": "builtin",
-            },
-        ]
+        builtins = builtin_chat_endpoints(
+            codex_bin=self.codex_bin,
+            claude_bin=self.claude_bin,
+            kiro_cli_bin=self.kiro_cli_bin,
+        )
         return [*builtins, *(endpoint.public_summary() for endpoint in self.endpoint_registry.list())]
 
     @staticmethod
@@ -358,6 +292,28 @@ class ChatRuntimeController:
             "chat"
             if session.get("agent_id") == "codex"
             else str(session.get("upstream_mode") or "default")
+        )
+
+    @staticmethod
+    def _session_objective(
+        *,
+        goal_id: str,
+        objective: str,
+        history: list[dict[str, Any]] | None,
+    ) -> str:
+        """Compose the objective every adapter receives, history included."""
+
+        history_context = ""
+        if history:
+            history_lines = [
+                f"{item.get('role', 'user')}: {str(item.get('content') or '').strip()}"
+                for item in history[-12:]
+                if str(item.get("content") or "").strip()
+            ]
+            if history_lines:
+                history_context = "\nPrevious visible Chat messages:\n" + "\n".join(history_lines)
+        return f"{objective}{history_context}" + (
+            "\n" + manager_skill_text() if goal_id == MANAGER_AGENT_GOAL_ID else ""
         )
 
     def _start_adapter(
@@ -402,22 +358,13 @@ class ChatRuntimeController:
                 objective = manager_agent_objective(
                     str(manager_profile["runtime_profile"])
                 )
-            history_context = ""
-            if history:
-                history_lines = [
-                    f"{item.get('role', 'user')}: {str(item.get('content') or '').strip()}"
-                    for item in history[-12:]
-                    if str(item.get("content") or "").strip()
-                ]
-                if history_lines:
-                    history_context = "\nPrevious visible Chat messages:\n" + "\n".join(history_lines)
             return CodexAppServerAdapter.start(
                 codex_bin=self.codex_bin,
                 codex_home=self.codex_home,
                 work_dir=work_dir,
                 goal_id=goal_id,
-                objective=f"{objective}{history_context}" + (
-                    "\n" + manager_skill_text() if goal_id == MANAGER_AGENT_GOAL_ID else ""
+                objective=self._session_objective(
+                    goal_id=goal_id, objective=objective, history=history
                 ),
                 resume_thread_id=resume_thread_id,
                 startup_timeout_sec=self.startup_timeout_sec,
@@ -444,6 +391,31 @@ class ChatRuntimeController:
                 resume_thread_id=resume_thread_id,
                 tool_scope="read_only",
                 context_summary=f"{goal_id}: {objective}".strip(),
+            )
+        if agent_id == MANAGED_TURN_HOST:
+            # The managed host has no interactive session transport, so this
+            # channel holds one bounded segment per turn on the resolved managed
+            # execution profile. The manager channel may still re-point the
+            # model and effort with its own overrides.
+            profile = managed_execution_profile()
+            model = str(profile["model"])
+            reasoning_effort = str(profile["reasoning_effort"])
+            if goal_id == MANAGER_AGENT_GOAL_ID:
+                manager_config = manager_model_config()
+                model = manager_config["model"]
+                reasoning_effort = manager_config["reasoning_effort"]
+            return DshChatAdapter(
+                objective=self._session_objective(
+                    goal_id=goal_id, objective=objective, history=None
+                ),
+                work_dir=work_dir,
+                provider=str(profile["provider"]),
+                model=model,
+                reasoning_effort=reasoning_effort,
+                timeout_sec=self.hard_timeout_sec,
+                # A segment is fresh, so this adapter carries the visible history
+                # itself instead of relying on a host session to remember it.
+                history=list(history or []),
             )
         if agent_id in {"anthropic-api", "openai-api"}:
             return direct_model_from_environment(
@@ -526,7 +498,10 @@ class ChatRuntimeController:
             if capability is None:
                 raise agent_endpoint_error(agent_id)
             if not capability["available"]:
-                raise ValueError(f"Agent endpoint is unavailable: {agent_id}")
+                raise agent_endpoint_error(
+                    agent_id,
+                    reason=str(capability.get("unavailable_reason") or ""),
+                )
             if latest is not None:
                 self._ensure_adapter(latest, work_dir=work_dir, objective=objective)
                 return self.store.load_session(latest["session_id"]) or latest, True
@@ -723,7 +698,8 @@ class ChatRuntimeController:
                 history=(
                     history
                     if legacy_codex_goal_thread or retry_failed_claude_session or legacy_manager_context
-                    or session.get("agent_id") in {"anthropic-api", "openai-api"}
+                    or session.get("agent_id")
+                    in {"anthropic-api", "openai-api", MANAGED_TURN_HOST}
                     else None
                 ),
                 execution_mode=str(session.get("channel_id") or "").startswith("task."),

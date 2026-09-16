@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+from loopx.control_plane.turn_driver.execution_profile import REASONING_EFFORTS
+
 
 def run_dsh_turn(
     *,
@@ -18,6 +20,7 @@ def run_dsh_turn(
     session_root: str,
     provider: str,
     model: str,
+    reasoning_effort: str,
     max_tokens: int | None,
     cordis: str | None,
     runtime_bin: str | None,
@@ -25,6 +28,12 @@ def run_dsh_turn(
 ) -> str:
     assert prompt, "the adapter must deliver the bounded task body"
     assert session_id, "the adapter must key the dsh session"
+    # The resolved managed execution profile is part of the runner contract, so
+    # a regression that drops it fails here instead of reaching a real endpoint.
+    assert provider and model, "the adapter must hand over the resolved profile"
+    assert reasoning_effort in REASONING_EFFORTS, (
+        "the adapter must hand over a supported reasoning effort"
+    )
     return json.dumps(
         {
             "result_kind": "validated_progress",
