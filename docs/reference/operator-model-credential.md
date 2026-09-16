@@ -101,6 +101,79 @@ loopx machine-config credential clear
 The Dashboard's machine capability settings expose the same read and write
 through `/api/chat/operator-credential`.
 
+## Choosing What Answers, And Where
+
+Two surfaces answer on this machine, and they are selected separately.
+
+- **The steward channel** is the conversation a person talks to: the Dashboard
+  manager channel and the bound Lark/Feishu manager group. Its executor is one
+  machine-level choice, `steward_executor.executor_endpoint`, holding a shipped
+  channel endpoint (`codex`, or `dsh` for the managed host).
+- **A managed Turn or managed agent** is bounded work that runs without a person
+  in the loop. Its host resolves from the operator credential: with one stored,
+  the shipped default is the managed host `dsh`, and without one it is the
+  interactive CLI endpoint.
+
+Choose the steward on the managed host when the machine should answer from an
+API-backed host instead of an individual CLI login; keep the interactive CLI
+endpoint when the steward must run as the operator's own logged-in session.
+These are independent: setting the steward to `dsh` does not move any managed
+Turn, and storing a credential does not switch the steward.
+
+### Selecting and reading it back
+
+```bash
+# List the registered machine-configuration namespaces.
+loopx machine-config describe
+
+# Read the stored document and the effective steward resolution.
+loopx machine-config inspect
+
+# Preview an exact change, then apply it with the plan revision it returned.
+loopx machine-config preview
+loopx machine-config apply
+```
+
+The service environment remains the bootstrap and escape hatch, and it is
+lower precedence than the machine document: `LOOPX_MANAGER_ENDPOINT` selects the
+steward endpoint, `LOOPX_MANAGER_MODEL` and `LOOPX_MANAGER_REASONING_EFFORT`
+select its model and effort. A managed Turn resolves its profile from
+`LOOPX_TURN_PROVIDER`, `LOOPX_TURN_MODEL` and `LOOPX_TURN_REASONING_EFFORT`,
+then from the shipped managed profile.
+
+Every entry point publishes the same readback, so a reader never has to infer
+the host from the name it resolved: `/api/chat/capabilities` reports the
+steward's `executor_endpoint`, its `executor_endpoint_source`
+(`machine_configuration`, `explicit_config` or `product_default`), the
+`execution_profile` (`deepseek-v4-flash@high` on the shipped managed profile),
+`available`, and the bound Session's `session_mode` and `session_status`.
+A connection record stores the resolved endpoint as an observation, so it cannot
+outrank the machine setting.
+
+### Disabling or rolling back
+
+```bash
+# Preview removing the namespace, then apply the returned plan revision.
+loopx machine-config remove
+
+# Preview a rollback to the previous revision, then apply it.
+loopx machine-config rollback
+```
+
+Unsetting the environment variables restores the same lower layers. With no
+machine document and no environment override, the steward resolves to the
+shipped default (`codex`) and a credential-less machine keeps the interactive
+CLI endpoint, exactly as a machine that never configured anything.
+
+### What this does not authorize
+
+The credential authenticates the selected endpoint; it never selects one. The
+steward channel still only proposes: it may describe work, and it may hand an
+authorized intent to a worker, but Todos, agent registration, quota and goal
+policy change only through their canonical owners and only after the owner's
+confirmation. Selecting the managed host grants no new filesystem, provider or
+audience permission, and it does not let a conversation change hosts mid-thread.
+
 ## Authority Boundary
 
 Storing a credential grants no authority. It does not select an executor, a
