@@ -288,7 +288,7 @@ function filterStatusFixtureToScope(fixture, statusGeneration, scope) {
   }
 }
 
-export async function installApi(page, { goalSubagentConfigurationEnabled = true, initialActionProposals = [], managerChannelBinding = null } = {}) {
+export async function installApi(page, { goalSubagentConfigurationEnabled = true, initialActionProposals = [], managerChannelBinding = null, runtimeAgents = null } = {}) {
   let turnCounter = 0;
   const runtime = page.__loopxRuntime ??= { actionProposals: new Map(), goalSubagentConfigurations: new Map(), larkConnections: [], messages: new Map(), sessions: new Map(), turnMessages: new Map() };
   const actionProposals = runtime.actionProposals;
@@ -1251,7 +1251,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
           { agent_id: "codex", display_name: "Codex", adapter_kind: "codex_app_server", available: true, streaming: true, resume: true, interrupt: true },
           { agent_id: "claude-code", display_name: "Claude Code", adapter_kind: "claude_code_cli", available: true, streaming: true, resume: true, interrupt: true },
           { agent_id: "offline-agent", display_name: "Offline Agent", adapter_kind: "acp", available: false, streaming: false, resume: false, interrupt: false },
-        ],
+        ].concat(runtimeAgents ?? []),
       }, status: 200 });
       return;
     }

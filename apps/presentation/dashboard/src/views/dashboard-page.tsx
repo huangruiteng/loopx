@@ -1486,8 +1486,20 @@ function PersonalGoalHome({
   const defaultAgentId = discoveredAgents.find((agent) => agent.label === "Codex" && agent.available)?.agentId
     ?? discoveredAgents.find((agent) => agent.available)?.agentId
     ?? "status-only";
+  // The manager channel answers on the executor this machine declares for the
+  // steward, and the client is expected to send no endpoint until the operator
+  // picks one. The picker therefore has to show that same resolution: an
+  // executor merely discovered on this machine is not a reason to present
+  // itself as the steward's runtime, or the header chip, the composer and the
+  // answer would tell three different stories.
+  const declaredStewardEndpoint = managerChannelBinding?.executor_endpoint?.trim() ?? "";
+  const stewardExecutorAgentId = declaredStewardEndpoint
+    ? discoveredAgents.find((agent) => agent.agentId === declaredStewardEndpoint)?.agentId
+    : undefined;
+  const agentDefaultForContext = (targetContextId: string) =>
+    targetContextId === "manager" ? stewardExecutorAgentId ?? defaultAgentId : defaultAgentId;
   const [selectedAgents, setSelectedAgents] = useState<Record<string, string>>(readPersonalAgentSelections);
-  const selectedAgentId = selectedAgents[contextId] ?? defaultAgentId;
+  const selectedAgentId = selectedAgents[contextId] ?? agentDefaultForContext(contextId);
   const selectedAgent = selectAvailableChatAgent(agentOptions, selectedAgentId, defaultAgentId);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);

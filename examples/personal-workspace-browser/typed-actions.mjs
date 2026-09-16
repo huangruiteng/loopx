@@ -1611,7 +1611,7 @@ export const typedActionsScenario = {
       await page.keyboard.press("Escape");
       if (await agentListbox.isVisible().catch(() => false)) throw new Error("Agent menu did not close on Escape");
       if (!(await agentSelect.evaluate((element) => element === document.activeElement))) throw new Error("Agent menu did not restore trigger focus");
-      pass(14, "Codex remained the healthy default and the unavailable Agent option was disabled with explanation.");
+      pass(14, "With no declared steward executor the shipped Codex default held, and the unavailable Agent option was disabled with explanation.");
       await agentSelect.click();
       const reopenedAgentListbox = page.getByRole("listbox", { name: "选择聊天 Runtime" });
       await reopenedAgentListbox.getByRole("option", { name: "Claude Code", exact: true }).click();
