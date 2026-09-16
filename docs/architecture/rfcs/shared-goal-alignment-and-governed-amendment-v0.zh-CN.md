@@ -3,7 +3,7 @@
 - 状态：草案；维护者评审中
 - 跟踪 Issue：[#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - 日期：2026-09-02
-- 最后更新：2026-09-15
+- 最后更新：2026-09-16
 - 范围：多个对等 Agent 围绕同一个共享 Goal 协作，同时保留 canonical
   intent、每个 Agent 的执行 frontier、claim/lease 所有权，以及可审计的
   replan/amendment 决策
@@ -215,6 +215,31 @@ Core 只解析一次 host-specific 深链语法，并只向 provider 暴露 norm
 接口；它不读取 Obelisk 存储 schema，不 build 或 attune 索引，也不打开、恢复或向
 live task 发消息。其他 harness 可以实现相同的 Decision Context provider 协议，无需
 把 host 语法或 transcript 存储引入 Goal authority。
+
+### 3.6 Peer agent directory 与有界观察
+
+per-Agent frontier 告诉一个 Agent 自己的路线。peer 之间也需要彼此具备同样的三种
+能力，而管家需要对它被问到的每个 Agent 都具备这些能力：发现有哪些 Agent 存在、哪些
+正在运行，在有界范围内观察其中一个，以及把一条有界请求交给其中一个。这条可复用契约
+就是
+[`peer_agent_directory_v0`](../../reference/protocols/peer-agent-directory-and-observation-v0.md)。
+
+它不新增第六种共享状态。身份、工作、claim、lease 与规范修订仍然留在本文已经安排的
+位置；该契约贡献的是一个**面向 Agent 的视图**，以及读取与投递的规则。其中三条规则在
+这里最关键：
+
+- **presence 是 advisory 且按 provider 划定范围的。** live session 从不创造身份，
+  没有 live session 的 Agent 仍然已注册、仍然拥有它的 claim、仍然是投递目标。provider
+  用自己的 session-scoped handle 报告自己的位置，用自己的 liveness 词表；无法分类某个
+  目标的读取方报告 `unknown` 并点名覆盖缺口，而不是推断"已完成"或"没有进展"。
+- **观察与投递不授予任何东西。** 读取一个 peer、或把上下文交给它，都不是 claim、lease、
+  优先级、计划变更或修订。投递仍然是 `context_handoff`；Goal 要什么仍然只经
+  `GoalAmendmentAuthority` 改变，工作状态仍然只经 canonical Todo、quota 与 lane owner
+  改变。
+- **terminal-space provider 是 provider，不是契约本身。** 拥有终端的宿主面可以提供
+  presence 与有界的实时输出，且必须声明：调用方如何证明自己在空间之内、detach 或重启
+  之后什么会保留、以及它无法恢复什么。没有这类 provider 时，directory 退化为"已注册
+  身份 + 持久工作状态"——这正是 prompt-only transport 的常态。
 
 ## 4. Authority matrix
 

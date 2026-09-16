@@ -3,7 +3,7 @@
 - Status: Draft; under maintainer review
 - Tracking issue: [#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - Date: 2026-09-02
-- Last updated: 2026-09-15
+- Last updated: 2026-09-16
 - Scope: peer Agents collaborating around one shared Goal while preserving
   canonical intent, per-Agent execution frontiers, claim/lease ownership, and
   auditable replan/amendment decisions
@@ -238,6 +238,38 @@ scope to Obelisk's public read-only query interface. It does not read Obelisk's
 storage schema, build or attune the index, or open, resume, or message a live
 task. Other harnesses can implement the same Decision Context provider protocol
 without adding host syntax or transcript storage to the Goal authority.
+
+### 3.6 Peer agent directory and bounded observation
+
+A per-Agent frontier tells one Agent about its own route. Peers also need the
+same three abilities about each other, and the steward needs them about every
+Agent it is asked about: discover which Agents exist and which are running,
+observe one of them within bounds, and hand one of them a bounded request. That
+reusable contract is
+[`peer_agent_directory_v0`](../../reference/protocols/peer-agent-directory-and-observation-v0.md).
+
+It adds no sixth kind of shared state. Identity, work, claims, leases and the
+canonical revision stay exactly where this document already put them; the
+contract contributes an Agent-facing *view* plus the rules for reading and
+delivering. Three of those rules carry the weight here:
+
+- **Presence is advisory and provider-scoped.** A live session never creates an
+  identity, and an Agent with no live session is still registered, still owns
+  its claims and is still a delivery target. A provider reports its own
+  locations with session-scoped handles and its own liveness vocabulary; a
+  reader that cannot classify a target reports `unknown` and names the coverage
+  gap rather than inferring completion or absence of progress.
+- **Observation and delivery grant nothing.** Reading a peer, or handing it
+  context, is not a claim, a lease, a priority, a plan change or an amendment.
+  Delivery stays `context_handoff`; what the Goal asks for still changes only
+  through `GoalAmendmentAuthority`, and work state still changes only through
+  the canonical Todo, quota and lane owners.
+- **Terminal-space providers are providers, not the contract.** A host surface
+  that owns terminals may supply presence and bounded live output, and must
+  declare how a caller proves it is inside the space, what survives a detach or
+  restart, and what it cannot recover. With no such provider the directory
+  degenerates to registered identity plus durable work state, which is the
+  normal case for a prompt-only transport.
 
 ## 4. Authority matrix
 
