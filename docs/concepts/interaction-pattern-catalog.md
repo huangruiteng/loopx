@@ -1195,12 +1195,18 @@ main blocker or keeps following a stale local-only benchmark staging todo.
 
 - a typed machine-configuration namespace is about to change; the built-in
   namespaces are `change_quality_qualification`, `manager_runtime`,
-  `periodic_report`, `pull_request_review`, and `todo_replan_cadence`. The
-  public catalog returned by `loopx machine-config describe` is authoritative,
-  so this inventory has to stay complete rather than approximate;
+  `periodic_report`, `pull_request_review`, `steward_executor`, and
+  `todo_replan_cadence`. The public catalog returned by
+  `loopx machine-config describe` is authoritative, so this inventory has to stay
+  complete rather than approximate;
 - `pull_request_review` carries `review_priority`, which defaults to
   `other-developers-first` and accepts `owner-first` as an explicit opt-in that
   changes review ordering only;
+- `steward_executor` carries the executor, model, and reasoning effort the steward
+  channel answers on for one machine. It stores no credential and grants no
+  authority, and it precedes the Chat service environment rather than replacing
+  it, so a machine-local decision is editable in the Dashboard and readable from
+  `loopx machine-config inspect`;
 - `loopx machine-config preview` returns a `plan_revision` for the exact
   envelope, namespace patch, removal, or rollback that would be applied;
 - a Goal-level override and a live machine default may both be in scope.
