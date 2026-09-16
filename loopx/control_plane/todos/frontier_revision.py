@@ -107,6 +107,33 @@ def selectable_advancement_frontier_revision(
     return result
 
 
+def _owned_identity(checkpoint: Any) -> str | None:
+    """Read the agent-owned identity a checkpoint carries, when it has one."""
+
+    if not isinstance(checkpoint, dict) or checkpoint.get("complete") is not True:
+        return None
+    identity = str(checkpoint.get("frontier_owned_identity") or "").strip()
+    return identity or None
+
+
+def advancement_frontier_owned_identity(
+    value: Any, *, agent_id: str | None,
+) -> str | None:
+    """Identity over the rows this agent owns inside an indexed checkpoint."""
+
+    return _owned_identity(_request("read", index=value,
+        agent_id=normalize_todo_claimed_by(agent_id)).get("checkpoint"))
+
+
+def selectable_advancement_frontier_owned_identity(
+    source_items: list[dict[str, Any]] | None, *, agent_id: str | None,
+) -> str | None:
+    """Identity over the rows this agent owns in a freshly selected checkpoint."""
+
+    return _owned_identity(_request("select", rows=frontier_source_facts(source_items),
+        agent_id=normalize_todo_claimed_by(agent_id)).get("checkpoint"))
+
+
 def build_advancement_frontier_revision_index(
     source_items: list[dict[str, Any]],
 ) -> dict[str, Any]:

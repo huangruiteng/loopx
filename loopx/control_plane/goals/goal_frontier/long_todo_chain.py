@@ -8,7 +8,9 @@ from typing import Any
 from ...runtime.time import parse_timestamp
 from ...todos.frontier_revision import (
     TODO_FRONTIER_REVISION_SCHEMA_VERSION,
+    advancement_frontier_owned_identity,
     advancement_frontier_revision_from_index,
+    selectable_advancement_frontier_owned_identity,
     selectable_advancement_frontier_revision,
 )
 from ...effect_runtime import effect_runtime_result
@@ -34,6 +36,7 @@ class LongTodoChainObservation:
     agent_id: str | None
     frontier_revision: str | None
     frontier_revision_complete: bool
+    frontier_owned_identity: str | None = None
 
     def to_trigger(self) -> dict[str, Any]:
         trigger: dict[str, Any] = {
@@ -81,13 +84,24 @@ def long_todo_chain_source_checkpoint(
     )
     if not revision_complete or not frontier_revision or not frontier_updated_at:
         return None
-    return (
-        {
-            "kind": LONG_TODO_CHAIN_TRIGGER,
-            "frontier_revision": frontier_revision,
-        },
-        frontier_updated_at,
+    owned_identity = (
+        advancement_frontier_owned_identity(
+            frontier_revision_index, agent_id=agent_id
+        )
+        if projected is not None
+        else selectable_advancement_frontier_owned_identity(
+            source_items, agent_id=agent_id
+        )
     )
+    checkpoint = {
+        "kind": LONG_TODO_CHAIN_TRIGGER,
+        "frontier_revision": frontier_revision,
+    }
+    if owned_identity:
+        # The ACK stays valid while this agent's own selectable rows are
+        # unchanged, even when another lane claims work this agent can still see.
+        checkpoint["frontier_owned_identity"] = owned_identity
+    return (checkpoint, frontier_updated_at)
 
 
 def evaluate_long_todo_chain(

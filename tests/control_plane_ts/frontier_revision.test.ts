@@ -101,3 +101,32 @@ test("the typed transport rejects unsupported operations and missing source code
     operation: "index", rows: [{}]}));
   assert.throws(() => evaluateLongTodoChain({schema_version: "long_todo_chain_request_v0", operation: "unknown"}));
 });
+
+test("another lane taking over an unclaimed row does not re-arm this lane's ACK", () => {
+  // The selectable set counts rows nobody has claimed yet, so a busy goal moves
+  // this lane's revision whenever another lane claims or edits that shared work.
+  const before = [row("todo_a", "worker-a"), row("todo_b")];
+  const observation = observe({rows: before}).observation as Record<string, unknown>;
+  assert.equal(typeof observation.frontier_owned_identity, "string");
+  const ack = {recorded: true, semantic_delta: {accepted: true, obligation_id: "replan-0123456789abcdef",
+    trigger_kinds: ["long_todo_chain"], trigger_checkpoints: [{kind: "long_todo_chain",
+      frontier_revision: observation.frontier_revision,
+      frontier_owned_identity: observation.frontier_owned_identity}]}};
+
+  const claimedElsewhere = observe({ack, rows: [row("todo_a", "worker-a"), row("todo_b", "worker-b")]});
+  assert.notEqual((claimedElsewhere.observation as Record<string, unknown>).frontier_revision,
+    observation.frontier_revision);
+  assert.deepEqual(claimedElsewhere.decision, {acknowledged: true, rearmed_after_obligation_id: null});
+
+  // This agent's own selectable rows changed, so the replan is owed again.
+  const ownChange = observe({ack, rows: [row("todo_a", "worker-a"), row("todo_b"),
+    row("todo_c", "worker-a")]});
+  assert.deepEqual(ownChange.decision,
+    {acknowledged: false, rearmed_after_obligation_id: "replan-0123456789abcdef"});
+
+  // An ACK recorded before the owned identity existed still matches on revision.
+  const legacy = {...ack, semantic_delta: {...ack.semantic_delta, trigger_checkpoints: [
+    {kind: "long_todo_chain", frontier_revision: observation.frontier_revision}]}};
+  assert.deepEqual(observe({ack: legacy, rows: before}).decision,
+    {acknowledged: true, rearmed_after_obligation_id: null});
+});

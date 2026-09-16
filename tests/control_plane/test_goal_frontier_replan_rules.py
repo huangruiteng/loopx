@@ -657,14 +657,16 @@ def test_long_chain_successor_transition_is_bound_to_current_frontier() -> None:
     assert post_successor_obligation["triggers"][0]["frontier_revision"] != (
         rearmed["triggers"][0]["frontier_revision"]
     )
-    assert fresh_ack["semantic_delta"]["trigger_checkpoints"] == [
-        {
-            "kind": "long_todo_chain",
-            "frontier_revision": post_successor_obligation["triggers"][0][
-                "frontier_revision"
-            ],
-        }
-    ]
+    fresh_checkpoints = fresh_ack["semantic_delta"]["trigger_checkpoints"]
+    assert [row["kind"] for row in fresh_checkpoints] == ["long_todo_chain"]
+    assert fresh_checkpoints[0]["frontier_revision"] == (
+        post_successor_obligation["triggers"][0]["frontier_revision"]
+    )
+    # The checkpoint also records the identity of the rows this agent owns, so
+    # another lane taking over unclaimed work does not re-arm this ACK.
+    assert fresh_checkpoints[0]["frontier_owned_identity"].startswith(
+        "todo_frontier_revision_v0:owned:"
+    )
     assert (
         _derive_long_chain(
             [*changed_items, stale_successor, fresh_successor],

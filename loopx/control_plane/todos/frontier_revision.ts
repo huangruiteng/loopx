@@ -16,6 +16,7 @@ const INDEX = "todo_frontier_revision_index_v0";
 const TRIGGER = "long_todo_chain";
 type Checkpoint = { complete: false } | {
   complete: true; frontier_revision: string; frontier_updated_at: string;
+  frontier_owned_identity: string | null;
 };
 type Row = {
   id: string; claim: string | null; excluded: string[];
@@ -28,6 +29,7 @@ type LongChainObservation = {
   current_agent_claimed_advancement_count: number; unclaimed_advancement_count: number;
   threshold: 15 | 20; agent_id: string | null;
   frontier_revision: string | null; frontier_revision_complete: boolean;
+  frontier_owned_identity: string | null;
 };
 type AckDecision = {acknowledged: boolean; rearmed_after_obligation_id: string | null};
 const object = (value: unknown): JsonObject =>
@@ -92,8 +94,16 @@ function checkpoint(rows: Row[] | null, agent: string | null, unclaimedOnly = fa
   }
   selected.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const digest = createHash("sha256").update(`[${selected.map(row => row.serialized).join(",")}]`).digest("hex");
+  // The selectable set above also contains rows nobody has claimed yet, so any
+  // other lane that claims or edits one of them moves the revision. That is a
+  // real change to the measured chain but not to this agent's own work basis,
+  // so the ACK fence also carries an identity over the rows this agent owns.
+  const owned = agent === null ? [] : selected.filter(row => row.claim === agent);
+  const ownedDigest = owned.length === 0 ? null : createHash("sha256")
+    .update(`[${owned.map(row => row.serialized).join(",")}]`).digest("hex").slice(0, 24);
   return {complete: true, frontier_revision: `${REVISION}:${digest.slice(0, 24)}`,
-    frontier_updated_at: updated};
+    frontier_updated_at: updated,
+    frontier_owned_identity: ownedDigest === null ? null : `${REVISION}:owned:${ownedDigest}`};
 }
 
 function readIndex(value: unknown, agent: string | null): Checkpoint | null {
@@ -110,7 +120,8 @@ function readIndex(value: unknown, agent: string | null): Checkpoint | null {
   const entry = object(raw);
   const revision = text(entry.frontier_revision), updated = text(entry.frontier_updated_at);
   if (entry.complete !== true || !revision || parseTodoTimestampMicros(updated) === null) return {complete: false};
-  return {complete: true, frontier_revision: revision, frontier_updated_at: updated};
+  return {complete: true, frontier_revision: revision, frontier_updated_at: updated,
+    frontier_owned_identity: text(entry.frontier_owned_identity) || null};
 }
 
 export function projectAdvancementFrontier(value: unknown): JsonObject {
@@ -139,7 +150,13 @@ function classifyAck(observation: LongChainObservation, value: unknown): AckDeci
       observation.frontier_revision_complete !== true || !text(observation.frontier_revision)) return rejected;
   const matches = Array.isArray(delta.trigger_checkpoints) && delta.trigger_checkpoints.some(raw => {
     const row = object(raw);
-    return text(row.kind) === TRIGGER && text(row.frontier_revision) === observation.frontier_revision;
+    if (text(row.kind) !== TRIGGER) return false;
+    if (text(row.frontier_revision) === observation.frontier_revision) return true;
+    // Another lane claiming or editing an unclaimed row moves the revision but
+    // leaves this agent's own selectable rows untouched; that is not new
+    // evidence about this agent's chain, so it must not re-arm the obligation.
+    const recorded = text(row.frontier_owned_identity);
+    return Boolean(recorded) && recorded === text(observation.frontier_owned_identity);
   });
   return {acknowledged: matches, rearmed_after_obligation_id: matches ? null : id};
 }
@@ -164,6 +181,7 @@ export function evaluateLongTodoChain(value: unknown): JsonObject {
     selectable_open_count: open, selectable_advancement_count: advancement,
     current_agent_claimed_advancement_count: current, unclaimed_advancement_count: unclaimed,
     threshold, agent_id: agent, frontier_revision: revision.complete ? revision.frontier_revision : null,
-    frontier_revision_complete: revision.complete};
+    frontier_revision_complete: revision.complete,
+    frontier_owned_identity: revision.complete ? revision.frontier_owned_identity : null};
   return {observation, decision: classifyAck(observation, request.ack)};
 }
