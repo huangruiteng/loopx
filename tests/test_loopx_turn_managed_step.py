@@ -396,12 +396,14 @@ def test_journal_turn_key_mismatch_is_refused() -> None:
         _decide(journal)
 
 
-def test_shared_decision_builder_reads_the_resolved_runtime_root(monkeypatch) -> None:
-    """The activation check must read this registry's root, not the global default.
+def test_shared_decision_owner_binds_both_turn_owners_to_one_set_of_inputs(monkeypatch) -> None:
+    """``run-once`` and ``managed-step`` must resolve through the shared owner.
 
     A registry that declares ``common_runtime_root`` while the command omits
-    ``--runtime-root`` passes ``None`` as the raw argument. Wiring the check to
-    that raw value would silently read the operator's global extension state.
+    ``--runtime-root`` passes ``None`` as the raw argument, so the activation
+    check must receive the resolved root instead. Deriving the status, the
+    scheduler context or the capability hooks per command would additionally
+    let the two owners disagree about the current governing decision.
     """
 
     import argparse
@@ -409,14 +411,35 @@ def test_shared_decision_builder_reads_the_resolved_runtime_root(monkeypatch) ->
 
     from loopx.cli_commands import turn_decision
 
-    seen: list[object] = []
+    roots: list[object] = []
+    captured: list[dict[str, Any]] = []
+    status_payload = {
+        "ok": True,
+        "attention_queue": {"items": []},
+        "run_history": {"goals": []},
+    }
 
-    def _record(*, runtime_root_arg):
-        seen.append(runtime_root_arg)
-        return lambda **_: {"schema_version": "lark_event_inbox_urgency_v0"}
+    def _projector(**_kwargs: object) -> dict[str, object]:
+        return {"schema_version": "lark_event_inbox_urgency_v0"}
+
+    def _record_projector(*, runtime_root_arg):
+        roots.append(runtime_root_arg)
+        return _projector
+
+    def _record_decision(payload, **kwargs):
+        captured.append({"status_payload": payload, **kwargs})
+        return {"selected_todo": None}
 
     monkeypatch.setattr(
-        turn_decision, "build_lark_operator_inbox_urgency_projector", _record
+        turn_decision, "build_lark_operator_inbox_urgency_projector", _record_projector
+    )
+    monkeypatch.setattr(
+        turn_decision, "build_live_quota_should_run_decision", _record_decision
+    )
+    monkeypatch.setattr(
+        turn_decision,
+        "collect_turn_status_payload",
+        lambda *_args, **_kwargs: status_payload,
     )
     args = argparse.Namespace(
         goal_id=GOAL_ID,
@@ -427,16 +450,44 @@ def test_shared_decision_builder_reads_the_resolved_runtime_root(monkeypatch) ->
         available_capabilities=[],
     )
     resolved_root = Path("/tmp/registry-scoped-runtime-root")
-
-    turn_decision.build_turn_decision_builder(
+    registry_path = Path("/tmp/registry.json")
+    owner = turn_decision.build_fresh_turn_decision_owner(
         args,
-        registry_path=Path("/tmp/registry.json"),
+        registry_path=registry_path,
         runtime_root=resolved_root,
         runtime_root_arg=None,
-        status_payload={"ok": True, "attention_queue": {"items": []}, "run_history": {"goals": []}},
     )
 
-    assert seen == [resolved_root], (
-        "the activation check must receive the resolved runtime root, not the raw "
-        f"argument that is None when the registry declares common_runtime_root: {seen}"
+    assert owner.resolve() == {"selected_todo": None}
+    assert captured[-1]["status_payload"] is status_payload
+    assert (
+        captured[-1]["scheduler_execution_context"] is owner.scheduler_execution_context
+    )
+    assert (
+        captured[-1]["operator_inbox_urgency_projector"]
+        is owner.operator_inbox_urgency_projector
+    )
+    assert captured[-1]["route_source"] == turn_decision.TURN_DECISION_ROUTE_SOURCE
+
+    envelopes: list[object] = []
+
+    def _record_envelope(decision, *, scheduler_execution_context):
+        envelopes.append((decision, scheduler_execution_context))
+        return {"schema_version": "loopx_turn_envelope_v0"}
+
+    monkeypatch.setattr(turn_decision, "fresh_turn_envelope", _record_envelope)
+    turn_decision.build_fresh_envelope_for_managed_step(
+        args,
+        registry_path=registry_path,
+        runtime_root=resolved_root,
+        runtime_root_arg=None,
+    )
+    assert captured[-1]["status_payload"] is status_payload
+    assert len(envelopes) == 1
+    signed_decision, signed_context = envelopes[0]
+    assert signed_decision == {"selected_todo": None}
+    assert signed_context == captured[-1]["scheduler_execution_context"]
+    assert roots == [resolved_root, resolved_root], (
+        "both Turn owners must receive the resolved runtime root, not the raw "
+        f"argument that is None when the registry declares common_runtime_root: {roots}"
     )

@@ -35,6 +35,10 @@ export const AUTHORITY_STATE_CHECKPOINT_INTERVAL = 64;
 /**
  * Object path inside one projection. Arrays are addressed as a whole value;
  * element identity is owned by the domain, not by this codec.
+ *
+ * Segments are JSON object keys, and strict JSON allows any string as a key:
+ * the empty string is a key, and so is `__proto__`. V1 retained whole
+ * projections, so both are legal retained data and stay legal here.
  */
 export type AuthorityStatePath = readonly string[];
 
@@ -183,7 +187,22 @@ function applyAuthorityStateOperation(root: JsonObject, operation: AuthorityStat
     if (!present) protocol("authority state delta removed a value that was never stored");
     delete container[last];
   }
-  else container[last] = structuredClone(operation.value);
+  else setOwnJsonKey(container, last, structuredClone(operation.value));
+}
+
+/**
+ * Write one decoded key as an own data property.
+ *
+ * `container[key] = value` would run the inherited `__proto__` accessor and
+ * replace the reconstructed object's prototype with the stored value, so a
+ * retained projection carrying that key would silently lose it. Decoded
+ * deltas are data, so every key is created the same way the canonicalizer
+ * creates keys, which keeps reconstruction exact for every JSON object key.
+ */
+function setOwnJsonKey(container: JsonObject, key: string, value: unknown): void {
+  Object.defineProperty(container, key, {
+    value, writable: true, enumerable: true, configurable: true,
+  });
 }
 
 function descend(container: unknown, segment: string): unknown {
@@ -233,7 +252,8 @@ function decodeAuthorityStateOperation(value: unknown, index: number): Authority
 function decodeAuthorityStatePath(value: unknown, label: string): AuthorityStatePath {
   if (!Array.isArray(value) || value.length === 0) protocol(`${label} path is invalid`);
   return value.map(segment => {
-    if (typeof segment === "string" && segment.length > 0) return segment;
+    // Any string is a legal JSON key, including the empty string.
+    if (typeof segment === "string") return segment;
     return protocol(`${label} path segment is invalid`);
   });
 }

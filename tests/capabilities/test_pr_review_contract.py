@@ -81,6 +81,7 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "behavior_change_disclosure",
         "guidance_vs_obligation",
         "durable_smoke_value",
+        "semantic_alignment",
     }
     assert requirements["symbol_map"]["item_count"] == {
         "minimum": 2,
@@ -113,6 +114,22 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
     assert "maintenance_and_migration_cost" in proportionality["fields"]
     assert "green CI" in proportionality["rule"]
     assert "original problem" in proportionality["rule"]
+    semantic = requirements["semantic_alignment"]
+    assert semantic["required_when"] == "semantic_alignment_required"
+    assert set(semantic["candidate_decisions"]) == {
+        "reuse_existing",
+        "extend_vocabulary",
+        "create_vocabulary",
+        "local_only",
+        "external_input",
+        "compatibility_only",
+        "unknown",
+    }
+    assert "raising a budget" in semantic["rule"]
+    assert semantic["fields"] == ["checked_scope", "impact_reason", "verdict"]
+    assert semantic["fields_by_verdict"]["not_applicable"] == []
+    assert "analysis_limit" in semantic["fields_by_verdict"]["advisory"]
+    assert "minimum_repair" in semantic["fields_by_verdict"]["not_yet_proven"]
     isolation = requirements["default_off_isolation"]
     assert isolation["required_when"] == "behavior_bearing_change"
     assert isolation["verdict_values"] == [
@@ -148,6 +165,7 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "change_proportionality": ["disproportionate", "not_yet_proven"],
         "default_off_isolation": ["not_isolated", "not_yet_proven"],
         "authority_semantics": ["misleading", "not_yet_proven"],
+        "semantic_alignment": ["not_yet_proven", "violated"],
     }
     assert contract["finding_contract"]["findings_first"] is True
     verdict = contract["verdict_policy"]
@@ -327,6 +345,37 @@ def test_non_behavior_review_keeps_existing_coverage_policy(area: str) -> None:
     plan = build_review_plan(_item(areas={area: 1}))
     assert plan["applicability"]["repository_reuse_required"] is False
     assert "repository_reuse" not in plan["required_evidence_ids"]
+
+
+def test_code_review_requires_only_semantic_triage_before_contract_impact_is_known() -> None:
+    plan = build_review_plan(_item(areas={"product_runtime": 1}))
+
+    assert plan["applicability"]["semantic_alignment_required"] is True
+    assert "semantic_alignment" in plan["required_evidence_ids"]
+    assert "semantic_alignment_context" not in plan["applicability"]
+
+
+@pytest.mark.parametrize("repo", ["huangruiteng/loopx", "example/service"])
+def test_semantic_triage_does_not_inject_repository_facts_or_infer_from_preview(repo: str) -> None:
+    item = _item(areas={"product_runtime": 1})
+    item["repository"] = repo
+    item["key_files"] = [{"path": f"src/file_{i}.py"} for i in range(10)]
+    plan = build_review_plan(item)
+    item["key_files"].append({"path": "loopx/semantics/vocabulary_v0.json"})
+    assert build_review_plan(item) == plan
+    semantic = next(
+        row for row in build_agent_response_contract()["review_execution_contract"]["evidence_requirements"]
+        if row["evidence_id"] == "semantic_alignment"
+    )
+    assert "Sign-off" not in json.dumps(semantic)
+    assert "merge-gate" not in json.dumps(semantic)
+    assert "loopx/semantics" not in json.dumps(semantic)
+
+
+def test_generated_inventory_does_not_create_a_detailed_review_obligation() -> None:
+    item = _item(areas={"public_docs": 1})
+    item["key_files"] = [{"path": "loopx/semantics/inventory_v0.json"}]
+    assert "semantic_alignment" not in build_review_plan(item)["required_evidence_ids"]
 
 
 def test_reuse_evidence_compares_semantics_beyond_the_diff() -> None:

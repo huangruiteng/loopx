@@ -38,6 +38,12 @@ def _review():
         )
         if "verdict_values" in requirement:
             row["verdict"] = requirement["verdict_values"][0]
+        if key == "semantic_alignment":
+            row.update(
+                checked_scope="Changed helper and its callers; no shared state writes.",
+                impact_reason="Local formatting only; no shared contract changes.",
+                verdict="not_applicable",
+            )
         if "items_field" in requirement:
             item_fields = requirement.get("item_fields", [])
             if "required_cases" in requirement:
@@ -76,6 +82,114 @@ def test_result_check_is_not_semantic_or_merge_authority():
     assert not checked["evidence_truth_verified"]
     assert not checked["remote_head_verified"]
     assert not checked["external_writes_performed"]
+
+
+@pytest.mark.parametrize(
+    ("candidate_decision", "verdict", "blocker"),
+    [
+        ("made_up", "aligned", "semantic_alignment:invalid_candidate_decision"),
+        ("unknown", "aligned", "semantic_alignment:unknown_cannot_claim_alignment"),
+        ("unknown", "not_applicable", "semantic_alignment:unknown_cannot_claim_alignment"),
+        ("extend_vocabulary", "not_applicable", "semantic_alignment:contract_change_requires_evidence"),
+        ("create_vocabulary", "not_applicable", "semantic_alignment:contract_change_requires_evidence"),
+    ],
+)
+def test_semantic_alignment_cannot_hide_unknown_or_invalid_candidate(
+    candidate_decision: str, verdict: str, blocker: str
+) -> None:
+    packet, result = _review()
+    row = result["evidence"]["semantic_alignment"]
+    row["candidate_decision"] = candidate_decision
+    row["verdict"] = verdict
+    checked = check_review_result(packet, result)
+
+    assert blocker in checked["approval_blockers"]
+    assert not checked["approval_consistent"]
+
+
+def test_no_candidate_exits_after_scope_and_reason() -> None:
+    packet, result = _review()
+    result["evidence"]["semantic_alignment"] = {
+        "status": "verified",
+        "checked_scope": "Formatting helper and unchanged callers.",
+        "impact_reason": "No shared field, state value or persistence change.",
+        "verdict": "not_applicable",
+    }
+    assert check_review_result(packet, result)["approval_consistent"]
+
+
+@pytest.mark.parametrize("missing", ["checked_scope", "impact_reason"])
+def test_no_impact_still_needs_a_bounded_reason(missing: str) -> None:
+    packet, result = _review()
+    del result["evidence"]["semantic_alignment"][missing]
+    assert not check_review_result(packet, result)["approval_consistent"]
+
+
+@pytest.mark.parametrize("verdict", ["aligned", "new_semantics_justified"])
+def test_contract_change_reuses_existing_review_evidence(verdict: str) -> None:
+    packet, result = _review()
+    row = result["evidence"]["semantic_alignment"]
+    row.update(
+        verdict=verdict,
+        candidate_decision="extend_vocabulary",
+        affected_contract="TaskState shared enum and reader compatibility.",
+        evidence_refs=["repository_reuse", "observable_semantics", "validation_matrix"],
+    )
+    assert check_review_result(packet, result)["approval_consistent"]
+    del row["affected_contract"]
+    assert not check_review_result(packet, result)["approval_consistent"]
+
+
+def test_scanner_blind_spot_is_reported_without_claiming_safety_or_blocking() -> None:
+    packet, result = _review()
+    row = result["evidence"]["semantic_alignment"]
+    row.update(
+        verdict="advisory",
+        candidate_decision="unknown",
+        impact_reason="Existing required checks pass; no changed contract lacks required evidence.",
+        analysis_limit="Unchanged external pass-through is outside the bounded scanner.",
+    )
+    assert check_review_result(packet, result)["approval_consistent"]
+    del row["analysis_limit"]
+    assert not check_review_result(packet, result)["approval_consistent"]
+
+
+@pytest.mark.parametrize("verdict", ["not_yet_proven", "violated"])
+def test_contract_blocker_requires_actionable_repair(verdict: str) -> None:
+    packet, result = _review()
+    row = result["evidence"]["semantic_alignment"]
+    row.update(
+        verdict=verdict,
+        candidate_decision="compatibility_only",
+        affected_contract="Persisted TaskState values must remain readable.",
+        trigger="PR deletes a persisted enum member.",
+        observed_evidence="Old-state readback is missing or fails in validation_matrix.",
+        minimum_repair="Restore decoding or add a tested migration.",
+        validation_commands="pytest tests/test_state_readback.py",
+    )
+    assert not check_review_result(packet, result)["approval_consistent"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
+    del row["minimum_repair"]
+    assert "semantic_alignment:missing_field:minimum_repair" in (
+        check_review_result(packet, result)["approval_blockers"]
+    )
+
+
+def test_advisory_cannot_override_a_concrete_blocking_finding() -> None:
+    packet, result = _review()
+    result["evidence"]["semantic_alignment"].update(
+        verdict="advisory", candidate_decision="unknown", analysis_limit="Scanner limit."
+    )
+    result["findings"] = [{"severity": "P2", "blocking": True}]
+    assert not check_review_result(packet, result)["approval_consistent"]
+
+
+def test_optional_semantic_evidence_cannot_hide_a_docs_contract_violation() -> None:
+    packet, result = _review()
+    packet["pull_requests"][0]["areas"] = {"public_docs": 1}
+    result["evidence"]["semantic_alignment"].update(verdict="violated")
+    assert not check_review_result(packet, result)["approval_consistent"]
 
 
 @pytest.mark.parametrize(
@@ -223,10 +337,34 @@ def test_inventory_only_head_cannot_certify_a_new_review() -> None:
         check_review_result(packet, result)
 
 
-def test_public_cli_check_has_no_github_or_checkpoint_effects(
-    tmp_path, monkeypatch, capsys
+@pytest.mark.parametrize(
+    ("semantic_verdict", "expected_exit"),
+    [("not_applicable", 0), ("new_semantics_justified", 0), ("advisory", 0),
+     ("not_yet_proven", 1), ("violated", 1)],
+)
+def test_public_cli_checks_semantic_boundaries_without_github_or_checkpoint_effects(
+    tmp_path, monkeypatch, capsys, semantic_verdict: str, expected_exit: int
 ):
     packet, result = _review()
+    semantic = result["evidence"]["semantic_alignment"]
+    semantic["verdict"] = semantic_verdict
+    if semantic_verdict == "new_semantics_justified":
+        semantic.update(
+            candidate_decision="extend_vocabulary",
+            affected_contract="Shared TaskState enum.",
+            evidence_refs=["repository_reuse", "observable_semantics", "validation_matrix"],
+        )
+    elif semantic_verdict == "advisory":
+        semantic.update(candidate_decision="unknown", analysis_limit="Dynamic pass-through.")
+    elif semantic_verdict in ("not_yet_proven", "violated"):
+        semantic.update(
+            candidate_decision="compatibility_only",
+            affected_contract="Persisted TaskState compatibility.",
+            trigger="Deleted state member.",
+            observed_evidence="Old-state readback is missing or fails.",
+            minimum_repair="Restore decoding or validate migration.",
+            validation_commands="pytest tests/test_state_readback.py",
+        )
     packet_path, result_path = tmp_path / "packet.json", tmp_path / "result.json"
     packet_path.write_text(json.dumps(packet))
     result_path.write_text(json.dumps(result))
@@ -244,8 +382,8 @@ def test_public_cli_check_has_no_github_or_checkpoint_effects(
         "--packet",
         str(packet_path),
     ]
-    assert main(argv) == 0
-    assert json.loads(capsys.readouterr().out)["approval_consistent"]
+    assert main(argv) == expected_exit
+    assert json.loads(capsys.readouterr().out)["approval_consistent"] is (expected_exit == 0)
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
     result["evidence"]["failure_analysis"]["status"] = "unverified"
     result_path.write_text(json.dumps(result))

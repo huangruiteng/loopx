@@ -65,6 +65,26 @@ def test_literal_scan_rejects_unknown_value_with_either_quote(suffix: str, quote
         smoke["check_literal_vocabularies"](smoke["load_registry"](), sources)
 
 
+def test_candidate_decisions_are_exhaustive_and_default_to_unknown() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    registry = smoke["load_registry"]()
+    candidate_decisions = registry["formal_model"]["candidate_decisions"]
+    assert candidate_decisions["default"] == "unknown"
+    assert set(candidate_decisions["values"]) == {
+        "reuse_existing",
+        "extend_vocabulary",
+        "create_vocabulary",
+        "local_only",
+        "external_input",
+        "compatibility_only",
+        "unknown",
+    }
+
+    registry["formal_model"]["candidate_decisions"]["default"] = "reuse_existing"
+    with pytest.raises(smoke["Drift"], match="default unresolved candidates"):
+        smoke["check_formal_model"](registry["formal_model"])
+
+
 def test_bounded_producer_scan_rejects_unregistered_write() -> None:
     smoke = runpy.run_path(str(SMOKE))
     source = smoke["SourceFile"](

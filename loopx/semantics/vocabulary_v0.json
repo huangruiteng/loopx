@@ -15,8 +15,8 @@
     "schema_version": "loopx_semantic_formal_model_v0",
     "universes": {
       "vocabularies": "V: registered vocabulary identifiers",
-      "values": "Val(v): values admitted by vocabulary v",
-      "sites": "S: source locations that define, produce, consume, interpret, pass through, project, or persist values",
+      "values": "U(v): ambient runtime values; S(v): registered admitted values",
+      "sites": "L: source locations that define, produce, consume, interpret, pass through, project, or persist values",
       "scopes": "Scope: global or bounded_context(context_id)",
       "roles": "Roles assigned to sites; a site may have more than one role only when each edge is explicit"
     },
@@ -32,6 +32,19 @@
         "interpreter",
         "pass_through"
       ]
+    },
+    "candidate_decisions": {
+      "values": [
+        "compatibility_only",
+        "create_vocabulary",
+        "extend_vocabulary",
+        "external_input",
+        "local_only",
+        "reuse_existing",
+        "unknown"
+      ],
+      "default": "unknown",
+      "meaning": "Advisory vocabulary-candidate disposition labels and default; no per-candidate storage or runtime enforcement is implied. Unknown records unresolved bounded evidence, not proof of safety."
     },
     "enforcement_policy": {
       "blocking_now": [
@@ -50,18 +63,18 @@
       ]
     },
     "relations": {
-      "defines": "D ⊆ S × V: a site defines a vocabulary carrier",
-      "produces": "P ⊆ S × V × Val: a site writes or returns a vocabulary value",
-      "consumes": "C ⊆ S × V × Val: a site accepts or branches on a value",
-      "interprets": "I ⊆ S × V × V: a site maps one vocabulary into another",
-      "passes_through": "T ⊆ S × V: a site serializes, persists, forwards, or displays without changing meaning",
-      "projects": "G ⊆ V × V × (Val ⇀ Val ∪ {reject}): a declared partial or total projection",
-      "persists": "R ⊆ S × V × Version: a site writes a value to a durable representation"
+      "defines": "D ⊆ L × V: a site defines a vocabulary carrier",
+      "produces": "P ⊆ L × V × U(v): a site writes or returns a runtime value; it is valid only when the value is in S(v)",
+      "consumes": "C ⊆ L × V × U(v): a site accepts or branches on a runtime value",
+      "interprets": "I ⊆ L × V × V: a site maps one vocabulary into another",
+      "passes_through": "T ⊆ L × V: a site serializes, persists, forwards, or displays without changing meaning",
+      "projects": "G ⊆ V × V × (S(v_source) ⇀ S(v_target) ∪ {reject}): a declared projection between registered admitted sets",
+      "persists": "R ⊆ L × V × Version: a site writes a value to a durable representation"
     },
     "invariants": [
       {
         "id": "F1_producer_closedness",
-        "statement": "Produced(v) ⊆ Val(v)",
+        "statement": "Produced(v) ⊆ S(v) ⊆ U(v)",
         "enforcement": "m0_5",
         "evidence": "bounded production-form AST scan; unknown dynamic producers are reported, not treated as proven safe"
       },
@@ -73,7 +86,7 @@
       },
       {
         "id": "F3_consumer_domain_closedness",
-        "statement": "Accepted(c) ⊆ Val(v), unless the consumer declares an external or partial domain",
+        "statement": "Accepted(c) ⊆ S(v), unless the consumer declares an external or partial domain",
         "enforcement": "advisory",
         "evidence": "consumer and interpreter edges are currently inventory evidence, not complete data-flow proof"
       },
@@ -113,6 +126,10 @@
         "all_producers_are_found",
         "same_concept_behavioral_equivalence",
         "persistence_reader_compatibility"
+      ],
+      "unknown": [
+        "dynamic_producer_or_consumer_path",
+        "unclassified_vocabulary_candidate"
       ]
     }
   },

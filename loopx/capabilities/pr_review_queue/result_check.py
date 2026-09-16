@@ -3,7 +3,11 @@
 from collections.abc import Mapping
 from typing import Any
 
-from .review_contract import build_review_execution_contract, build_review_plan
+from .review_contract import (
+    SEMANTIC_CANDIDATE_DECISIONS,
+    build_review_execution_contract,
+    build_review_plan,
+)
 
 
 def _missing(value: object) -> bool:
@@ -131,7 +135,11 @@ def check_review_result(
     if not isinstance(evidence, Mapping):
         evidence = {}
         errors.append("evidence_not_object")
-    for key in plan["required_evidence_ids"]:
+    evidence_ids = list(plan["required_evidence_ids"])
+    # Contract findings supplied for docs-only reviews still constrain approval.
+    if "semantic_alignment" in evidence and "semantic_alignment" not in evidence_ids:
+        evidence_ids.append("semantic_alignment")
+    for key in evidence_ids:
         row = evidence.get(key)
         if not isinstance(row, Mapping):
             blockers.append(f"{key}:missing")
@@ -146,12 +154,36 @@ def check_review_result(
             blockers.append(f"{key}:missing_evidence_detail")
         if status == "verified":
             requirement = requirements[key]
+            if key == "semantic_alignment":
+                decision = row.get("candidate_decision")
+                verdict = row.get("verdict")
+                if (verdict != "not_applicable" or decision is not None) and (
+                    decision not in SEMANTIC_CANDIDATE_DECISIONS
+                ):
+                    blockers.append("semantic_alignment:invalid_candidate_decision")
+                if decision == "unknown" and verdict not in (
+                    "advisory", "not_yet_proven", "violated"
+                ):
+                    blockers.append("semantic_alignment:unknown_cannot_claim_alignment")
+                if verdict == "not_applicable" and decision in (
+                    "extend_vocabulary", "create_vocabulary", "compatibility_only"
+                ):
+                    blockers.append("semantic_alignment:contract_change_requires_evidence")
             _require_fields(
                 blockers,
                 evidence_id=key,
                 value=row,
                 fields=requirement.get("fields"),
             )
+            fields_by_verdict = requirement.get("fields_by_verdict", {})
+            verdict = row.get("verdict")
+            if isinstance(verdict, str):
+                _require_fields(
+                    blockers,
+                    evidence_id=key,
+                    value=row,
+                    fields=fields_by_verdict.get(verdict),
+                )
             items = _require_items(
                 blockers,
                 evidence_id=key,

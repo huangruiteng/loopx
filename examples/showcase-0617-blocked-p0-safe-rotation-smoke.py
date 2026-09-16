@@ -14,18 +14,24 @@ from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 
 
 GOAL_ID = "showcase-0617-blocked-p0-safe-rotation"
+GATE_TODO_ID = "todo_showcase_ale_image_gate"
+ALE_ROTATION_TODO_ID = "todo_showcase_ale_lane"
+SAFE_ROTATION_TODO_ID = "todo_showcase_terminal_bench_rotation"
 
 
 def todo(
     *,
+    todo_id: str,
     index: int,
     text: str,
     role: str,
     priority: str,
     task_class: str,
     action_kind: str,
+    unblocks_todo_id: str | None = None,
 ) -> dict[str, object]:
-    return {
+    item: dict[str, object] = {
+        "todo_id": todo_id,
         "index": index,
         "text": text,
         "role": role,
@@ -34,6 +40,9 @@ def todo(
         "task_class": task_class,
         "action_kind": action_kind,
     }
+    if unblocks_todo_id:
+        item["unblocks_todo_id"] = unblocks_todo_id
+    return item
 
 
 def todo_summary(*, source_section: str, items: list[dict[str, object]]) -> dict[str, object]:
@@ -48,8 +57,9 @@ def todo_summary(*, source_section: str, items: list[dict[str, object]]) -> dict
     }
 
 
-def status_payload() -> dict[str, object]:
+def status_payload(*, exact_dependency: bool = True) -> dict[str, object]:
     user_gate = todo(
+        todo_id=GATE_TODO_ID,
         index=1,
         role="user",
         priority="P0",
@@ -59,8 +69,12 @@ def status_payload() -> dict[str, object]:
             "[P0] Decide whether to acquire the large local image required by "
             "the ALE lane before any ALE execution."
         ),
+        # Structural scope, not prose: the gate targets the ALE lane only, so the
+        # unrelated no-upload rotation is a provably independent fallback.
+        unblocks_todo_id=ALE_ROTATION_TODO_ID if exact_dependency else None,
     )
     blocked_agent_todo = todo(
+        todo_id=ALE_ROTATION_TODO_ID,
         index=1,
         role="agent",
         priority="P0",
@@ -72,6 +86,7 @@ def status_payload() -> dict[str, object]:
         ),
     )
     safe_fallback_todo = todo(
+        todo_id=SAFE_ROTATION_TODO_ID,
         index=2,
         role="agent",
         priority="P1",
@@ -148,6 +163,19 @@ def main() -> int:
     assert obligation["kind"] == "scoped_user_gate_fallback", obligation
     assert "scoped_user_gate_fallback" in markdown, markdown
     assert "safe no-upload Terminal-Bench rotation" in markdown, markdown
+
+    # Distinct action labels alone never certify independence: with the
+    # structural link removed the same fixture must stay unproven rather than
+    # advertise a safe bypass, and it must not be rewritten into a global gate.
+    unproven = build_quota_should_run(
+        status_payload(exact_dependency=False), goal_id=GOAL_ID
+    )
+    assert unproven.get("safe_bypass_allowed") is not True, unproven
+    assert unproven.get("safe_bypass_kind") != "scoped_user_gate_fallback", unproven
+    assert "scoped_user_gate_fallback" not in render_quota_should_run_markdown(
+        unproven
+    ), unproven
+    assert unproven["requires_user_action"] is True, unproven
 
     print("showcase-0617-blocked-p0-safe-rotation-smoke ok")
     return 0

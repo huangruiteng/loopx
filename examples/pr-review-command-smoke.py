@@ -910,6 +910,7 @@ def main() -> int:
         "behavior_change_disclosure",
         "guidance_vs_obligation",
         "durable_smoke_value",
+        "semantic_alignment",
     }, requirements
     assert requirements["symbol_map"]["item_count"] == {"minimum": 2, "maximum": 5}
     assert "caller_evidence" in requirements["symbol_map"]["item_fields"]
@@ -966,6 +967,7 @@ def main() -> int:
         "change_proportionality": ["disproportionate", "not_yet_proven"],
         "default_off_isolation": ["not_isolated", "not_yet_proven"],
         "authority_semantics": ["misleading", "not_yet_proven"],
+        "semantic_alignment": ["not_yet_proven", "violated"],
     }
     assert execution["finding_contract"]["findings_first"] is True
     first_plan = first["review_plan"]

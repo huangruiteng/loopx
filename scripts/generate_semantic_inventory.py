@@ -51,7 +51,7 @@ def main() -> int:
     if args.check:
         print(
             f"stale semantic inventory: {INVENTORY_PATH.relative_to(ROOT)}; "
-            "run scripts/generate_semantic_inventory.py and commit the result",
+            "from the repository root run uv run python scripts/generate_semantic_inventory.py and commit the result",
             file=sys.stderr,
         )
         return 1

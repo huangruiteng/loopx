@@ -238,12 +238,49 @@ the window are outside coverage, not evidence of no progress, and the newest
 finding for a Goal is never dropped by the window bound.
 
 The same block declares `sources`: the local registry source plus every
-configured SSH host alias with its read status and scope. Declaring a source
-performs no remote connection and grants no authority; reading remote rows still
-requires the explicit bounded remote read path and its before/after scope checks.
-A declared but unread source is a named coverage gap. The manager must state the
-window and the sources it actually read, and must not present a single-day read
-or an unread host as whole coverage.
+SSH host this machine **registered** for LoopX evidence (an `evidence_ssh_hosts`
+grant on any channel), with its read status and scope — not every configured SSH
+alias, since an operator's `git` host or personal jump host holds no Core state
+and only adds prompt noise. Declaring a source performs no remote connection and
+grants no authority. A declared but unread source is a named coverage gap. The
+manager must state the window and the sources it actually read, and must not
+present an unread host as whole coverage.
+
+The window itself is a selected decision rather than a discovered fact:
+`days_source` reports `product_default`, `explicit_config`
+(`LOOPX_MANAGER_EVIDENCE_WINDOW_DAYS`, 1..30) or `explicit_argument`, beside
+`days_default`, `days_env_var`, `days_bounds` and `days_reason`. A missing,
+out-of-bounds or unreadable explicit value keeps the shipped default and reports
+its reason, so a misconfiguration can neither widen the prompt nor answer a
+narrower window than it declares.
+
+## A prompt-only segment receives the declared source read
+
+An interactive endpoint reads a declared remote source on demand and pays no
+source latency. A prompt-only steward segment has no read tool, so a declared
+source it never receives is a coverage gap it cannot close. In that case the Turn
+owner reads the registered sources before the segment starts and adds a
+`manager_remote_evidence_v0` block, with `remote_read` declaring `inline_in_prompt`
+rather than `on_demand_tool` in `evidence_window`.
+
+The read is bounded so it cannot slow every Turn: one dial per Turn, at most two
+hosts, nine seconds per host inside a ten-second Turn budget, and eight portfolio
+rows per host. A read inside `ttl_seconds` (ten minutes) is served from cache
+instead of dialling again, and cache entries are keyed by host, window and the
+exact grant scope, so a changed grant or window re-reads rather than answering
+from a narrower cached read. The read reuses the same `read_remote` path and its
+before/after scope checks, so it never widens authority. The declaration and the
+read use the same SSH configuration, so one packet cannot call a host
+unconfigured and read it in the same Turn.
+
+Every declared source carries a typed outcome in the same block: `read` or
+`cached` with `read_at` and `age_seconds`; `unavailable` with its reason, the last
+successful read and a `coverage_effect`; `not_configured` for alias drift; or
+`deferred_budget` with the last successful read. A failed read keeps its last
+successful rows only as `source_freshness: "stale"` with
+`remote_source_rows_are_stale` in `limitations`. A stale or unavailable source is
+a named coverage gap: it must never be presented as current progress, and it must
+never be read as no progress. A source read failure never fails the Turn.
 
 ## A bounded portfolio with explicit coverage
 
