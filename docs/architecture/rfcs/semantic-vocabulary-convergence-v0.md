@@ -429,6 +429,35 @@ credentials. Python 3.11+ and the repository-supported Node runtime are required
 
 ### M1 action domains and compatibility
 
+#### Why this stage is necessary
+
+M1 makes callers read the appropriate field and lets later PRs distinguish a
+new decision from a new diagnostic. Expanding one string set cannot do this:
+copying `result_kind` or an arbitrary host action into the quota action field
+feeds different meanings into the same dispatch surface. Seeing an enum in a
+comparison also does not prove that the system produces its values. M1 separates
+these evidence roles and fixes the scoped fallback mismatch that recognized
+unproduced `skip` while the actual output was `quota_skip`.
+
+The boundary is deliberately limited: the root action remains the distinguishable
+`D ⊔ F` union without adding wire tags to every string; only load-bearing producers
+require registration, not every consumer; historical signed data remains readable.
+The checks cover finite vocabularies, supported output forms and generated artifact
+consistency. They do not prove whole-program semantic completeness, reachability of
+all branches or arbitrary variable-flow safety.
+
+The cost is regenerating bindings after owner changes, potentially regenerating the
+inventory after carrier changes or main synchronization, and installing the locked
+TypeScript parser for local scans. Reusing existing CI jobs still adds job work and
+contributor repair effort; no new required job does not mean no new obligation.
+First classify a failure: replace bare actions with owner references; accompany a
+new decision with owner, producer and consumer validation; keep diagnostics in
+`error_code` and Turn results in `decision`. Use Section 10 regeneration commands
+for stale artifacts. Repair scanner false positives with a regression example,
+rather than widening the vocabulary, reducing coverage or relaxing budgets.
+
+#### Output contracts and compatibility boundaries
+
 Let `D` be the 32 decision values owned by `EffectiveAction`, and `F` the four
 values owned by `AgentScopeFrontierAction`. The root should-run and its envelope
 projection retain the existing action strings through `A = D ⊔ F`. The registry
