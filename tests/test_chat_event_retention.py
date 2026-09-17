@@ -46,7 +46,7 @@ def test_completed_replay_reuses_log_until_an_external_append(tmp_path: Path, mo
     key = ("session", "turn")
     store.append_event(*key, kind="assistant.delta", payload={"text": "visible"}, buffered=True)
     store.append_event(*key, kind="turn.completed", payload={})
-    assert key not in store._event_cache
+    assert key not in store._event_cache._entries
     reads = []
     read = chat_store._read_jsonl
 
@@ -72,9 +72,9 @@ def test_completed_replay_evicts_least_recently_used_log(tmp_path: Path) -> None
     store.events_after("session", "0", None)
     store.append_event("session", "8", kind="turn.completed", payload={})
     store.events_after("session", "8", None)
-    assert ("session", "0") in store._event_cache
-    assert ("session", "1") not in store._event_cache
-    assert len(store._finished_event_cache) == 8
+    assert ("session", "0") in store._event_cache._entries
+    assert ("session", "1") not in store._event_cache._entries
+    assert len(store._event_cache._finished) == 8
 
 
 @pytest.mark.parametrize("row_count,text_size", [(1, 2 * 1024 * 1024), (4096, 1)])
@@ -87,8 +87,8 @@ def test_oversized_completed_log_is_replayable_but_not_retained(
         store.append_event(*key, kind="assistant.delta", payload={"text": "x" * text_size}, buffered=True)
     store.append_event(*key, kind="turn.completed", payload={})
     assert len(store.events_after(*key, None)) == row_count + 1
-    assert key not in store._event_cache
-    assert key not in store._finished_event_cache
+    assert key not in store._event_cache._entries
+    assert key not in store._event_cache._finished
 
 
 def test_completed_replay_budget_is_aggregate(tmp_path: Path) -> None:
@@ -97,8 +97,8 @@ def test_completed_replay_budget_is_aggregate(tmp_path: Path) -> None:
         store.append_event("session", turn, kind="assistant.delta", payload={"text": "x" * 800_000}, buffered=True)
         store.append_event("session", turn, kind="turn.completed", payload={})
         store.events_after("session", turn, None)
-    assert ("session", "a") not in store._event_cache
-    assert set(store._finished_event_cache) == {("session", "b"), ("session", "c")}
+    assert ("session", "a") not in store._event_cache._entries
+    assert set(store._event_cache._finished) == {("session", "b"), ("session", "c")}
 
 
 def test_old_replay_cannot_retain_a_replaced_snapshot(tmp_path: Path) -> None:
@@ -106,10 +106,10 @@ def test_old_replay_cannot_retain_a_replaced_snapshot(tmp_path: Path) -> None:
     key = ("session", "turn")
     store.append_event(*key, kind="turn.completed", payload={})
     store.events_after(*key, None)
-    old = store._event_cache[key]
+    old = store._event_cache._entries[key][1]
     store.append_event(*key, kind="assistant.delta", payload={"text": "continued"})
-    store._retain_terminal_events(key, old)
-    assert key not in store._finished_event_cache
+    store._event_cache.retain_terminal(key, old)
+    assert key not in store._event_cache._finished
     assert store.events_after(*key, "1")[0]["kind"] == "assistant.delta"
 
 
@@ -139,7 +139,7 @@ def test_completed_event_compaction_is_skipped_until_the_file_changes(
     assert turn["event_compaction_revision"] == list(
         first._event_revision(event_path) or ()
     )
-    assert ("session", "turn") not in first._event_cache
+    assert ("session", "turn") not in first._event_cache._entries
 
     original_read_jsonl = chat_store._read_jsonl
 
@@ -151,7 +151,7 @@ def test_completed_event_compaction_is_skipped_until_the_file_changes(
     monkeypatch.setattr(chat_store, "_read_jsonl", reject_redundant_event_read)
     restarted = ChatSessionStore(tmp_path)
 
-    assert not restarted._event_cache
+    assert not restarted._event_cache._entries
     assert not restarted._event_flush_locks
 
 
@@ -174,7 +174,7 @@ def test_completed_event_compaction_marker_is_invalidated_by_a_new_event(
     assert turn["event_compaction_revision"] == list(
         restarted._event_revision(event_path) or ()
     )
-    assert ("session", "turn") not in restarted._event_cache
+    assert ("session", "turn") not in restarted._event_cache._entries
 
 
 def test_missing_event_stream_is_marked_without_retaining_empty_state(
@@ -186,7 +186,7 @@ def test_missing_event_stream_is_marked_without_retaining_empty_state(
     turn = json.loads(turn_path.read_text(encoding="utf-8"))
 
     assert turn["event_compaction_revision"] == []
-    assert not store._event_cache
+    assert not store._event_cache._entries
     assert not store._event_flush_locks
 
 
