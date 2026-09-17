@@ -261,3 +261,30 @@ def test_registered_consumer_cannot_replace_a_removed_writer():
     ]
     with pytest.raises(ValueError, match='no observed producer'):
         validate_production('action', v, collect_production(ROOT, v, sources))
+
+
+def test_real_reexported_turn_owner_is_attributed_through_one_hop():
+    import json
+    from loopx.semantics.inventory import load_sources
+    # loop_controller imports LoopXTurnRoute from driver, which re-exports the
+    # generated owner; the registered return producer must still resolve.
+    v = json.loads((ROOT / 'loopx/semantics/vocabulary_v0.json').read_text())['vocabularies']['turn_route']
+    rows = collect_production(ROOT, v, load_sources(ROOT))
+    site = 'loopx/control_plane/turn_driver/loop_controller.py::_envelope_route'
+    resolved = {value for r in rows if r.site == site and not r.unresolved for value in r.values}
+    assert 'user_action_required' in resolved
+
+
+def test_input_witness_runs_only_for_the_anchored_site():
+    from loopx.semantics.production import INPUT_WITNESSES
+    values = ['validated_progress', 'validated_completion', 'repair_required',
+              'replan_required', 'user_action_required', 'wait', 'iteration_failed',
+              'host_failure', 'validation_failed', 'writeback_failed',
+              'quota_spend_failed', 'terminal_closeout_failed']
+    base = {'values': values, 'producers': [], 'owners': {'python': None}}
+    assert collect_production(ROOT, {**base, 'input_producer': 'loopx/elsewhere.py::decode'}, []) == []
+    anchored = {**base, 'input_producer': 'loopx/control_plane/turn_driver/transaction.py::_result_kind'}
+    assert anchored['input_producer'] in INPUT_WITNESSES
+    rows = collect_production(ROOT, anchored, [])
+    assert {r.form for r in rows} == {'input_witness'}
+    assert set().union(*(r.values for r in rows)) == set(values)

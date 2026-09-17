@@ -57,7 +57,12 @@ then reports separately authorized admin bypass, never permission to merge.
 4. Decide: approve, self-merge with owner authorization, request changes, or
    hold for the maintainer path. Record the decision on the pull request with
    the changed surfaces, the checks that ran, failures and skips, manual holds,
-   and the reason that coverage is enough.
+   and the reason that coverage is enough. Record it as a published review on
+   the exact head, not as a summary in another channel: on an author-owned PR
+   GitHub blocks formal self-approval, so the record is the `COMMENTED` review
+   carrying the approval conclusion and the English verdict. A self-merge whose
+   head carries no such record is a process gap to repair, not an authorized
+   merge.
 5. After the merge, sync the local default branch, leave unrelated dirty
    worktree state alone, and update LoopX todo or evidence when the work is
    tracked.

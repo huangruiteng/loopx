@@ -7,6 +7,34 @@ import {
 } from "./fixture.mjs";
 import { openWorkspacePage } from "./scenario-context.mjs";
 
+// A category switch is a state transition, not a settled fact: the panel can
+// still be mid-mount when a one-shot count runs, which is how this assertion
+// failed on CI while the same tree passed on main. Wait for the declared count
+// and, when it never settles, name what the page actually hosted so the next
+// failure is attributable without a local reproduction.
+async function waitForSelectorCount(page, selector, expected, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let count = await page.locator(selector).count();
+  while (count !== expected && Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    count = await page.locator(selector).count();
+  }
+  if (count === expected) {
+    return;
+  }
+  const hosted = await page.evaluate((target) => [...document.querySelectorAll(target)].map((node) => {
+    const rect = node.getBoundingClientRect();
+    const section = node.closest("section, main, div");
+    return `${node.tagName.toLowerCase()}.${node.className.toString().trim().split(/\s+/).join(".")}`
+      + ` section=${section ? section.className.toString().trim().split(/\s+/)[0] : "<none>"}`
+      + ` visible=${rect.width > 0 && rect.height > 0}`;
+  }), selector);
+  throw new Error(
+    `Expected exactly ${expected} ${selector} panel(s) after the category settled, found ${count}`
+    + `${hosted.length ? `: ${hosted.join(" | ")}` : ""}`,
+  );
+}
+
 function operationProposal({ id, title, lifecycleState, status, resultDelivery = null }) {
   const outcomeObserved = lifecycleState === "outcome_observed";
   return {
@@ -1049,10 +1077,8 @@ export const typedActionsScenario = {
       });
       await page.getByRole("button", { name: /模型 Provider 配置/ }).click();
       await page.getByRole("heading", { level: 1, name: "模型 Provider 配置", exact: true }).waitFor({ state: "visible" });
-      await page.locator(".personal-operator-credential").waitFor({ state: "visible" });
-      if (await page.locator(".personal-operator-credential").count() !== 1) {
-        throw new Error("The model provider category did not host exactly one credential panel");
-      }
+      await waitForSelectorCount(page, ".personal-operator-credential", 1);
+      await page.locator(".personal-operator-credential").first().waitFor({ state: "visible" });
       await page.locator(".personal-operator-credential-readback").waitFor({ state: "visible" });
       for (const label of [/^API key$/u, /^指纹$/u, /^Endpoint base URL$/u]) {
         await page.getByText(label).first().waitFor({ state: "visible" });

@@ -309,10 +309,42 @@ progress toward approval by themselves; the reviewer should request the
 smallest viable fix, deletion, split, or hold when the benefit does not justify
 the accumulated mechanism.
 
+### Goal-oriented delivery judgment (policy revision 6)
+
+Every actionable review now extends the existing `problem_context` evidence
+with `goal_basis` and a typed `verdict`. This applies to code, docs, maintenance
+and test-only changes. Resolve the current user request, issue/task, accepted
+contract or demonstrated regression before accepting the author's narrowed
+scope. A public roadmap id is optional; do not copy private goal content or
+require another repository to use LoopX's S/G/R identifiers.
+
+| Delivery verdict | Meaning and additional evidence | Approval effect |
+| --- | --- | --- |
+| `goal_achieved` | Existing before/after, observable outcome and non-goals prove the named task's acceptance; no invented successor required | May approve within that scope, without claiming the parent program complete |
+| `justified_increment` | Useful delivered delta, plus `remaining_gap`, `next_step` (owner/dependency) and `boundary_reason` for independent review, verification and rollback | May approve a prerequisite, research, docs or maintenance increment without shipping the entire feature |
+| `off_goal` / `fragmented` / `not_yet_proven` | `reason` and `minimum_repair` explain the mismatch, avoidable premature stop or missing evidence | Blocks APPROVE even when other evidence and checks pass |
+
+Reuse `problem_context.observable_outcome`, `walkthroughs` and
+`validation_matrix` instead of writing another evidence report. Small diffs are
+not fragmentation; a new field or sent message is not proof of a promised
+end-to-end user journey. For collaboration, follow the required dependency,
+receiver adoption, artifact acceptance and return through real callers.
+Independent prerequisites and characterization remain valid when their boundary
+and real successor are justified. Do not reward larger diffs or fabricated
+follow-ups. The checker validates declared evidence consistency, not whether a
+reviewer's semantic judgment is true, and it never settles a Goal.
+
+Revision 6 changes review requirements, not queue selection, scheduler, runtime
+permissions or the wire schema. Revision-5 results must be regenerated and
+reviewed under the new policy before current approval. The five public review
+sections remain, but `word_hint` no longer suggests fixed lengths: scale prose
+to the change, reuse evidence, and do not pad simple reviews. This capability
+is not behind a new feature flag; invoking review uses the installed policy.
+
 ### Semantic alignment and CI constraint recovery
 
-Policy revision 5 replaces the universal detailed semantic review with bounded
-triage for code and behavior-bearing policy changes. The required row starts
+The semantic triage introduced in policy revision 5 replaces universal detailed
+semantic review with bounded triage for code and behavior-bearing policy changes. The required row starts
 with `checked_scope`, `impact_reason`, and `verdict` (plus the standard evidence
 `status`). Review the full diff and relevant definitions/callers, then stop at
 `not_applicable` if no shared contract is affected. No candidate value, separate
@@ -575,31 +607,31 @@ absolute paths, private source bodies, or hidden CI artifacts.
         "sections": [
           {
             "label": "动机",
-            "word_hint": "200-350字",
+            "word_hint": "按证据需要；无最低字数",
             "content": "",
             "agent_instruction": "解释旧行为、具体痛点、受影响的用户或调用方、目标结果与必要性；说明不合并会继续付出什么代价，以及需求来自活跃调用方还是未来设想。"
           },
           {
             "label": "改动思路",
-            "word_hint": "250-450字",
+            "word_hint": "按证据需要；无最低字数",
             "content": "",
             "agent_instruction": "解释所选架构、改动前后的控制流或数据流、所有权边界、关键不变量和替代方案取舍；为不熟悉子系统的读者给出一条正向运行链路。"
           },
           {
             "label": "具体改动",
-            "word_hint": "300-600字",
+            "word_hint": "按证据需要；无最低字数",
             "content": "",
             "agent_instruction": "把关键文件和符号映射到行为，覆盖接口、配置或状态、兼容路径、测试与文档；说明各部分如何协作，并给出一个具体输入到输出的例子。"
           },
           {
             "label": "对主干的风险",
-            "word_hint": "250-500字",
+            "word_hint": "按证据需要；无最低字数",
             "content": "",
             "agent_instruction": "按严重度列出有文件或符号证据的发现，评估爆炸半径、兼容性、权限、默认副作用、失败与回滚、可观测性和缺失覆盖；策略或生命周期改动必须解释一条负向链路。"
           },
           {
             "label": "我的整体评价",
-            "word_hint": "150-300字",
+            "word_hint": "按证据需要；无最低字数",
             "content": "",
             "agent_instruction": "权衡价值与复杂度，列出实际检查或运行的验证，注明审阅的 head SHA，并给出精确结论；若阻塞，说明最小修复和复审所需证据。"
           }

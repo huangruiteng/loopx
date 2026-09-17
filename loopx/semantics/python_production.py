@@ -36,6 +36,48 @@ def _import_module(path: str, node: ast.ImportFrom) -> str:
     return '.'.join(parts[:len(parts) - node.level + 1] + ([node.module] if node.module else []))
 
 
+_TREES: dict[tuple[str, int], ast.Module] = {}
+
+
+def _parsed(source: SourceFile) -> ast.Module:
+    key = (source.path, hash(source.text))
+    tree = _TREES.get(key)
+    if tree is None:
+        tree = _TREES[key] = ast.parse(source.text, filename=source.path)
+    return tree
+
+
+def _tracked_module(module: str, modules: Mapping[str, SourceFile]) -> SourceFile | None:
+    base = module.replace('.', '/')
+    return modules.get(f'{base}.py') or modules.get(f'{base}/__init__.py')
+
+
+def _reexported(source: SourceFile, symbol: str, imports: Mapping[tuple[str, str], _Binding]) -> _Binding | None:
+    """One hop only: ``source`` imports ``symbol`` unrenamed from its owner and never rebinds it.
+
+    ``import X as X`` counts as unrenamed. A renamed import, a second hop through
+    another module, a local class or assignment of the same name, or a later
+    ``import`` of that name leaves the symbol unbound, so the consumer stays unknown.
+    """
+    value = None
+    for node in _parsed(source).body:
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if (alias.asname or alias.name) == symbol:
+                    unrenamed = alias.asname in (None, alias.name)
+                    value = imports.get((_import_module(source.path, node), symbol)) if unrenamed else None
+        elif isinstance(node, ast.Import):
+            if any((alias.asname or alias.name.split('.')[0]) == symbol for alias in node.names):
+                value = None
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(t, ast.Name) and t.id == symbol for t in targets):
+                value = None
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == symbol:
+            value = None
+    return value
+
+
 def enum_members(source: SourceFile, symbol: str, *, strict: bool = False) -> dict[str, str]:
     """Extract literal members, with fail-closed generation as an explicit mode.
 
@@ -138,16 +180,25 @@ def python_literal_uses(source: SourceFile, field: str) -> set[str]:
 _Binding = TypeVar('_Binding')
 
 
-def _qualified_bindings(source: SourceFile, tree: ast.Module, owners: Mapping[str, _Binding]) -> dict[str, _Binding]:
+def _qualified_bindings(source: SourceFile, tree: ast.Module, owners: Mapping[str, _Binding],
+                        modules: Mapping[str, SourceFile] | None = None) -> dict[str, _Binding]:
     bindings = {owner.split('::')[1]: value for owner, value in owners.items()
                 if owner.split('::')[0] == source.path}
     imports = {(_module(owner.split('::')[0]), owner.split('::')[1]): value
                for owner, value in owners.items()}
+    symbols = {symbol for _, symbol in imports}
     for node in tree.body:
         if isinstance(node, ast.ImportFrom):
+            module = _import_module(source.path, node)
             for alias in node.names:
                 name = alias.asname or alias.name
-                value = imports.get((_import_module(source.path, node), alias.name))
+                value = imports.get((module, alias.name))
+                if value is None and modules is not None and alias.name in symbols:
+                    # One unrenamed re-export hop through a tracked module binds the
+                    # same owner; only names that are owner symbols are followed.
+                    target = _tracked_module(module, modules)
+                    if target is not None and target.path != source.path:
+                        value = _reexported(target, alias.name, imports)
                 if value is not None:
                     bindings[name] = value
                 else:
@@ -172,20 +223,23 @@ def scan_python_production(
     return_functions: frozenset[str] = frozenset(),
     return_paths: Mapping[str, tuple[str | int, ...]] | None = None,
     call_arguments: Mapping[str, Mapping[str, int | None]] | None = None,
+    modules: Mapping[str, SourceFile] | None = None,
 ) -> list[Production]:
     """Observe writes and owner-member results with bounded local resolution.
 
     ``enums`` maps module::Class to literal member values from tracked owners.
-    Only imported owner classes (including aliases) or the local owner qualify.
+    Only imported owner classes (including aliases) or the local owner qualify;
+    ``modules`` additionally lets one unrenamed re-export hop through a tracked
+    module bind the owner. Longer chains and renamed re-exports stay unknown.
     Local aliases and complete branch selections resolve only at output sites.
     General reassignment and parameter shadowing become unknown. Explicit call
     metadata names only reviewed builder arguments; arbitrary calls are consumers.
     Nested function returns belong to that function, not a registered enclosure.
     """
     tree = ast.parse(source.text, filename=source.path)
-    bindings = _qualified_bindings(source, tree, enums)
+    bindings = _qualified_bindings(source, tree, enums, modules)
     call_arguments = call_arguments or {}
-    calls = _qualified_bindings(source, tree, call_arguments)
+    calls = _qualified_bindings(source, tree, call_arguments, modules)
     return_paths = return_paths or {}
 
     result: list[Production] = []

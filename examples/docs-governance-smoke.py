@@ -513,11 +513,11 @@ def assert_technical_direction_governance_is_current() -> None:
         assert required in rfc_index, required
     assert "## Status matrix" not in rfc_index
 
+    # The task board routes to canonical direction/roadmap owners instead of
+    # duplicating their mutable maturity table.
     for required in (
-        "Long-Horizon Benchmarks and Evidence",
-        "Operator Surface and IM Integration",
-        "Shared Goal Authority and Cross-host Coordination",
-        "Architecture and Research Incubator",
+        "../project/technical-directions.md",
+        "../architecture/rfcs/loopx-overall-roadmap-v0.md",
     ):
         assert required in tasks, required
 

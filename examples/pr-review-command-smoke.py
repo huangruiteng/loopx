@@ -411,13 +411,7 @@ def main() -> int:
         assert section["word_hint"], section
         assert section["agent_instruction"], section
         assert "quota.py" not in section["agent_instruction"], section
-    assert [section["word_hint"] for section in template["sections"]] == [
-        "200-350字",
-        "300-500字",
-        "450-800字",
-        "250-500字",
-        "150-300字",
-    ], template
+    assert all("无最低字数" in section["word_hint"] for section in template["sections"])
     concrete_change = next(
         section for section in template["sections"] if section["label"] == "具体改动"
     )
@@ -962,6 +956,7 @@ def main() -> int:
     assert execution["completion_gate"]["metadata_only_verdict_allowed"] is False
     assert execution["completion_gate"]["stale_head_verdict_allowed"] is False
     assert execution["completion_gate"]["blocking_evidence_verdicts"] == {
+        "problem_context": ["off_goal", "fragmented", "not_yet_proven"],
         "repository_reuse": ["unjustified_duplication", "not_yet_proven"],
         "observable_semantics": ["unintended_drift", "not_yet_proven"],
         "change_proportionality": ["disproportionate", "not_yet_proven"],
@@ -1100,11 +1095,11 @@ def main() -> int:
     assert "template below is intentionally blank" in markdown, markdown
     assert "- 推荐阅读顺序:" in markdown, markdown
     assert "- 五块模板（留空给 agentloop 填写）:" in markdown, markdown
-    assert "动机（200-350字）" in markdown, markdown
-    assert "改动思路（300-500字）" in markdown, markdown
-    assert "具体改动（450-800字）" in markdown, markdown
-    assert "对主干的风险（250-500字）" in markdown, markdown
-    assert "我的整体评价（150-300字）" in markdown, markdown
+    assert "动机（按证据需要；无最低字数）" in markdown, markdown
+    assert "改动思路（按证据需要；无最低字数）" in markdown, markdown
+    assert "具体改动（按证据需要；无最低字数）" in markdown, markdown
+    assert "对主干的风险（按证据需要；无最低字数）" in markdown, markdown
+    assert "我的整体评价（按证据需要；无最低字数）" in markdown, markdown
     assert "main regression risk:" not in markdown, markdown
     assert "## Combined Review Sequence" in markdown, markdown
     assert "PR #771" in markdown, markdown

@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 # Increment when review requirements change without changing the packet shape.
-REVIEW_POLICY_REVISION = 5
+REVIEW_POLICY_REVISION = 6
 
 REQUIRED_FINAL_SECTIONS = [
     "动机",
@@ -83,34 +83,34 @@ def build_review_template(item: Mapping[str, Any]) -> dict[str, Any]:
         "sections": [
             _section(
                 "动机",
-                "200-350字",
-                "Use evidence `problem_context`: old behavior, affected caller, concrete cost, before/after outcome, and why the nearest smaller fix is or is not enough.",
+                "按证据需要；无最低字数",
+                "Use `problem_context`: verified goal basis, old behavior, before/after outcome and delivery verdict. Distinguish completing the scoped goal from a justified increment; explain why this is a complete useful slice, not just why the code works.",
             ),
             _section(
                 "改动思路",
-                "300-500字",
+                "按证据需要；无最低字数",
                 "Use `architecture_flow`, `repository_reuse`, and `walkthroughs`: entry point, authoritative state, decision boundary, positive path, existing implementation comparison, and ownership trade-off. For introduced or newly enforced state, explain derivation versus irreducible intent and the real producer/trigger, not just its serializer.",
             ),
             _section(
                 "具体改动",
-                "450-800字",
+                "按证据需要；无最低字数",
                 "Use `changed_line_classification` and `symbol_map`. Code changes require `### 关键代码讲解` for 2-5 behavior-bearing exact-head symbols; docs-only changes use `### 关键内容讲解`.",
             ),
             _section(
                 "对主干的风险",
-                "250-500字",
+                "按证据需要；无最低字数",
                 "Use `failure_analysis`, `walkthroughs.negative`, and `validation_matrix`; trace each finding from triggering state to observed outcome and minimum repair. When `scope_fit` applies, name the active production caller or explicitly record a coverage-only boundary. When `change_proportionality` applies, compare verified problem impact with mechanism and maintenance cost; a resolved implementation blocker does not justify approval when the full exact-head scope remains disproportionate. For opt-in changes, prove disabled-path parity through `default_off_isolation`; do not infer isolation from an absent feature object. Use `authority_semantics` to verify that public protocol names do not claim a broader actor lifecycle or authority model than the implementation provides. For a `semantic_alignment` contract impact or finding, include a concise `### 语义与 CI 对齐` subsection; ordinary `not_applicable` triage needs no separate subsection. For a blocker, name the current obligation, triggering change, observed evidence, minimum repair and rerun command. Surface typed-state-rule, domain-neutrality, behavior-change-disclosure, and guidance-vs-obligation findings when their evidence applies.",
             ),
             _section(
                 "我的整体评价",
-                "150-300字",
+                "按证据需要；无最低字数",
                 "Use `observable_semantics` to report baseline/head comparisons and remaining compatibility gaps; equal decision codes are insufficient. Use `code_volume`, `change_proportionality`, `default_off_isolation`, `authority_semantics`, validation results, residual risk, and exact-head freshness to state the verdict and the evidence needed for re-review. For semantic or constraint-related changes, state whether the PR reuses an existing vocabulary, extends one, creates one, stays local, or remains unknown, and link any required registry/RFC/CI repair.",
             ),
         ],
         "review_order": _review_order(key_files),
         "output_hint": (
             "Render the verified structured result using the five sections. "
-            "The capability-owned review_execution_contract is the evidence and completeness authority."
+            "The capability-owned review_execution_contract is the evidence and completeness authority. Scale prose to evidence and complexity; simple changes can use one or two sentences per section. Do not repeat evidence or pad to a word count."
         ),
     }
 
@@ -126,11 +126,21 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
         "evidence_status_values": ["verified", "unverified", "not_applicable"],
         "decision_procedure": {
             "order": [
+                "establish_goal",
                 "challenge_design",
                 "falsify_claims",
                 "inspect_implementation",
                 "reconcile_verdict",
             ],
+            "establish_goal": (
+                "Resolve the current requested outcome from the user request, issue/task, "
+                "accepted contract or demonstrated regression. Check changed direction "
+                "and existing related work before accepting the author's narrowed frame. "
+                "Use problem_context for one delivery judgment, referencing existing "
+                "walkthrough/validation evidence rather than another report. A roadmap "
+                "id is optional; never impose this repository's roadmap on another repo "
+                "or copy private goals into public review."
+            ),
             "challenge_design": (
                 "Before explaining how the patch works, make the strongest evidence-backed "
                 "case for not shipping it. Compare doing nothing, a smaller fix in the existing "
@@ -174,7 +184,15 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
             {
                 "evidence_id": "problem_context",
                 "required_when": "always",
+                "verdict_values": [
+                    "goal_achieved",
+                    "justified_increment",
+                    "off_goal",
+                    "fragmented",
+                    "not_yet_proven",
+                ],
                 "fields": [
+                    "goal_basis",
                     "author_claim",
                     "old_behavior",
                     "affected_caller_or_operator",
@@ -184,6 +202,32 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
                     "observable_outcome",
                     "non_goals",
                 ],
+                "fields_by_verdict": {
+                    "justified_increment": [
+                        "remaining_gap", "next_step", "boundary_reason",
+                    ],
+                    "off_goal": ["reason", "minimum_repair"],
+                    "fragmented": ["reason", "minimum_repair"],
+                    "not_yet_proven": ["reason", "minimum_repair"],
+                },
+                "rule": (
+                    "Judge the delta against the verified requested outcome, not file/PR/test "
+                    "counts or the author's completion label. goal_achieved closes the named "
+                    "task's acceptance, not an unimplemented parent roadmap. justified_increment "
+                    "requires a real useful delta, the remaining gap, an existing or concrete "
+                    "scoped successor with its owner/dependency, and why this boundary is "
+                    "independently reviewable, testable and reversible. Reuse observable_outcome, "
+                    "walkthroughs and validation_matrix; do not duplicate their evidence. "
+                    "Valid prerequisites, characterization, research findings, documentation "
+                    "and maintenance can qualify without shipping an entire feature or "
+                    "inventing follow-up work for a completed task. Fragmentation means an "
+                    "avoidable stop before the accepted slice's useful outcome, not a small "
+                    "diff. Where applicable, follow dependencies, peer handoff, artifact "
+                    "acceptance and result return through the actual user entrypoints. "
+                    "Missing evidence is not_yet_proven; name the minimum repair. "
+                    "These are reviewer judgments, not automatic semantic detection, Goal "
+                    "settlement, a mandatory roadmap schema or a minimum batch-size policy."
+                ),
             },
             {
                 "evidence_id": "architecture_flow",
@@ -892,6 +936,7 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
             "exact_head_recheck_required": True,
             "stale_head_verdict_allowed": False,
             "blocking_evidence_verdicts": {
+                "problem_context": ["off_goal", "fragmented", "not_yet_proven"],
                 "repository_reuse": ["unjustified_duplication", "not_yet_proven"],
                 "observable_semantics": ["unintended_drift", "not_yet_proven"],
                 "change_proportionality": [
@@ -912,6 +957,11 @@ def build_review_execution_contract(*, wait_for_ci: bool = True) -> dict[str, An
         },
         "verdict_policy": {
             "open_pr_blocking_finding": "REQUEST_CHANGES",
+            "open_pr_unjustified_delivery": (
+                "REQUEST_CHANGES when problem_context is off_goal, fragmented or "
+                "not_yet_proven. Green checks cannot replace an evidenced goal delta; "
+                "a justified bounded increment need not complete its parent goal."
+            ),
             "open_pr_unresolved_semantics": (
                 "REQUEST_CHANGES when observable_semantics is unintended_drift or "
                 "not_yet_proven; equal decision codes, green suites, stricter checks "

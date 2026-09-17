@@ -107,6 +107,19 @@ def _todos(project: Path) -> str:
     )
 
 
+def _rewrite_objective(project: Path, objective: str) -> None:
+    """Change only the intent the plan was reviewed against, not the registry."""
+
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    text = state_path.read_text(encoding="utf-8")
+    head, _, tail = text.partition("\n---")
+    updated = "\n".join(
+        f'objective: "{objective}"' if line.startswith("objective:") else line
+        for line in head.splitlines()
+    )
+    state_path.write_text(f"{updated}\n---{tail}", encoding="utf-8")
+
+
 def test_a_confirmed_plan_creates_each_ready_lane_first_todo(tmp_path: Path) -> None:
     project, _registry_path, service = _fixture(tmp_path)
 
@@ -131,16 +144,25 @@ def test_a_confirmed_plan_creates_each_ready_lane_first_todo(tmp_path: Path) -> 
     assert state.count("loopx:todo ") == 1
 
 
-def test_a_lane_with_an_unregistered_agent_becomes_a_gap_and_creates_nothing(
+def test_confirming_a_plan_that_staffs_no_lane_is_not_reported_as_success(
     tmp_path: Path,
 ) -> None:
+    """A confirmation that can only create nothing reports exactly that.
+
+    The plan stays visible with its typed gap -- the owner sees what was asked
+    for and what is missing -- and confirming it does not produce a receipt that
+    reads as an applied plan with a verified projection.
+    """
+
     project, _registry_path, service = _fixture(tmp_path)
 
     preview = _preview(service, _plan(agent_id="agent-not-registered"))
     applied = service.apply(preview["proposal_id"])
-    # The preview is admitted with its gap, and confirming it creates nothing:
-    # the owner sees what was asked for and what is missing.
-    assert applied["proposal"]["receipt"]["resource_ids"]["lane_todo_ids"] == []
+    proposal = applied["proposal"]
+    assert proposal["status"] == "failed"
+    assert proposal["failure"]["error_code"] == "team_plan_no_staffable_lane"
+    assert proposal["failure"]["retry_safe"] is True
+    assert "receipt" not in proposal or proposal["receipt"] is None
     assert "loopx:todo " not in _todos(project)
 
 
@@ -164,6 +186,48 @@ def test_a_changed_registry_makes_the_confirmed_plan_stale(tmp_path: Path) -> No
     # it, so a registration change asks the owner to confirm the current plan.
     assert applied["proposal"]["status"] == "stale"
     assert "loopx:todo " not in _todos(project)
+
+
+def test_a_changed_objective_makes_the_confirmed_plan_stale(tmp_path: Path) -> None:
+    """The intent a plan advances is part of what the owner confirmed.
+
+    Registry bytes do not move when the owner rewrites the Goal's objective, so
+    a preview that bound only the registry stayed applicable and turned a plan
+    reviewed against one objective into work under another. The intent basis the
+    lanes would be created against is a commit precondition, not a receipt
+    detail written afterwards.
+    """
+
+    project, registry_path, service = _fixture(tmp_path)
+
+    preview = _preview(service)
+    # Same registry bytes, different intent.
+    _rewrite_objective(project, "Stand up a different team entirely.")
+
+    applied = service.apply(preview["proposal_id"])
+
+    assert applied["proposal"]["status"] == "stale"
+    assert applied["proposal"]["stale"]["expected_state_fingerprint"] == (
+        preview["expected_state_fingerprint"]
+    )
+    assert _todos(project).count("loopx:todo ") == 0
+
+
+def test_an_unchanged_objective_still_confirms_and_records_its_basis(
+    tmp_path: Path,
+) -> None:
+    """Binding the intent must not make an untouched plan unconfirmable."""
+
+    project, _registry_path, service = _fixture(tmp_path)
+
+    preview = _preview(service)
+    applied = service.apply(preview["proposal_id"])
+
+    proposal = applied["proposal"]
+    assert proposal["status"] == "applied"
+    # The receipt names the same canonical basis the preview bound.
+    assert proposal["receipt"]["intent_basis"].startswith("sha256:")
+    assert _todos(project).count("loopx:todo ") == 1
 
 
 def _validated(preview_plan: dict) -> dict:
@@ -227,10 +291,18 @@ def test_an_admitted_preview_becomes_the_card_the_surfaces_list(
 
     applied = service.apply(proposal["proposal_id"])
     receipt = applied["proposal"]["receipt"]
-    assert receipt["outcome"] == "team_plan_applied"
+    # One lane became work and one stayed a gap, so this is a partial
+    # application: the readback names the gap rather than reporting a full
+    # success for a plan the host could only partly staff.
+    assert receipt["outcome"] == "team_plan_partially_applied"
+    assert receipt["gap_count"] == 1
     # Confirming the card creates the lane that can run and not the one whose
     # kind this host does not ship.
     assert len(receipt["resource_ids"]["lane_todo_ids"]) == 1
+    assert receipt["lanes"][0]["lane_id"] == "lane-alpha"
+    assert receipt["lanes"][0]["acceptance"] == (
+        "The lane's first Todo is delivered with evidence"
+    )
     state = _todos(project)
     assert "Advance the intake contract" in state
     assert "Repair the public smoke" not in state

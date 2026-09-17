@@ -1,5 +1,45 @@
 # Agent Instructions
 
+## Goal-Oriented Development
+
+Before selecting non-trivial work, resolve the current requested outcome from
+user direction, the linked issue/task, accepted contract or demonstrated bug.
+For cross-cutting LoopX work, consult the [overall roadmap](docs/architecture/rfcs/loopx-overall-roadmap-v0.md)
+and relevant domain acceptance; do not make every fix wait for every RFC or
+invent a roadmap id. Check latest `main`, related PRs and canonical Todos so an
+older task description cannot override corrected direction or duplicate work.
+
+Carry one compact delivery brief from task to PR: goal/source, current gap,
+observable result, owning boundary and decisive acceptance evidence. Reuse the
+existing task/PR fields; keep private Goal state out of public artifacts.
+Choose a complete, independently reviewable and reversible outcome slice.
+Small diffs, fields, receipts, test counts and merged PR counts do not establish
+progress. Characterization, prerequisites, research, docs and maintenance are
+valid when they remove an evidenced gap or enable a named real next step.
+
+Continue through the selected slice's implementation, integration, negative
+cases and readback while authorized work remains feasible. Do not stop after
+setup, a serializer, a mock or an isolated smoke when the useful outcome is
+still missing. Do not expand scope merely to make a PR larger. When a staged
+boundary is necessary, name the delivered delta, remaining gap, next owner/
+dependency and why the boundary improves verification or rollback. Reuse or
+update an existing successor; do not create ceremonial follow-up tasks for a
+completed request. Real authorization, cost and operational stop gates remain.
+
+For multi-Agent changes, qualify the relationship the user needs: dependency
+artifacts, receiver adoption, claim/lease handling, independent acceptance and
+result return as applicable. Sending a message or registering workers does not
+prove collaboration. Missing frontend/Lark/CLI companion work makes a product
+journey partial even when a backend slice is ready to merge.
+
+Before delivery, reconcile the result with the original/current goal and
+update its task and RFC checkpoint when the boundary changes. Preserve passed,
+failed and untested distinctions. If user feedback exposes the same missing
+outcome, repair the owning rule, active task or projection through self-repair;
+do not merely append stronger instructions. PR review must execute the current
+capability-owned `problem_context` delivery judgment; author declarations and
+this prose do not certify it or settle a Goal.
+
 ## Commit And PR Hygiene
 
 ### Worktree And PR Gate
@@ -57,15 +97,36 @@ adapters, smoke tests, public docs, or commit/push workflows, use the
    - focused validation or cleanup.
 6. Push a branch and open a PR for reviewable batches.
 
+Control-plane, runtime and product surfaces are never self-merged. A change
+that alters the behavior of `loopx/**`, `apps/**` or `packages/**`, a
+permission or authority boundary, a persisted state or receipt contract, a
+quota/scheduler/todo rule, or a CLI/API contract is proposed, reviewed on its
+exact head, and then left for the maintainer to merge -- including when the
+author has already validated it, its review is published, and its CI is green.
+Admin bypass does not convert one of those changes into a self-mergeable one,
+and neither does a small diff: a validated fix is still a control-plane change
+when it changes control-plane behavior. When the author cannot tell whether a
+change is in that set, it is not self-merged.
+
 For small, low-risk PRs, maintainers may self-merge after validation when all
 of the following are true:
 
-Here, "自合并" means: 自己 review/refine, then admin-bypass merge after the
-required validation and authorization.
+Here, "自合并" means: 自己 review/refine, publish that review on the exact head,
+then admin-bypass merge after the required validation and authorization. A
+self-merge whose head carries no published review is a process gap, not a
+smaller form of review: repair it by publishing the exact-head review for the
+merged commit and correcting the rule that let it through.
 
-- the PR only touches public docs, contributor metadata, or narrow cleanup;
+- the PR only touches public docs, contributor metadata, tests, examples, or
+  narrow cleanup, and none of the surfaces named above;
 - the change is single-purpose and easy to review from the diff;
 - required checks or focused smokes have passed;
+- the exact head carries a published self-review, and
+  `loopx pr-review --check-merge-readiness NUMBER@HEAD_OID` returned ready for
+  that unchanged head. GitHub blocks formal self-approval, so on an
+  author-owned PR the record is a `COMMENTED` review on the exact head that
+  states the approval conclusion and an English verdict; a green CI run, a diff
+  read, or the merge itself is not that record;
 - private state, raw benchmark evidence, credentials, local paths, and
   generated logs are excluded;
 - there is no runtime behavior, benchmark adapter, permission, destructive git,

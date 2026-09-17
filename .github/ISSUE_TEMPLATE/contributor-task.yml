@@ -41,21 +41,24 @@ body:
   - type: textarea
     id: summary
     attributes:
-      label: Summary
-      description: What should change, and why is it useful?
+      label: Goal and acceptance gap
+      description: Name the current request or contract, affected user/caller and observable result. Link an existing goal/direction when relevant; a roadmap id is not required.
+      placeholder: |
+        Goal/source:
+        Current gap:
+        Accepted outcome (before → after):
     validations:
       required: true
   - type: textarea
     id: scope
     attributes:
       label: Proposed scope
-      description: List the smallest useful slice and any known non-goals.
+      description: Choose a complete useful slice. State ownership, dependencies, non-goals and any staged remainder; do not split only to minimize file or PR size.
       placeholder: |
-        In scope:
-        - ...
-
+        In scope / owner:
+        Existing related work / dependencies:
         Out of scope:
-        - ...
+        If staged: useful delta, remaining gap, next owner/task, and why this boundary:
     validations:
       required: true
   - type: input
@@ -79,10 +82,12 @@ body:
     id: validation
     attributes:
       label: Validation plan
-      description: What command or review will prove the task is done?
+      description: What independently observable result proves completion? Include the actual entrypoint/readback and relevant failure case; passing a test count is insufficient.
       placeholder: |
-        - python3 -m py_compile loopx/*.py
-        - loopx check --scan-root .
+        Accepted result and independent oracle:
+        Actual entrypoint / safe command:
+        Negative or recovery case:
+        Frontend / Lark / CLI impact or verified N/A:
     validations:
       required: true
   - type: checkboxes

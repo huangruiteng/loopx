@@ -101,12 +101,53 @@ CASES = [
         "APPROVE",
         "none",
     ),
+    (
+        {
+            "request": "Review a team-work delivery slice against its accepted outcome.",
+            "problem": "The owner needs worker B to consume worker A's accepted artifact after restart.",
+            "proposal": "Add a handoff status field, serializer and test. The producer and consumer are left to later unspecified PRs; title says peer handoff delivered.",
+            "evidence": "Serialization tests pass. No runtime path consumes the field; B still cannot see A's result. The same owner could complete the existing bounded exchange path in this slice without new authority.",
+        },
+        "REQUEST_CHANGES",
+        "architecture",
+    ),
+    (
+        {
+            "request": "Review a prerequisite for durable peer handoff, not the whole team feature.",
+            "problem": "Receiver B loses A's accepted artifact reference on restart.",
+            "proposal": "Repair the existing persisted reference and independent readback. Automatic wake remains in existing scheduler task #43; the owning scheduler team consumes this contract next.",
+            "evidence": "Real A→store→B restart and stale-reference negative tests pass; ownership and default behavior are preserved. Separate wake integration has a different retry owner and rollback boundary. Remaining gap is explicitly disclosed; all applicable review evidence verified.",
+        },
+        "APPROVE",
+        "none",
+    ),
+    (
+        {
+            "request": "Review a maintenance change with no product-roadmap id.",
+            "problem": "A supported release's documented install command is broken.",
+            "proposal": "Correct the existing command and delete the stale alternative. No new capability or runtime behavior.",
+            "evidence": "The exact command succeeds from the released package in a clean environment. Documentation links and public-boundary checks pass. The requested repair is complete; no further task is needed.",
+        },
+        "APPROVE",
+        "none",
+    ),
+    (
+        {
+            "request": "Review a correct patch for the current user request.",
+            "problem": "The user changed priority to restoring lost result delivery, and withdrew the earlier dashboard redesign request.",
+            "proposal": "Deliver the old dashboard redesign with passing rendering tests and a polished completion report. No result-delivery path is changed.",
+            "evidence": "The current request and owner correction are available. The author cites only the superseded task. The redesign has no demonstrated prerequisite relationship to restoring delivery.",
+        },
+        "REQUEST_CHANGES",
+        "architecture",
+    ),
 ]
 
 
 def test_decision_procedure_is_in_the_real_packet_before_prose():
     response = build_agent_response_contract()
     assert response["review_execution_contract"]["decision_procedure"]["order"] == [
+        "establish_goal",
         "challenge_design",
         "falsify_claims",
         "inspect_implementation",

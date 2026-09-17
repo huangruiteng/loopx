@@ -363,6 +363,18 @@ def migrate_legacy_state(
             migrated["id"] = goal_id_map.get(old_goal_id, str(migrated.get("id") or old_goal_id))
             selected_pairs.append((source_goal, project_local_goal(migrated)))
 
+        source_by_target_id: dict[str, str] = {}
+        for source_goal, target_goal in selected_pairs:
+            source_id = str(source_goal["id"])
+            target_id = str(target_goal["id"])
+            prior_source_id = source_by_target_id.get(target_id)
+            if prior_source_id is not None:
+                raise ValueError(
+                    f"{prior_source_id} and {source_id} map to the same target "
+                    f"goal id: {target_id}"
+                )
+            source_by_target_id[target_id] = source_id
+
         existing_registry = read_json_object(target_registry_path) if target_registry_path.exists() else {}
         existing_goals = existing_registry.get("goals")
         if not isinstance(existing_goals, list):

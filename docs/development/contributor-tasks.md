@@ -17,7 +17,7 @@ into a mirror of maintainer scratch state.
 
 | Status | Meaning |
 | --- | --- |
-| Available | Ready for someone to comment on the linked issue or open a small PR. |
+| Available | Ready for a contributor to claim the linked outcome and deliver a cohesive PR. |
 | Claimed | Someone has said they are working on it, or a maintainer assigned it. |
 | Maintainer-owned | Active work is happening in maintainer/local automation; ask before touching. |
 | Needs design | Discussion is welcome, but implementation needs agreement first. |
@@ -34,7 +34,7 @@ preferred review contact is not an exclusive task claim or new merge authority.
 1. Prefer a linked GitHub issue. If there is no issue yet, open one with the
    contributor task template.
 2. Comment that you would like to work on the task. Maintainers will mark it
-   `claimed` or suggest a smaller slice.
+   `claimed` or agree a complete, independently verifiable slice.
 3. For docs-only typo fixes or obviously tiny cleanups, opening a direct PR is
    fine.
 4. If a claimed task has no update for 14 days, maintainers may release it back
@@ -44,21 +44,19 @@ preferred review contact is not an exclusive task claim or new merge authority.
 
 ## Current Technical Directions
 
-The canonical [Technical Directions map](../project/technical-directions.md)
-explains outcomes, maturity, ownership boundaries, and promotion gates. This
-board lists bounded work; it does not redefine those directions.
+The [overall roadmap](../architecture/rfcs/loopx-overall-roadmap-v0.md) and
+[tracking issue #4574](https://github.com/huangruiteng/loopx/issues/4574) own
+cross-domain priorities and G0–G5 acceptance. The [Technical Directions map](../project/technical-directions.md)
+owns contributor routing and current maturity; this board does not keep a second
+copy of those stages. Before claiming a row, reconcile its linked task with
+latest main, related PRs and the roadmap. Historical rows are not proof that a
+missing feature remains unimplemented or a proposed slice is still useful.
 
-| Direction | Current stage | Contributor entry | Boundary |
-| --- | --- | --- | --- |
-| Long-Horizon Benchmarks and Evidence | Active research | [#3243](https://github.com/huangruiteng/loopx/issues/3243) | Work on public-safe fixtures, treatment integrity, reducers, and docs; live cases and scoring remain maintainer-owned. |
-| Operator Surface and IM Integration | Incubating on `frontend-control-plane-im-prototype-rfc` | [#3244](https://github.com/huangruiteng/loopx/issues/3244) | State the target base branch; UI remains a projection and promotion to `main` is staged. |
-| Shared Goal Authority and Cross-host Coordination | Stage 2 slice shipped (aggregate head, file provider, `claim_work` executor); NoKV stays an unpromoted candidate | [#3245](https://github.com/huangruiteng/loopx/issues/3245) | Keep slices provider-neutral and file-backed; no second scheduler or write authority. |
-| Architecture and Research Incubator | Mixed by RFC | [#3246](https://github.com/huangruiteng/loopx/issues/3246) | Read the per-exploration stage; an RFC alone does not make implementation claimable. |
-
-Core control-plane reliability remains the shared shipped foundation. Effect
-Program hardening, verified transitions, recovery, observability,
-maintainability, and contributor experience continue through the focused rows
-below and the existing `control-plane` label.
+A claimable task names the current gap, independently useful outcome, existing
+owner/caller, dependencies and decisive validation. For a staged increment,
+record the remaining gap and next owner/task; do not make a field, fixture or
+PR count the completion target. Preserve existing authoritative Todo/issue
+identity rather than copying the whole plan here.
 
 ## Priority Queue
 
@@ -66,9 +64,9 @@ below and the existing `control-plane` label.
 | --- | --- | --- | --- | --- |
 | P0 | Core hardening | Exact-head review of remote execution and terminal writeback fencing: fenced journal recovery absorbed into TypeScript | #3074 | Done |
 | P0 | Core hardening | Wire caller-approved `validation_command` into the remaining self-report entry points | #3082 / #3142 #3291 #3343 | Done |
-| P1 | Benchmark evidence | Split one deterministic adapter-fidelity or treatment-integrity fixture | #3243 | Needs design |
-| P1 | Operator surface / IM | Split one projection or session-contract characterization unit from the incubation branch | #3244 | Needs design |
-| P1 | Shared coordination | Characterize the shipped file-backed `claim_work` executor with a provider-neutral parity fixture | #3700 / #3245 | Needs design |
+| P1 | Benchmark evidence | Qualify a reproducible adapter-fidelity or treatment-integrity gap with existing focused fixtures | #3243 | Needs design |
+| P0 | Operator surface / IM | Close the R1 confirmed-team commitment/readback gap, then qualify R2 real peer dependency handoff | #4574 / #4339 | Needs design |
+| P1 | Shared coordination | Qualify the selected local authority durability and crash/replay boundary against existing D2 acceptance | #4224 / #3245 | Needs design |
 | P1 | Core hardening | One budget-aware CLI output ergonomics slice | #2881 | Needs design |
 | P2 | Project docs | Release docs install, activation, and recovery guidance through v0.5.4 | GH-C04 | Landed via #3982 |
 | P2 | Maintainability | CLI ownership and hot-module extraction | GH-C06 | Available |
