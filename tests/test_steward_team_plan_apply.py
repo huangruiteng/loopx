@@ -139,6 +139,8 @@ def test_a_confirmed_plan_creates_each_ready_lane_first_todo(tmp_path: Path) -> 
 def test_a_gap_lane_creates_nothing_and_a_replay_adds_no_second_row(
     tmp_path: Path,
 ) -> None:
+    """A plan with one staffable lane applies it and leaves the gap a gap."""
+
     project, registry_path = _fixture(tmp_path)
     gap_lane = {
         "lane_id": "lane-beta",
@@ -372,3 +374,102 @@ def test_a_team_plan_receipt_must_not_invent_a_monitor_key() -> None:
         validate_governed_transition_receipts(
             [{**team_plan, "monitor_key": "monitor-key-1"}]
         )
+
+
+def test_a_confirmed_lane_keeps_the_priority_the_owner_confirmed(
+    tmp_path: Path,
+) -> None:
+    """The priority in the confirmed plan is the priority of the work it starts.
+
+    The plan the owner reviewed declares P0 and the canonical Todo readers read
+    a priority from the row's own label, so a materialized lane that arrives
+    without one is a different commitment from the one that was confirmed.
+    """
+
+    from loopx.todos import list_goal_todos
+
+    project, registry_path = _fixture(tmp_path)
+    proposal = _proposal()
+    proposal["lanes"][0]["first_todo"]["priority"] = "P0"
+
+    _settle(registry_path, proposal)
+
+    items = list_goal_todos(registry_path=registry_path, goal_id=GOAL_ID)["todos"]
+    assert len(items) == 1
+    assert items[0]["text"].startswith("[P0] ")
+    assert items[0]["text"] == "[P0] Advance the intake contract"
+    assert "[P0] Advance the intake contract" in _todos(project)
+
+
+def test_a_lane_that_already_declares_a_priority_is_not_relabelled(
+    tmp_path: Path,
+) -> None:
+    """The plan's own label wins, and re-reading it cannot stack a second one."""
+
+    from loopx.todos import list_goal_todos
+
+    _project, registry_path = _fixture(tmp_path)
+    proposal = _proposal()
+    proposal["lanes"][0]["first_todo"]["text"] = "[P2] Advance the intake contract"
+    proposal["lanes"][0]["first_todo"]["priority"] = "P0"
+
+    _settle(registry_path, proposal)
+
+    items = list_goal_todos(registry_path=registry_path, goal_id=GOAL_ID)["todos"]
+    assert items[0]["text"] == "[P2] Advance the intake contract"
+
+
+def test_the_receipt_retains_each_lanes_acceptance_beside_its_todo(
+    tmp_path: Path,
+) -> None:
+    """What a lane was meant to end on survives the answer that offered it."""
+
+    _project, registry_path = _fixture(tmp_path)
+    proposal = _proposal()
+    proposal["lanes"][0]["acceptance"] = "The intake contract is merged"
+
+    receipts = _settle(registry_path, proposal)
+
+    settlements = receipts[0]["lane_settlements"]
+    assert len(settlements) == 1
+    assert settlements[0]["lane_id"] == "lane-alpha"
+    assert settlements[0]["agent_id"] == AGENT_ID
+    assert settlements[0]["acceptance"] == "The intake contract is merged"
+    assert settlements[0]["priority"] == "P1"
+    assert settlements[0]["disposition"] == "created"
+    assert settlements[0]["todo_id"] == receipts[0]["todo_id"]
+    assert validate_governed_transition_receipts(receipts) == receipts
+
+
+def test_a_plan_that_can_staff_no_lane_reports_that_instead_of_reuse(
+    tmp_path: Path,
+) -> None:
+    """A settlement that staffed nothing is not a reuse of existing work.
+
+    A lane Todo only exists here because a lane was staffed, so "reused" for a
+    plan whose every lane is a gap names work that the readback cannot find.
+    """
+
+    project, registry_path = _fixture(tmp_path)
+    plan = _proposal()
+    plan["lanes"] = [
+        {
+            "lane_id": "lane-beta",
+            "agent_id": "agent-not-registered",
+            "acceptance": "Never reached",
+            "first_todo": {
+                "text": "Work that cannot be staffed",
+                "priority": "P2",
+                "task_class": "advancement_task",
+                "action_kind": "implement",
+            },
+        }
+    ]
+
+    receipts = _settle(registry_path, plan)
+
+    assert receipts[0]["action"] == "unstaffed"
+    assert receipts[0]["todo_id"] == ""
+    assert "lane_todo_ids" not in receipts[0]
+    assert "lane_settlements" not in receipts[0]
+    assert "loopx:todo " not in _todos(project)

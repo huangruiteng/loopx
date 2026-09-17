@@ -260,6 +260,53 @@ class ChatActionService(
             raise ValueError("the active LoopX registry is unavailable") from exc
         return hashlib.sha256(content).hexdigest()
 
+    def _team_plan_state_fingerprint(
+        self, goal_id: str, plan: Mapping[str, Any]
+    ) -> str:
+        """Bind every fact a confirmed team plan was reviewed against.
+
+        Registry bytes are not enough. A plan is reviewed against the Goal's own
+        intent -- the objective its work advances -- and that intent lives in the
+        active-state document and in the canonical source basis the lanes would
+        be created against, neither of which the registry bytes cover. Changing
+        the objective therefore used to leave the confirmed plan applicable,
+        because nothing the preview bound had moved.
+
+        An unreadable fact is bound as its own explicit absence rather than
+        dropped from the digest, so the precondition fails closed in both
+        directions: a Goal whose intent becomes readable after the preview asks
+        the owner to confirm again instead of silently dropping the check.
+        """
+
+        from .control_plane.work_items.governed_transition_proposal import (
+            steward_team_plan_intent_basis,
+        )
+
+        goal = self._goal(goal_id)
+        project = Path(str(goal.get("repo") or "")).expanduser()
+        state_file = Path(str(goal.get("state_file") or ""))
+        if not state_file.is_absolute():
+            state_file = project / state_file
+        try:
+            state_digest: str | None = hashlib.sha256(
+                state_file.read_bytes()
+            ).hexdigest()
+        except OSError:
+            state_digest = None
+        return _digest(
+            {
+                "registry": self._registry_fingerprint(),
+                "goal_id": goal_id,
+                "active_state": state_digest,
+                "intent_basis": steward_team_plan_intent_basis(
+                    goal_id=goal_id,
+                    goal=goal,
+                    registry_path=self.registry_path,
+                    plan=plan,
+                ),
+            }
+        )
+
     def _agent_eligibility(
         self,
         agent_id: str,
@@ -977,7 +1024,15 @@ class ChatActionService(
             settle_governed_transition_proposals,
         )
 
-        current_fingerprint = self._registry_fingerprint()
+        goal_id = str(parameters["goal_id"])
+        plan = parameters.get("plan")
+        if not isinstance(plan, Mapping):
+            raise ValueError("team plan proposal is malformed")
+        # The preview bound this Goal's registration facts, its active-state
+        # intent and the canonical basis its lanes would advance; re-read them
+        # here so a plan confirmed against one objective cannot become work
+        # under another, and so a registry change still asks for confirmation.
+        current_fingerprint = self._team_plan_state_fingerprint(goal_id, plan)
         if current_fingerprint != proposal.get("expected_state_fingerprint"):
             stale = self.store.apply(
                 proposal_id,
@@ -985,10 +1040,6 @@ class ChatActionService(
                 receipt={},
             )
             return {"proposal": stale, "turn": None}
-        goal_id = str(parameters["goal_id"])
-        plan = parameters.get("plan")
-        if not isinstance(plan, Mapping):
-            raise ValueError("team plan proposal is malformed")
         # The governed transition owner re-validates the plan with the host's own
         # facts and owns the settlement phase, so this action never becomes a
         # second writer of lanes.
@@ -1005,6 +1056,36 @@ class ChatActionService(
         settlement = settlements[0]
         lane_todo_ids = [str(item) for item in (settlement.get("lane_todo_ids") or [])]
         intent_basis = str(settlement.get("intent_basis") or "")
+        gap_count = int(settlement.get("gap_count") or 0)
+        if not lane_todo_ids:
+            # Every lane stayed a gap, so this confirmation created nothing and
+            # reused nothing. The old path wrote a receipt that reported
+            # "lanes already present" with a verified projection and an empty
+            # Todo id, which reads as success where the readback finds no work.
+            # A confirmation that can only create nothing is recorded as the
+            # typed failure it is, and the plan's lanes and reasons stay in the
+            # card the owner confirmed.
+            return {
+                "proposal": self.store.mark_failed(
+                    proposal_id,
+                    error_code="team_plan_no_staffable_lane",
+                    message=(
+                        f"none of the plan's {gap_count} lane(s) can be staffed by "
+                        "this host, so confirming it created no work"
+                    ),
+                ),
+                "turn": None,
+            }
+        # The outcome is read from what the settlement actually produced, not
+        # from "the action was not a creation": a plan that created lanes beside
+        # a gap is a partial application, and reporting it as a full success
+        # told the owner the commitment was kept when part of it was not.
+        if str(settlement.get("action") or "") == "reused":
+            outcome = "team_plan_lanes_already_present"
+        elif gap_count:
+            outcome = "team_plan_partially_applied"
+        else:
+            outcome = "team_plan_applied"
         receipt = {
             "receipt_id": _digest(
                 {
@@ -1013,11 +1094,7 @@ class ChatActionService(
                     "lane_todo_ids": lane_todo_ids,
                 }
             )[:32],
-            "outcome": (
-                "team_plan_applied"
-                if settlement.get("action") == "created"
-                else "team_plan_lanes_already_present"
-            ),
+            "outcome": outcome,
             "projection_verified": True,
             "resource_ids": {
                 "goal_id": goal_id,
@@ -1025,6 +1102,14 @@ class ChatActionService(
                 "lane_todo_ids": lane_todo_ids,
             },
         }
+        lane_settlements = settlement.get("lane_settlements")
+        if lane_settlements:
+            # Which lane each created Todo is, who runs it, the priority it
+            # carries and the acceptance it was confirmed to end on, so the
+            # owner's readback still names the commitment and not just the work.
+            receipt["lanes"] = [dict(item) for item in lane_settlements]
+        if gap_count:
+            receipt["gap_count"] = gap_count
         if intent_basis:
             # The canonical revision these lanes were created against, so the
             # owner's readback can name what the work advances.
@@ -1086,9 +1171,13 @@ class ChatActionService(
             evidence = ["The recoverable Goal and Agent Chat Session is available."]
             permission = "scoped_correction"
         elif action_kind == "team.plan":
-            # A plan staffs registered Agents, so the registration facts it was
-            # validated against are the state that can make this preview stale.
-            fingerprint = self._registry_fingerprint()
+            # A plan is reviewed against this Goal's registration facts *and*
+            # the intent its lanes would advance, so both are bound here and
+            # re-read at apply. Binding only the registry let an owner objective
+            # change leave a confirmed plan applicable.
+            fingerprint = self._team_plan_state_fingerprint(
+                str(normalized["goal_id"]), normalized["plan"]
+            )
             evidence = [
                 "The plan was validated against this Goal's registered Agents and the host's advancement action kinds.",
                 "Applying it creates the first bounded Todo of each ready lane, through the canonical Todo owner.",

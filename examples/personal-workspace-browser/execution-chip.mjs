@@ -94,6 +94,64 @@ async function chipText(page) {
   return (await page.locator(".personal-execution-chip").innerText()).replace(/\s+/g, " ").trim();
 }
 
+const pickerSelector = "div.personal-agent-select button.personal-select-trigger";
+
+async function readPickerLabel(page) {
+  return (await page.locator(pickerSelector).innerText()).replace(/\s+/g, " ").trim();
+}
+
+// What the page resolved, phrased so a failed CI run is diagnosable without a
+// local reproduction: the declared endpoint, the adapters the page actually
+// received and the label it rendered are the three facts that decide the label.
+async function pickerResolution(page) {
+  const capabilities = await page.evaluate(async () => {
+    try {
+      const response = await fetch("/api/chat/capabilities");
+      const body = await response.json();
+      return {
+        status: response.status,
+        declaredEndpoint: body.manager?.channel_binding?.executor_endpoint ?? null,
+        adapters: (body.adapters ?? []).map(
+          (adapter) => `${adapter.agent_id}:${adapter.available ? "available" : "unavailable"}`,
+        ),
+      };
+    } catch (error) {
+      return { status: "unavailable", declaredEndpoint: null, adapters: [], error: String(error) };
+    }
+  });
+  return [
+    `label=${await readPickerLabel(page)}`,
+    `declared=${capabilities.declaredEndpoint ?? "<none>"}`,
+    `adapters=[${capabilities.adapters.join(", ")}]`,
+    `capabilities=${capabilities.status}${capabilities.error ? ` (${capabilities.error})` : ""}`,
+  ].join(" ");
+}
+
+// The picker resolves from the same capabilities response that carries the
+// channel binding, and the execution chip only renders once that binding
+// lands. A single read therefore asserts on a state the page never promised was
+// settled, and it can still hold the pre-fetch Codex fallback. Wait for the
+// declared value instead, and name what the page really resolved if the wait
+// runs out.
+async function waitForPickerLabel(page, settled, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  let label = await readPickerLabel(page);
+  while (!settled(label) && Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    label = await readPickerLabel(page);
+  }
+  if (settled(label)) {
+    return label;
+  }
+  const resolution = await pickerResolution(page);
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: false,
+    path: resolve(outputDir, "execution-chip-picker-unresolved.png"),
+  });
+  throw new Error(`Chat runtime picker never settled: ${resolution}`);
+}
+
 async function assertHairlineRow(page) {
   const headerBox = await page.locator(".personal-channel-header").boundingBox();
   const chipBox = await page.locator(".personal-execution-chip").boundingBox();
@@ -214,12 +272,10 @@ export const executionChipScenario = {
       collectCoverage,
     });
     try {
-      const pickerLabel = (await stewardPicker.page
-        .locator("div.personal-agent-select button.personal-select-trigger")
-        .innerText()).replace(/\s+/g, " ").trim();
-      if (!pickerLabel.includes("DeepSeek Harness (managed)")) {
-        throw new Error(`Chat runtime picker ignored the declared steward executor: ${pickerLabel}`);
-      }
+      const pickerLabel = await waitForPickerLabel(
+        stewardPicker.page,
+        (label) => label.includes("DeepSeek Harness (managed)"),
+      );
       if (pickerLabel.includes("Codex")) {
         throw new Error(`Chat runtime picker advertised a discovered CLI as the steward: ${pickerLabel}`);
       }
@@ -242,12 +298,9 @@ export const executionChipScenario = {
       collectCoverage,
     });
     try {
-      const pickerLabel = (await undeclaredSteward.page
-        .locator("div.personal-agent-select button.personal-select-trigger")
-        .innerText()).replace(/\s+/g, " ").trim();
-      if (pickerLabel !== "Chat Codex") {
-        throw new Error(`An undeclared steward executor no longer used the shipped default: ${pickerLabel}`);
-      }
+      // The shipped default is the settled value a machine with no declared
+      // steward executor must keep.
+      await waitForPickerLabel(undeclaredSteward.page, (label) => label === "Chat Codex");
     } finally {
       coverageEntries.push(...await undeclaredSteward.close());
     }
