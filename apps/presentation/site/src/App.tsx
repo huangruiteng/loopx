@@ -139,8 +139,9 @@ const content = {
       body: "Try the product guide, read the research, and browse the full case collection.",
       cards: [
         ["Product demo", "Personal Workspace", "A shared view of Goals, Tasks, Chat, and outputs. Watch the demo and start your own local workspace.", "Watch demo & read guide"],
-        ["Research & evaluation", "SWE-Marathon", "Compare five execution modes across 15 matched tasks, with results, costs, and study limitations.", "Read the study"],
+        ["Research & evaluation", "SWE-Marathon", "Compare three retained execution modes across 15 matched tasks, with results, costs, and study limitations.", "Read the study"],
         ["Research · Chinese", "DeepSWE behavior discoveries", "Explore how domain hints affect implementation and validation in individual cases.", "Read the behavior analysis"],
+        ["Research · Chinese", "DeepSWE × Sol", "Read the historical 113-task results, continuation mechanisms, and patch-delivery checks.", "Read the research brief"],
         ["Cases", "All LoopX showcases", "Browse public cases, interactive walkthroughs, and their evidence boundaries.", "Browse all cases"],
       ],
       developer: "Projection developer tools",
@@ -252,8 +253,9 @@ const content = {
       body: "从产品演示到评测结果，找到你想深入了解的内容。",
       cards: [
         ["产品演示", "Personal Workspace", "在一个工作区查看目标、任务、对话与产出。观看演示，开始使用本地工作区。", "观看演示与使用指南"],
-        ["研究与评测", "SWE-Marathon", "查看五种执行模式在 15 个匹配任务上的结果、成本与研究局限。", "阅读研究简报"],
+        ["研究与评测", "SWE-Marathon", "查看三种保留模式在 15 个匹配任务上的结果、成本与研究局限。", "阅读研究简报"],
         ["研究与评测", "DeepSWE 行为分析", "从具体案例观察领域提示如何影响实现选择与验证行为。", "阅读行为分析"],
+        ["研究与评测", "DeepSWE × Sol", "解读 113 任务的历史结果、持续执行机制，以及补丁如何进入最终验收。", "阅读研究简报"],
         ["案例", "完整案例目录", "浏览公开案例、交互式讲解及其证据边界。", "浏览全部案例"],
       ],
       developer: "开发者投影工具",
@@ -1010,6 +1012,7 @@ export function App() {
                   "docs/guides/personal-workspace-user-guide/",
                   `benchmarks/swe-marathon/${language === "zh" ? "?lang=zh" : ""}`,
                   "benchmarks/deepswe/behavior-discovery/",
+                  "benchmarks/deepswe-sol/",
                   `docs/showcases/index${language === "en" ? ".en" : ""}.html`,
                 ];
                 return (
