@@ -14,6 +14,7 @@ from loopx.capabilities.manager_context import (
     register_ingress,
     turn_start_hook,
 )
+from loopx.capabilities.manager_context.tracking import query
 from loopx.control_plane.capability_hooks import dispatch_turn_start_hooks
 
 
@@ -143,8 +144,80 @@ def test_external_authority_requires_exact_sender_source_and_recipient(fixture):
     assert receipt["status"] == "delivered"
 
 
+def test_same_goal_recipients_keep_inboxes_and_decisions_separate(fixture):
+    root, registry, session, turn, request = fixture
+    data = json.loads(registry.read_text())
+    data["goals"][0]["coordination"]["registered_agents"].append("peer")
+    registry.write_text(json.dumps(data))
+    peer = {**request, "agent_id": "peer"}
+
+    worker_receipt = deliver(
+        root, registry, session=session, turn=turn, request=request
+    )
+    worker_id = worker_receipt["request_id"]
+    assert pending(root, "research", "peer")["items"] == []
+    with pytest.raises((OSError, ValueError)):
+        acknowledge(root, "research", "peer", worker_id, "adopt", "Wrong recipient")
+
+    peer_receipt = deliver(root, registry, session=session, turn=turn, request=peer)
+    peer_id = peer_receipt["request_id"]
+    assert peer_id != worker_id
+    acknowledge(root, "research", "worker", worker_id, "adopt", "Worker decision")
+    assert not pending(root, "research", "peer")["items"][0].get(
+        "receiver_decision_recorded", False
+    )
+    acknowledge(root, "research", "peer", peer_id, "reject", "Peer decision")
+
+    rows = query(root, registry, goal_ids=["research"], owner_scope=True)["rows"]
+    assert {row["agent_id"]: row["decision"]["status"] for row in rows} == {
+        "worker": "adopt",
+        "peer": "reject",
+    }
+    for agent_id, request_id in (("worker", worker_id), ("peer", peer_id)):
+        assert [
+            row["request_id"] for row in pending(root, "research", agent_id)["items"]
+        ] == [request_id]
+
+
+def test_new_request_round_preserves_the_previous_receiver_decision(fixture):
+    root, registry, session, turn, request = fixture
+    first = deliver(root, registry, session=session, turn=turn, request=request)
+    acknowledge(
+        root, "research", "worker", first["request_id"], "adopt", "First round"
+    )
+    corrected_turn = {
+        **turn,
+        "client_turn_id": "request-two",
+        "message": "Reconsider the method with this corrected acceptance criterion.",
+    }
+    second = deliver(
+        root, registry, session=session, turn=corrected_turn, request=request
+    )
+    assert second["request_id"] != first["request_id"]
+    items = {
+        row["request_id"]: row
+        for row in pending(root, "research", "worker")["items"]
+    }
+    assert set(items) == {first["request_id"], second["request_id"]}
+    assert items[first["request_id"]]["receiver_decision_recorded"] is True
+    assert items[second["request_id"]]["message"] == corrected_turn["message"]
+    assert not items[second["request_id"]].get("receiver_decision_recorded", False)
+    acknowledge(
+        root, "research", "worker", second["request_id"], "defer", "Assess correction"
+    )
+    replay = deliver(root, registry, session=session, turn=turn, request=request)
+    assert replay["request_id"] == first["request_id"] and replay["replayed"]
+
+    rows = query(root, registry, goal_ids=["research"], owner_scope=True)["rows"]
+    assert {row["request_id"]: row["decision"]["status"] for row in rows} == {
+        first["request_id"]: "adopt",
+        second["request_id"]: "defer",
+    }
+
+
+@pytest.mark.parametrize("decision", ["no_change", "adopt"])
 def test_hook_keeps_decided_requests_open_until_receiver_returns_conclusion(
-    fixture,
+    fixture, decision
 ):
     root, registry, session, turn, request = fixture
     receipt = deliver(root, registry, session=session, turn=turn, request=request)
@@ -161,7 +234,7 @@ def test_hook_keeps_decided_requests_open_until_receiver_returns_conclusion(
         "research",
         "worker",
         receipt["request_id"],
-        "no_change",
+        decision,
         "Current experiment still has stronger evidence; retain its order.",
     )
     assert pending(root, "research", "worker")["items"][0]["receiver_decision_recorded"]
