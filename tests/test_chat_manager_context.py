@@ -107,13 +107,22 @@ def test_turn_context_reads_a_bounded_window_and_declares_sources(
 ):
     now = datetime.now(timezone.utc)
     # A week question needs more than today; the per-day and total bounds must
-    # still hold, and the newest receipt must stay fully readable.
+    # still hold, and the newest receipt must stay fully readable. The six day
+    # buckets are anchored to a fixed UTC time-of-day on the previous UTC day so
+    # that the per-row minute offsets cannot cross a date boundary: a wall-clock
+    # anchor added a seventh bucket, and failed this assertion, for shards that
+    # ran between 00:00 and 00:11 UTC.
+    newest = (now - timedelta(days=1)).replace(
+        hour=18, minute=0, second=0, microsecond=0
+    )
     rows = []
     for days_ago in range(6):
         for index in range(12):
             rows.append(
                 {
-                    "generated_at": (now - timedelta(days=days_ago, minutes=index)).isoformat(),
+                    "generated_at": (
+                        newest - timedelta(days=days_ago, minutes=index)
+                    ).isoformat(),
                     "goal_id": "alpha",
                     "agent_id": "worker",
                     "todo_id": f"todo_{days_ago}_{index}",
