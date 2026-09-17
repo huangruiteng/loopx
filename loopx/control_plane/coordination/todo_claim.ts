@@ -1,4 +1,5 @@
-import {leaseOwnerRejection as ownerRejection} from "../work_items/task_lease_eligibility.ts";
+import {canonicalTaskLeaseAcquireFacts} from "./task_lease_state.ts";
+import {evaluateTaskLeaseAcquireDecision, materializeTaskLeaseAcquire} from "../work_items/task_lease_acquire_decision.ts";
 import type { JsonObject } from "../effect_program.ts";
 import type { AuthorityStore, AuthorityStoreCommit } from "./authority_store.ts";
 import {
@@ -17,18 +18,12 @@ import {
   type CoordinationProjectionMutation,
 } from "./coordination_projection.ts";
 import {
-  evaluateTaskLeaseAcquireDecision,
-  leaseEpoch,
   leaseInteger,
   leaseIsActive,
   normalizeAgent,
   normalizeIdempotencyKey,
   normalizeTtl,
   normalizeWriteScopes,
-  TASK_LEASE_SCHEMA_VERSION,
-  utcIsoformat,
-  type LeaseRecord,
-  type TodoFact,
 } from "../work_items/task_lease_acquire.ts";
 
 export const COORDINATION_TODO_CLAIM_RESULT_SCHEMA =
@@ -303,7 +298,7 @@ function normalizeLeaseRequest(value: unknown): CoordinationTodoClaimLeaseReques
   };
 }
 
-function todoLeaseFact(todo: JsonObject): TodoFact {
+function claimWriteScopes(todo: JsonObject): string[] {
   const requiredWriteScopes = todo.required_write_scopes ?? [];
   if (!Array.isArray(requiredWriteScopes) ||
       requiredWriteScopes.some((scope) => typeof scope !== "string")) {
@@ -317,23 +312,7 @@ function todoLeaseFact(todo: JsonObject): TodoFact {
       "todo.required_write_scopes contains an invalid or duplicate scope",
     );
   }
-  return {
-    todo_id: String(todo.todo_id),
-    status: typeof todo.status === "string" ? todo.status : "",
-    claimed_by: normalizeAgent(todo.claimed_by),
-    excluded_agents: normalizeExcludedAgents(todo.excluded_agents),
-    role: typeof todo.role === "string" ? todo.role : undefined,
-    task_class: typeof todo.task_class === "string" ? todo.task_class : null,
-    bound_agent: normalizeAgent(todo.bound_agent),
-    blocks_agent: normalizeAgent(todo.blocks_agent),
-  };
-}
-
-function leaseDecisionInteger(value: unknown, label: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 0) {
-    throw new AuthorityStoreProtocolError(`${label} must be a non-negative safe integer`);
-  }
-  return Number(value);
+  return writeScopes;
 }
 
 function activeLeaseForOwner(
@@ -510,50 +489,14 @@ export async function executeCoordinationTodoClaim(
   try {
     const currentLease = projection.leases.get(input.todo_id);
     if (handoffMode === "hard_lease" && leaseRequest !== null) {
-      const todoFact = todoLeaseFact(todo);
-      const currentActive = currentLease !== undefined && leaseIsActive(currentLease, input.now);
-      const otherLeases = projection.lease_todo_ids.flatMap((todoId) => {
-        if (todoId === input.todo_id) return [];
-        const candidate = projection.leases.get(todoId)!;
-        const active = leaseIsActive(candidate, input.now);
-        const otherTodo = projection.todos.get(todoId);
-        return [{
-          todo_id: todoId,
-          active,
-          effective: active && otherTodo !== undefined && ownerRejection(
-            todoLeaseFact(otherTodo),
-            normalizeAgent(candidate.owner),
-            input.registered_agents,
-          ) === null,
-          write_scopes: normalizeWriteScopes(candidate.write_scopes),
-        }];
-      });
-      const writeScopes = normalizeWriteScopes(todo.required_write_scopes ?? []);
-      const decision = evaluateTaskLeaseAcquireDecision({
-        handoff_mode: handoffMode,
-        registered_agents: [...input.registered_agents],
-        todo: todoFact,
-        lease: currentLease === undefined ? null : {
-          present: true,
-          active: currentActive,
-          status: typeof currentLease.status === "string" ? currentLease.status : null,
-          owner: normalizeAgent(currentLease.owner),
-          idempotency_key: typeof currentLease.idempotency_key === "string"
-            ? currentLease.idempotency_key : null,
-          version: leaseInteger(currentLease, "version") ?? 0,
-          lease_epoch: leaseEpoch(currentLease),
-          write_scopes: normalizeWriteScopes(currentLease.write_scopes),
-          acquire_ttl_seconds: leaseInteger(currentLease, "acquire_ttl_seconds"),
-        },
-        other_leases: otherLeases,
-        command: {
-          owner: authority.owner,
-          idempotency_key: leaseRequest.idempotency_key,
-          ttl_seconds: leaseRequest.ttl_seconds,
-          write_scopes: writeScopes,
-          expected_version: leaseRequest.expected_version,
-        },
-      });
+      // Validate required scopes before planning; a caller cannot omit a required conflict.
+      const writeScopes = claimWriteScopes(todo);
+      const facts = canonicalTaskLeaseAcquireFacts(projection, input.goal_id, input.todo_id, input.registered_agents, input.now);
+      const decision = evaluateTaskLeaseAcquireDecision({handoff_mode: handoffMode,
+        registered_agents: [...input.registered_agents], ...facts,
+        command: {owner: authority.owner, idempotency_key: leaseRequest.idempotency_key,
+          ttl_seconds: leaseRequest.ttl_seconds, write_scopes: writeScopes,
+          expected_version: leaseRequest.expected_version}});
       if (decision.outcome === "no_change") {
         if (currentLease === undefined) {
           throw new AuthorityStoreProtocolError(
@@ -566,27 +509,9 @@ export async function executeCoordinationTodoClaim(
         if (decision.next_lease === null) {
           throw new AuthorityStoreProtocolError("lease acquire apply is missing next_lease");
         }
-        const acquiredAt = utcIsoformat(input.now);
-        lease = {
-          schema_version: TASK_LEASE_SCHEMA_VERSION,
-          goal_id: input.goal_id,
-          todo_id: input.todo_id,
-          owner: authority.owner,
-          idempotency_key: leaseRequest.idempotency_key,
-          write_scopes: writeScopes,
-          acquire_ttl_seconds: leaseRequest.ttl_seconds,
-          version: leaseDecisionInteger(decision.next_lease.version, "next_lease.version"),
-          lease_epoch: leaseDecisionInteger(
-            decision.next_lease.lease_epoch,
-            "next_lease.lease_epoch",
-          ),
-          acquired_at: acquiredAt,
-          updated_at: acquiredAt,
-          expires_at: utcIsoformat(
-            new Date(input.now.valueOf() + leaseRequest.ttl_seconds * 1_000),
-          ),
-          status: "active",
-        } satisfies LeaseRecord;
+        lease = materializeTaskLeaseAcquire(input, {owner: authority.owner,
+          idempotency_key: leaseRequest.idempotency_key, ttl_seconds: leaseRequest.ttl_seconds,
+          write_scopes: writeScopes, expected_version: leaseRequest.expected_version}, decision, input.now);
         leaseChanged = true;
       } else {
         return failure(

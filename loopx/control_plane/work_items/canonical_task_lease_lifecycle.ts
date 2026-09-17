@@ -1,3 +1,4 @@
+import type {AuthorityStore} from "../coordination/authority_store.ts";
 import type {JsonObject} from "../effect_program.ts";
 import {canonicalAuthoritySha256} from "../coordination/authority_store_codec.ts";
 import {openLocalAuthorityStoreHandle, localAuthorityOpenFailure,
@@ -10,7 +11,7 @@ import {executeCanonicalTaskLeaseLifecycle} from "../coordination/task_lease_lif
 import {revalidateAuthoritySources, TaskLeaseAcquireError, type AuthorityFacts} from "./task_lease_acquire.ts";
 import type {TaskLeaseLifecycleDecisionOperation} from "./task_lease_lifecycle_decision.ts";
 
-interface LocalLeaseRequest {
+export interface LocalLeaseRequest {
   operation: TaskLeaseLifecycleDecisionOperation;
   runtime_root: string; goal_id: string; todo_id: string;
   owner: string | null; idempotency_key: string | null;
@@ -19,11 +20,20 @@ interface LocalLeaseRequest {
   authority: AuthorityFacts | null;
 }
 
-/** One fenced local opening boundary. A selected service provider must supply
- * its service-owned factory; request data can never carry credentials/clients. */
-export async function mutateCanonicalTaskLease(request: LocalLeaseRequest,
-  dependencies: {now: () => Date; beforeWrite?: (lease: JsonObject) => void | Promise<void>;
-    authorityProvider?: LocalAuthorityProviderDependencies}): Promise<JsonObject> {
+export interface LocalTaskLeaseDependencies {
+  now: () => Date;
+  beforeWrite?: (lease: JsonObject) => void | Promise<void>;
+  authorityProvider?: LocalAuthorityProviderDependencies;
+}
+
+/** The same local promotion/source fence surrounds acquire and maintenance. */
+export async function withCanonicalTaskLeaseAuthority(
+  request: {runtime_root: string; goal_id: string; operation: string;
+    owner: string | null; idempotency_key: string | null; authority: AuthorityFacts | null},
+  dependencies: LocalTaskLeaseDependencies,
+  execute: (store: AuthorityStore, guards: {
+    revalidate: () => Promise<void>; beforeCommit: (lease: JsonObject | null) => Promise<void>;
+  }) => Promise<JsonObject>): Promise<JsonObject> {
   const root = request.runtime_root, goalId = request.goal_id;
   const initialFence = await loadLegacyCoordinationWriterFence(root, goalId);
   const evidence: JsonObject = {source_authority: null, decision_read_from_provider: false, legacy_fallback_used: false};
@@ -46,19 +56,17 @@ export async function mutateCanonicalTaskLease(request: LocalLeaseRequest,
         return rejected("authority_required", "canonical lease mutation needs registered actor context");
       }
       evidence.decision_read_from_provider = true;
-      const result = await executeCanonicalTaskLeaseLifecycle(store, {operation: request.operation,
-        goal_id: goalId, todo_id: request.todo_id, owner: request.owner, idempotency_key: request.idempotency_key,
-        expected_version: request.expected_version, ttl_seconds: request.ttl_seconds,
-        new_owner: request.new_owner, new_idempotency_key: request.new_idempotency_key,
-        registered_agents: request.authority?.registered_agents ?? [], now: dependencies.now()}, async lease => {
-        if (lease) await dependencies.beforeWrite?.(lease);
+      const revalidate = async () => {
         await verifyFence();
-        // Release only relinquishes the existing proof. Removed actors and a
-        // missing registry must still be able to clean up their own lease.
+        // Release relinquishes an existing proof even after actor deregistration.
         if (request.operation !== "release" && request.authority) {
           await revalidateAuthoritySources(request.authority.source_receipts);
         }
-      });
+      };
+      const result = await execute(store, {revalidate, beforeCommit: async lease => {
+        if (lease) await dependencies.beforeWrite?.(lease);
+        await revalidate();
+      }});
       return {...result, ...evidence};
     });
   } catch (error) {
@@ -66,4 +74,14 @@ export async function mutateCanonicalTaskLease(request: LocalLeaseRequest,
     if (error instanceof EffectRuntimeLockTimeoutError) return rejected("lock_acquire_timeout", "canonical lease maintenance lock timed out");
     return {...rejected("canonical_lease_route_failed", error instanceof Error ? error.message : "canonical lease route failed"), ...localAuthorityOpenFailure(error)};
   }
+}
+
+export async function mutateCanonicalTaskLease(request: LocalLeaseRequest,
+  dependencies: LocalTaskLeaseDependencies): Promise<JsonObject> {
+  return await withCanonicalTaskLeaseAuthority(request, dependencies, (store, guards) =>
+    executeCanonicalTaskLeaseLifecycle(store, {operation: request.operation,
+      goal_id: request.goal_id, todo_id: request.todo_id, owner: request.owner!, idempotency_key: request.idempotency_key!,
+      expected_version: request.expected_version, ttl_seconds: request.ttl_seconds,
+      new_owner: request.new_owner, new_idempotency_key: request.new_idempotency_key,
+      registered_agents: request.authority?.registered_agents ?? [], now: dependencies.now()}, guards.beforeCommit));
 }

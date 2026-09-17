@@ -14,6 +14,7 @@ from ...paths import resolve_runtime_root
 from ..coordination.coordination_state_contract_generated import (
     LOCAL_AUTHORITY_SHADOW_BINDING_SCHEMA,
     TASK_LEASE_ACQUIRE_REQUEST_SCHEMA,
+    TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA,
     TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA,
     TASK_LEASE_LIFECYCLE_REQUEST_SCHEMA,
 )
@@ -410,14 +411,17 @@ def execute_native_task_lease_acquire(
 
     from ..effect_runtime import effect_runtime_result
 
+    from ..coordination.local_authority import local_authority_is_promoted
+
+    canonical = local_authority_is_promoted(runtime_root=runtime_root, goal_id=str(goal_id))
     for attempt in range(TASK_LEASE_AUTHORITY_SNAPSHOT_ATTEMPTS):
-        authority = task_lease_acquire_authority_facts(
+        authority = _canonical_lease_authority_facts(registry_path, str(goal_id)) if canonical else task_lease_acquire_authority_facts(
             registry_path=registry_path,
             goal_id=str(goal_id or ""),
             todo_id=str(todo_id or ""),
         )
         request = {
-            "schema_version": TASK_LEASE_ACQUIRE_NATIVE_SCHEMA_VERSION,
+            "schema_version": TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA if canonical else TASK_LEASE_ACQUIRE_NATIVE_SCHEMA_VERSION,
             "runtime_root": str(runtime_root),
             "goal_id": goal_id,
             "todo_id": todo_id,
@@ -430,7 +434,7 @@ def execute_native_task_lease_acquire(
         }
         registry = load_registry(registry_path)
         goal = _registry_goal(registry, str(goal_id))
-        if resolve_coordination_runtime_shadow_config(goal).enabled:
+        if not canonical and resolve_coordination_runtime_shadow_config(goal).enabled:
             request["runtime_shadow"] = {
                 "schema_version": LOCAL_AUTHORITY_SHADOW_BINDING_SCHEMA,
                 "provider": "file_v0",
@@ -443,6 +447,14 @@ def execute_native_task_lease_acquire(
             and attempt + 1 < TASK_LEASE_AUTHORITY_SNAPSHOT_ATTEMPTS
         ):
             continue
+        if canonical:
+            if payload.get("ok") is True and (
+                payload.get("source_authority") not in ("file_v0", "sqlite_v0")
+                or payload.get("decision_read_from_provider") is not True
+                or payload.get("legacy_fallback_used") is not False
+            ):
+                raise RuntimeError("canonical acquire omitted valid provider evidence")
+            return payload
         return _finalize_native_acquire_result(
             payload,
             authority=authority,

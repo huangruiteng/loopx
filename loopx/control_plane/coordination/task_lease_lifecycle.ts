@@ -1,3 +1,4 @@
+import {canonicalTaskLease, canonicalLeaseTodoFact} from "./task_lease_state.ts";
 /** Lease mutations share one canonical revision, decision and durable receipt.
  * Providers own persistence only; replay never grants current execution rights. */
 import type {JsonObject} from "../effect_program.ts";
@@ -33,24 +34,6 @@ export interface CanonicalTaskLeaseLifecycleInput {
   new_idempotency_key?: string | null;
   registered_agents: readonly string[];
   now: Date;
-}
-
-function leaseRecord(value: JsonObject, input: CanonicalTaskLeaseLifecycleInput): LeaseRecord {
-  if ((value.schema_version !== undefined && value.schema_version !== "task_lease_v0") ||
-      (value.goal_id !== undefined && value.goal_id !== input.goal_id) || value.todo_id !== input.todo_id ||
-      (value.status !== "active" && value.status !== "released")) {
-    throw new AuthorityStoreProtocolError("canonical lease identity or schema is invalid");
-  }
-  if (typeof value.owner !== "string" || typeof value.idempotency_key !== "string" ||
-      normalizeOwner(value.owner) !== value.owner || normalizeIdempotencyKey(value.idempotency_key) !== value.idempotency_key) {
-    throw new AuthorityStoreProtocolError("canonical lease owner and execution key must be normalized strings");
-  }
-  leaseVersion(value); leaseEpoch(value);
-  if (value.write_scopes !== undefined && (!Array.isArray(value.write_scopes) ||
-      value.write_scopes.some(scope => typeof scope !== "string"))) {
-    throw new AuthorityStoreProtocolError("canonical lease write_scopes must be strings");
-  }
-  return value;
 }
 
 export async function executeCanonicalTaskLeaseLifecycle(store: AuthorityStore, raw: CanonicalTaskLeaseLifecycleInput,
@@ -96,7 +79,7 @@ export async function executeCanonicalTaskLeaseLifecycle(store: AuthorityStore, 
       }
       let lease: LeaseRecord;
       try {
-        lease = leaseRecord(canonicalAuthorityObject(fields.lease, "lease receipt record"), input);
+        lease = canonicalTaskLease(canonicalAuthorityObject(fields.lease, "lease receipt record"), input.goal_id, input.todo_id);
         leaseIsActive(lease, new Date(0)); // Validate time syntax, not present-day authority.
       } catch (error) {
         throw new AuthorityStoreProtocolError(error instanceof Error ? error.message : "invalid lease receipt record");
@@ -120,13 +103,12 @@ export async function executeCanonicalTaskLeaseLifecycle(store: AuthorityStore, 
     const index = indexCoordinationProjection(head.head, input.goal_id);
     validateCoordinationTodoReadModel(head.head, input.goal_id);
     const todo = index.todos.get(input.todo_id), rawLease = index.leases.get(input.todo_id);
-    const lease = rawLease ? leaseRecord(rawLease, input) : null;
+    const lease = rawLease ? canonicalTaskLease(rawLease, input.goal_id, input.todo_id) : null;
     const excluded = todo?.excluded_agents ?? [];
     if (!Array.isArray(excluded) || excluded.some(value => typeof value !== "string")) return failed("invalid_coordination_projection", "Todo exclusions must be strings");
     const mode = requireStringLiteral(head.head.handoff_mode ?? "legacy", HANDOFF_MODES, "canonical handoff_mode");
     const decision = decideTaskLeaseLifecycle({handoff_mode: mode, registered_agents: input.registered_agents,
-      todo: todo && todo.archive_state === "active" ? {todo_id: input.todo_id, status: String(todo.status),
-        claimed_by: normalizeAgent(todo.claimed_by), excluded_agents: excluded as string[]} : null,
+      todo: canonicalLeaseTodoFact(todo),
       lease: lease ? {present: true, active: leaseIsActive(lease, input.now), status: String(lease.status),
         owner: normalizeOwner(lease.owner), idempotency_key: normalizeIdempotencyKey(lease.idempotency_key),
         version: leaseVersion(lease), lease_epoch: leaseEpoch(lease), write_scopes: (lease.write_scopes ?? []) as string[], acquire_ttl_seconds: null} : null,

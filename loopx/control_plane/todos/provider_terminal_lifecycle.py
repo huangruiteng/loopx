@@ -100,6 +100,9 @@ def _route_terminal_call(command: str, call: Mapping[str, Any]) -> dict[str, Any
         goal_id=goal_id,
         project=call.get("project"),
         state_file=call.get("state_file"),
+        # Completion consumes canonical state and can rebuild its display just
+        # like archive. The legacy caller below still requires its source file.
+        require_existing=False,
     )
     complete = command == "complete"
     return terminal_canonical_todo_if_promoted(

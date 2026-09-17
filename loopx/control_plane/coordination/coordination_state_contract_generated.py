@@ -164,6 +164,7 @@ COORDINATION_STATE_CONTRACT: Final = _freeze({'schema_version': 'loopx_coordinat
                                           'request_schema': 'loopx_delivery_workspace_request_v0',
                                           'result_schema': 'loopx_delivery_workspace_result_v0'},
  'task_lease_protocol': {'acquire_request_schema': 'loopx_task_lease_acquire_native_v0',
+                         'canonical_acquire_request_schema': 'loopx_canonical_task_lease_acquire_request_v0',
                          'lifecycle_request_schema': 'loopx_task_lease_lifecycle_native_v0',
                          'canonical_renew_request_schema': 'loopx_canonical_task_lease_renew_request_v0',
                          'canonical_lifecycle_request_schema': 'loopx_canonical_task_lease_lifecycle_request_v0'},
@@ -262,6 +263,7 @@ DELIVERY_WORKSPACE_SNAPSHOT_REQUEST_SCHEMA: Final[str] = 'loopx_delivery_workspa
 DELIVERY_WORKSPACE_SNAPSHOT_RESULT_SCHEMA: Final[str] = 'loopx_delivery_workspace_result_v0'
 
 TASK_LEASE_ACQUIRE_REQUEST_SCHEMA: Final[str] = 'loopx_task_lease_acquire_native_v0'
+TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA: Final[str] = 'loopx_canonical_task_lease_acquire_request_v0'
 TASK_LEASE_LIFECYCLE_REQUEST_SCHEMA: Final[str] = 'loopx_task_lease_lifecycle_native_v0'
 TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA: Final[str] = 'loopx_canonical_task_lease_renew_request_v0'
 TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA: Final[str] = 'loopx_canonical_task_lease_lifecycle_request_v0'
