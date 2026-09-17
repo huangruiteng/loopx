@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx import cli as loopx_cli
+from loopx import cli as loopx_cli  # noqa: E402
 
 
 GOAL_ID = "autonomous-replan-fixture"
@@ -103,7 +104,7 @@ def run_cli_error(
         timeout=timeout,
     )
     assert result.returncode != 0, result.stdout
-    return result.stderr
+    return "\n".join((result.stderr, result.stdout))
 
 
 def append_run_record(runs_dir: Path, record: dict) -> None:
@@ -342,27 +343,24 @@ def assert_new_typed_surface_closes_exact_obligation() -> None:
             runtime=runtime,
         )
         obligation_id = before["autonomous_replan_obligation"]["obligation_id"]
-        refresh = run_cli(
-            "refresh-state",
-            "--goal-id",
-            GOAL_ID,
-            "--agent-id",
-            AGENT_ID,
-            "--classification",
-            "bounded_replan_progress",
-            "--progress-result-class",
-            "advanced",
-            "--progress-surface-id",
-            "surface-new-route",
-            "--progress-hypothesis-id",
-            "hypothesis-current-boundary",
-            "--progress-probe-kind",
-            "probe-current-route",
-            "--progress-evidence-id",
-            "evidence-new-route",
-            registry_path=registry_path,
-            runtime=runtime,
+        # Execute the host projection itself; a hand-authored command can hide
+        # missing flags or an unusable printed transition.
+        action = next(
+            action for action in before["interaction_contract"]["cli_channel"]["next_cli_actions"]
+            if "refresh-state" in action
         )
+        tokens = shlex.split(action)
+        replacements = {
+            "<advanced|blocked|exploration_exhausted|no_followup>": "advanced",
+            "<surface-id>": "surface-new-route",
+            "<hypothesis-id>": "hypothesis-current-boundary",
+            "<probe-kind>": "probe-current-route",
+            "<evidence-id>": "evidence-new-route",
+        }
+        # The fixture supplies the isolated registry/runtime; preserve every
+        # projected refresh argument and replace only declared input slots.
+        args = [replacements.get(token, token) for token in tokens[tokens.index("refresh-state"):]]
+        refresh = run_cli(*args, registry_path=registry_path, runtime=runtime)
         semantic_delta = refresh["autonomous_replan_ack"]["semantic_delta"]
         assert semantic_delta["accepted"] is True, refresh
         assert semantic_delta["obligation_id"] == obligation_id, refresh
