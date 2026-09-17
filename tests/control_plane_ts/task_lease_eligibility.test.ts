@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {evaluateTaskLeaseAcquireDecision} from "../../loopx/control_plane/work_items/task_lease_acquire.ts";
+import {evaluateTaskLeaseAcquireDecision} from "../../loopx/control_plane/work_items/task_lease_acquire_decision.ts";
 import {decideTaskLeaseLifecycle} from "../../loopx/control_plane/work_items/task_lease_lifecycle_decision.ts";
 import {evaluateTaskLeaseOwnerEligibility, leaseOwnerRejection, type LeaseEligibilityTodo} from
   "../../loopx/control_plane/work_items/task_lease_eligibility.ts";
@@ -90,3 +90,13 @@ test("eligibility decoder rejects malformed facts and does not infer authorisati
   assert.equal(evaluateTaskLeaseOwnerEligibility({todo: described, owner: "agent-a", registered_agents: ["agent-a"]}).code,
     "owner_conflicts_with_claim");
 });
+
+for (const generation of ["version", "lease_epoch"] as const) {
+  test(`new execution rejects exhausted ${generation} rather than duplicating a numeric fence`, () => {
+    const input = acquire(false);
+    input.lease = {...input.lease, active: false, [generation]: Number.MAX_SAFE_INTEGER};
+    input.command.expected_version = input.lease.version;
+    const result = evaluateTaskLeaseAcquireDecision(input);
+    assert.equal(result.code, "lease_generation_exhausted"); assert.equal(result.outcome, "rejected");
+  });
+}

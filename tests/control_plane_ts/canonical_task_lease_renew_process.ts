@@ -1,4 +1,5 @@
-/** Disposable child for renewal race and lost-response integration tests. */
+import {executeCanonicalTaskLeaseAcquire} from "../../loopx/control_plane/coordination/task_lease_acquire.ts";
+/** Disposable child for acquisition/lifecycle crash and race qualification. */
 import {readFileSync} from "node:fs";
 import {openLocalAuthorityStore} from "../../loopx/control_plane/coordination/local_authority_provider.ts";
 import {executeCanonicalTaskLeaseLifecycle} from "../../loopx/control_plane/coordination/task_lease_lifecycle.ts";
@@ -24,7 +25,8 @@ const measured: AuthorityStore = {
     return result;
   },
 };
-const result = await executeCanonicalTaskLeaseLifecycle(measured, {...request,
+const execute = request.operation === "acquire" ? executeCanonicalTaskLeaseAcquire : executeCanonicalTaskLeaseLifecycle;
+const result = await execute(measured, {...request,
   registered_agents: ["agent-a", "agent-b"], now: new Date(request.now), ttl_seconds: request.operation === "release" ? null : Number(ttl)});
 process.stdout.write(JSON.stringify(result));
 if (process.connected) process.disconnect();

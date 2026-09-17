@@ -685,3 +685,19 @@ for (const { expiresAt, active } of [
     }
   });
 }
+
+for (const field of ["version", "lease_epoch"] as const) {
+  test(`legacy acquisition rejects exhausted ${field} before durable writeback`, async t => {
+    const root = await workspace(t);
+    const command = await request(root);
+    assert.equal((await executeTaskLeaseAcquire(command, {now: () => FIXED_NOW})).ok, true);
+    const lease = {...await persistedLease(root), status: "released", [field]: Number.MAX_SAFE_INTEGER};
+    await writeFile(leasePath(root), JSON.stringify(lease));
+    const before = await readFile(leasePath(root), "utf8");
+    const result = await executeTaskLeaseAcquire({...command, idempotency_key: "next-execution"}, {now: () => FIXED_NOW});
+    assert.equal(result.error_code, "lease_generation_exhausted");
+    assert.deepEqual(result.settlement, {effect_id: null, receipts: [], failure: {
+      step: "validation", kind: "writeback_rejected", code: "lease_generation_exhausted"}});
+    assert.equal(await readFile(leasePath(root), "utf8"), before);
+  });
+}

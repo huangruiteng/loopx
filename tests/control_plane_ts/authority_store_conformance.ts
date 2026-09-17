@@ -1,3 +1,4 @@
+import {registerLeaseAcquisitionConformance} from "./lease_acquisition_conformance.ts";
 import {registerLeaseLifecycleConformance} from "./lease_lifecycle_conformance.ts";
 import {registerMonitorConfigurationConformance} from "./monitor_configuration_conformance.ts";
 import {registerAuthorityScanConformance} from "./authority_scan_conformance.ts";
@@ -211,6 +212,7 @@ export function registerAuthorityStoreConformance(
   factory: AuthorityStoreConformanceFactory,
 ): void {
   registerLeaseLifecycleConformance(providerName, factory);
+  registerLeaseAcquisitionConformance(providerName, factory);
   registerAuthorityScanConformance(providerName, factory);
   registerOwnershipObservationConformance(providerName, factory);
   registerNativePlanningUpdateConformance(providerName, factory);

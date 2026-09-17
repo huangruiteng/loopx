@@ -35,6 +35,8 @@ import {Pool} from 'pg';
 let raw=''; for await (const chunk of process.stdin) raw+=chunk;
 const input=JSON.parse(raw);
 const moduleAt=(root,path)=>import(pathToFileURL(join(root,'loopx/control_plane',path)).href);
+const {executeTaskLeaseAcquire: currentAcquire}=await moduleAt(input.repo,'work_items/task_lease_acquire.ts');
+const {executeTaskLeaseAcquire: legacyAcquire}=await moduleAt(input.baseline_repo,'work_items/task_lease_acquire.ts');
 const {executeTaskLeaseLifecycle: current}=await moduleAt(input.repo,'work_items/task_lease_lifecycle.ts');
 const {executeTaskLeaseLifecycle: legacy}=await moduleAt(input.baseline_repo,'work_items/task_lease_lifecycle.ts');
 const {FileAuthorityStore}=await moduleAt(input.repo,'coordination/file_authority_store.ts');
@@ -45,12 +47,14 @@ const {coordinationTodoReadModel}=await moduleAt(input.repo,'coordination/coordi
 const {canonicalAuthorityBytes,canonicalAuthoritySha256}=await moduleAt(input.repo,'coordination/authority_store_codec.ts');
 const {engageLegacyCoordinationWriterFence}=await moduleAt(input.repo,'coordination/legacy_writer_fence.ts');
 const digest=value=>canonicalAuthoritySha256(value);
-const goal=input.goal_id, target='todo_lifecycle_rehearsal';
+const goal=input.goal_id, target='todo_lifecycle_rehearsal', acquisition='todo_acquire_rehearsal';
+assert(!input.projection.todos.some(t=>t.todo_id===acquisition));
 assert(!input.projection.todos.some(t=>t.todo_id===target));
 const initial=structuredClone(input.projection);
 initial.todos.push({schema_version:'todo_item_v0',todo_id:target,role:'agent',status:'open',done:false,
   text:'Isolated lease lifecycle rehearsal',archive_state:'active',source_section:'Agent Todo',
   claimed_by:null,excluded_agents:[],task_class:'advancement_task'});
+initial.todos.push({...initial.todos.at(-1),todo_id:acquisition,text:'Isolated acquisition and takeover rehearsal'});
 initial.todos.sort((a,b)=>a.todo_id<b.todo_id?-1:a.todo_id>b.todo_id?1:0);
 initial.todo_read_model=coordinationTodoReadModel(initial.todos,initial.todo_read_model.schema_version);
 initial.handoff_mode='hard_lease';
@@ -100,6 +104,28 @@ try {
         state:'engaged',goal_id:goal,fence_id:'rehearsal',source_version:'state:1',source_projection_sha256:digest(initial),
         expected_shadow_provider_revision:h.provider_revision}})).status,'applied');
     }
+    const acquireBase={schema_version:store?'loopx_canonical_task_lease_acquire_request_v0':'loopx_task_lease_acquire_native_v0',
+      runtime_root:runtime,goal_id:goal,todo_id:acquisition,owner:'agent-a',idempotency_key:'acquire-a',
+      expected_version:0,ttl_seconds:600,write_scopes:['isolated-acquisition/**'],authority};
+    const invokeAcquire=(request,now)=>(store?currentAcquire:legacyAcquire)(request,{...dependencies,now:()=>new Date(now)});
+    const acquired=await invokeAcquire(acquireBase,'2026-09-13T10:05:00Z');
+    assert.equal(acquired.ok,true,`${arm} acquire: ${acquired.error_code}`);
+    assert.deepEqual(acquired.lease,{schema_version:'task_lease_v0',goal_id:goal,todo_id:acquisition,
+      owner:'agent-a',idempotency_key:'acquire-a',version:1,lease_epoch:1,status:'active',
+      write_scopes:['isolated-acquisition/**'],acquire_ttl_seconds:600,acquired_at:'2026-09-13T10:05:00Z',
+      updated_at:'2026-09-13T10:05:00Z',expires_at:'2026-09-13T10:15:00Z'});
+    const acquireReplay=await invokeAcquire(acquireBase,'2026-09-13T10:06:00Z');
+    if(store) {assert.equal(acquireReplay.status,'replayed');assert.deepEqual(acquireReplay.lease,acquired.lease);}
+    else assert.equal(acquireReplay.error_code,'version_mismatch');
+    const takeover=await invokeAcquire({...acquireBase,owner:'agent-b',idempotency_key:'acquire-b',expected_version:1},'2026-09-14T10:05:00Z');
+    assert.equal(takeover.ok,true,`${arm} takeover: ${takeover.error_code}`);
+    assert.deepEqual(takeover.lease,{...acquired.lease,owner:'agent-b',idempotency_key:'acquire-b',version:2,lease_epoch:2,
+      acquired_at:'2026-09-14T10:05:00Z',updated_at:'2026-09-14T10:05:00Z',expires_at:'2026-09-14T10:15:00Z'});
+    if(store) {
+      const staleAcquire=await invokeAcquire(acquireBase,'2026-09-14T10:06:00Z');
+      assert.equal(staleAcquire.error_code,'idempotency_key_reuse');
+      assert.equal((await import('node:fs')).existsSync(join(leaseDir,`${acquisition}.json`)),false);
+    }
     const base={schema_version:store?'loopx_canonical_task_lease_lifecycle_request_v0':'loopx_task_lease_lifecycle_native_v0',
       runtime_root:runtime,goal_id:goal,todo_id:target,owner:'agent-a',idempotency_key:'rehearsal-a',
       expected_version:3,ttl_seconds:600,authority,current_time:'2026-09-13T10:05:00Z'};
@@ -125,24 +151,24 @@ try {
     if (store) {
       assert.equal(replay.status,'replayed');assert.deepEqual(replay.original_receipt,results[0].original_receipt);
       assert.deepEqual(replay.lease,results[0].lease);
-      const final=await store.loadAuthority();assert.equal(final.status,'loaded');assert.equal(final.cursor,'4');
+      const final=await store.loadAuthority();assert.equal(final.status,'loaded');assert.equal(final.cursor,'6');
       assert.deepEqual(final.head.todos,initial.todos);
-      assert.deepEqual(final.head.leases.filter(l=>l.todo_id!==target),initial.leases.filter(l=>l.todo_id!==target));
+      assert.deepEqual(final.head.leases.filter(l=>l.todo_id!==target&&l.todo_id!==acquisition),initial.leases.filter(l=>l.todo_id!==target));
       assert.deepEqual(await readFile(join(leaseDir,`${target}.json`)),legacyBefore);
       finalHeads[arm]=final.head;
-      report[arm]={passed:true,commits:4,historical_replay:'original_receipt'};
+      report[arm]={passed:true,commits:6,historical_replay:'original_receipt',acquire_retry:'current_proof',retired_acquire_rejected:true};
     } else {
       assert.equal(replay.error_code,'lifecycle_receipt_state_mismatch');
       report[arm]={passed:true,historical_replay:'baseline_rejected_after_later_mutation'};
     }
-    observations[arm]=results.map(r=>({lease:r.lease,handoff_mode:r.handoff_mode}));
+    observations[arm]=[acquired,takeover,...results].map(r=>({lease:r.lease}));
   }
   for (const arm of ['file','sqlite','postgresql']) assert.deepEqual(observations[arm],observations.legacy);
   assert.deepEqual(finalHeads.file,finalHeads.sqlite); assert.deepEqual(finalHeads.file,finalHeads.postgresql);
   process.stdout.write(JSON.stringify({schema_version:'authority_lease_lifecycle_rehearsal_v0',
     initial_todos:initial.todos.length,initial_leases:initial.leases.length,fixture_sha256:digest(initial),
     observation_sha256:digest(observations.file),provider_head_sha256:digest(finalHeads.file),arms:report,
-    intentional_delta:'canonical_historical_replay_survives_later_mutations',non_target_records_unchanged:true}));
+    intentional_delta:'canonical_receipt_recovery_and_current_acquire_proof;_explicit_create_CAS_retry_no_longer_mismatches',non_target_records_unchanged:true}));
 } finally {
   for (const table of ['authority_receipts','authority_events','authority_commits','authority_heads'])
     await pool.query(`DELETE FROM loopx_control_plane.${table} WHERE tenant_id=$1`,[tenant]);
