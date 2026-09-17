@@ -5,6 +5,50 @@ from typing import Any
 GOAL_START_SCHEMA_VERSION = "loopx_goal_start_command_v0"
 
 
+def goal_planner_contract(*, fine_grained: bool = False) -> dict[str, Any]:
+    planner = {
+        "required_before_todo_write": True,
+        "default_profile": "open_ended_product_direction",
+        "profile_selection": (
+            "Use open_ended_product_direction when the user's goal is a broad, "
+            "fuzzy product direction or new initiative. Use clear_bounded_problem "
+            "when the target is a concrete task with a clear success condition. "
+            "In both cases, let the model produce a real ordered plan before writes."
+        ),
+        "profiles": {
+            "open_ended_product_direction": {
+                "suggested_items_min": 2,
+                "suggested_items_max": 5,
+                "intent": (
+                    "turn an ambiguous product direction into public-safe, ranked "
+                    "todo options before execution"
+                ),
+            },
+            "clear_bounded_problem": {
+                "item_count_policy": "planner_sized",
+                "may_reuse_current_todo_when_it_already_represents_the_plan": True,
+                "intent": (
+                    "make the approach explicit with enough concise ordered todos, "
+                    "without arbitrary caps or management-only filler"
+                ),
+            },
+        },
+        "allowed_priorities": ["P0", "P1", "P2"],
+        "default_role": "agent",
+        "default_task_class": "advancement_task",
+        "required_fields": ["priority", "text", "task_class", "action_kind"],
+        "public_safe_only": True,
+        "budget_policy": "minimum sufficient plan; no fixed-count filler",
+    }
+    if fine_grained:
+        planner["fine_grained_plan_horizon"] = (
+            "write one current runnable checkpoint; keep later options as evidence-linked "
+            "planning notes until the existing replan path qualifies the successor"
+        )
+        planner["maximum_runnable_todos_written_ahead"] = 1
+    return planner
+
+
 def build_goal_start_contract(
     *,
     goal_text: str | None,
@@ -26,40 +70,7 @@ def build_goal_start_contract(
         "explicit_invocation_confirms_project_local_state_writes": True,
         "connect_if_needed": True,
         "bootstrap_policy": "create project-local LoopX state only when no matching registry goal exists",
-        "planner": {
-            "required_before_todo_write": True,
-            "default_profile": "open_ended_product_direction",
-            "profile_selection": (
-                "Use open_ended_product_direction when the user's goal is a broad, "
-                "fuzzy product direction or new initiative. Use clear_bounded_problem "
-                "when the target is a concrete task with a clear success condition. "
-                "In both cases, let the model produce a real ordered plan before writes."
-            ),
-            "profiles": {
-                "open_ended_product_direction": {
-                    "suggested_items_min": 2,
-                    "suggested_items_max": 5,
-                    "intent": (
-                        "turn an ambiguous product direction into public-safe, ranked "
-                        "todo options before execution"
-                    ),
-                },
-                "clear_bounded_problem": {
-                    "item_count_policy": "planner_sized",
-                    "may_reuse_current_todo_when_it_already_represents_the_plan": True,
-                    "intent": (
-                        "make the approach explicit with enough concise ordered todos, "
-                        "without arbitrary caps or management-only filler"
-                    ),
-                },
-            },
-            "allowed_priorities": ["P0", "P1", "P2"],
-            "default_role": "agent",
-            "default_task_class": "advancement_task",
-            "required_fields": ["priority", "text", "task_class", "action_kind"],
-            "public_safe_only": True,
-            "budget_policy": "minimum sufficient plan; no fixed-count filler",
-        },
+        "planner": goal_planner_contract(fine_grained=fine_grained),
         "priority_ordering": {
             "bucket_order": ["P0", "P1", "P2"],
             "same_priority_tie_breaker": "planner_order_then_todo_write_order",
@@ -149,12 +160,6 @@ def build_goal_start_contract(
             "replan": "direction_change_or_bounded_chain",
             "checkpoint_accounting": "advancement_only",
         }
-        planner = contract["planner"]
-        planner["fine_grained_plan_horizon"] = (
-            "write one current runnable checkpoint; keep later options as evidence-linked "
-            "planning notes until the existing replan path qualifies the successor"
-        )
-        planner["maximum_runnable_todos_written_ahead"] = 1
     return contract
 
 

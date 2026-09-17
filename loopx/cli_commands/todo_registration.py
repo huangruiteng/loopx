@@ -41,6 +41,7 @@ def register_todo_command(
             "supersede",
             "archive-completed",
             "suggest",
+            "plan",
             "capture-followups",
             "project-markdown",
         ],
@@ -50,6 +51,7 @@ def register_todo_command(
             "agent id, list to read projected todos, update/complete/supersede to transition by todo_id, or "
             "archive-completed to move older completed todos into Completed Work Archive. "
             "Use suggest to generate an agent-facing candidate todo analysis prompt without writing state. "
+            "Use plan with --text and --agent-id for the existing Goal's model planning checkpoint; the caller owns subsequent execution. "
             "Use capture-followups to record a capped public-safe unclaimed follow-up batch."
         ),
     )

@@ -30,6 +30,10 @@ from ..todo_suggestion_prompt import (
     build_todo_suggestion_prompt_packet,
     render_todo_suggestion_prompt_markdown,
 )
+from ..control_plane.goals.task_planning import (
+    build_task_planning_packet,
+    render_task_planning_packet,
+)
 from ..todos import (
     add_goal_todo,
     archive_completed_todos,
@@ -50,6 +54,7 @@ from .todo_argument_validation import (
     validate_todo_list_options,
     validate_todo_project_markdown_options,
     validate_todo_suggest_options,
+    validate_todo_plan_options,
     validate_todo_supersede_options,
     validate_todo_update_options,
 )
@@ -195,6 +200,9 @@ def handle_todo_command(
     post_writeback_projection_builder: PostWritebackProjectionBuilder | None = None,
 ) -> int:
     renderer = (
+        render_task_planning_packet
+        if args.todo_command == "plan"
+        else
         render_todo_suggestion_prompt_markdown
         if args.todo_command == "suggest"
         else render_todo_markdown
@@ -208,7 +216,14 @@ def handle_todo_command(
             )
         validate_shared_todo_options(args)
         validate_capability_gap_options(args)
-        if args.todo_command == "list":
+        if args.todo_command == "plan":
+            validate_todo_plan_options(args)
+            payload = build_task_planning_packet(
+                registry_path=registry_path, runtime_root_arg=runtime_root_arg,
+                goal_id=args.goal_id, agent_id=args.agent_id, text=args.text,
+                project=Path(args.project).expanduser() if args.project else None,
+            )
+        elif args.todo_command == "list":
             validate_todo_list_options(args)
             payload = list_goal_todos(
                 registry_path=registry_path,

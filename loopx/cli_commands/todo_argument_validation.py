@@ -303,6 +303,15 @@ def validate_todo_list_options(args: argparse.Namespace) -> None:
     )
 
 
+def validate_todo_plan_options(args: argparse.Namespace) -> None:
+    _validate_todo_option_subset(
+        args, {"text", "agent_id"},
+        "todo plan only accepts --goal-id, --agent-id, --text, --project and --format; unsupported: ",
+    )
+    if not args.text or not args.agent_id:
+        raise ValueError("todo plan requires --text and a registered --agent-id")
+
+
 def validate_todo_project_markdown_options(args: argparse.Namespace) -> None:
     if not getattr(args, "provider_revision", None):
         raise ValueError("todo project-markdown requires --provider-revision")
@@ -551,7 +560,7 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
             "--authority-reason is supported only by todo update/complete/supersede"
         )
     if (
-        args.todo_command not in {"suggest", "capture-followups"}
+        args.todo_command not in {"suggest", "plan", "capture-followups"}
         and args.agent_id
         and not agent_id_allowed_for_user_authoring
         and not agent_id_allowed_for_read

@@ -110,10 +110,12 @@ def _todo_add_command_template(
     runtime_root: str | Path | None,
     goal_id: str,
     agent_id: str | None,
+    registry_path: Path | None = None,
 ) -> str:
     return (
         f"{render_cli_command_prefix(cli_bin=cli_bin, runtime_root=runtime_root)} "
-        f"todo add --goal-id "
+        + (f"--registry {shell_arg(str(registry_path))} " if registry_path is not None else "")
+        + "todo add --goal-id "
         f"{shell_arg(str(goal_id or ''))} "
         "--project . "
         "--role agent "
@@ -136,6 +138,7 @@ def todo_authoring_steps(
     runtime_root: str | Path | None,
     goal_id: str,
     agent_id: str | None,
+    registry_path: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Ordered Todo-authoring steps, conditional on the runnable frontier."""
     add_template = _todo_add_command_template(
@@ -143,6 +146,7 @@ def todo_authoring_steps(
         runtime_root=runtime_root,
         goal_id=goal_id,
         agent_id=agent_id,
+        registry_path=registry_path,
     )
     if not existing_runnable_frontier:
         return [
