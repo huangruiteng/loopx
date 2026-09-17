@@ -1,0 +1,106 @@
+{
+  "schema_version": "manager_handoff_m2_characterization_v0",
+  "title": "Retained peer-dispatch handoff obligations for the capable-manager semantic-handoff M2 contract",
+  "public_safe": true,
+  "synthetic_only": true,
+  "contains_credentials": false,
+  "contains_provider_payloads": false,
+  "contains_private_locators": false,
+  "sources": [
+    "#4311 - dispatch executor-excluded handoffs instead of repolling origin monitor",
+    "#4312 closing note - obligations retained for M2 characterization / compatibility fixtures",
+    "#4330 RFC capable manager and semantic work handoff, section 8 legacy migration table"
+  ],
+  "why_a_fixture": [
+    "#4312 is closed as superseded by the merged capable-manager semantic-handoff RFC (#4330).",
+    "The defect in #4311 remains real, but the accepted direction is one typed Core collaboration",
+    "request/assessment/result contract. The obligations below are the ones #4312 recorded as",
+    "migration inputs; they are characterized here against the shipped manager-context inbox so the",
+    "M2 cutover has a compatibility baseline instead of re-deriving behaviour from a closed branch."
+  ],
+  "scenario": {
+    "goal_id": "research",
+    "solo_goal_id": "research-solo",
+    "monitor_owner": "monitor-origin",
+    "peer_agent": "peer-reviewer",
+    "registered_agents": ["monitor-origin", "peer-reviewer"],
+    "solo_registered_agents": ["monitor-origin"],
+    "successor": {
+      "todo_id": "todo_9f3c1a7b2e04",
+      "text": "[P0] Independently review the monitor transition before delivery.",
+      "task_class": "advancement_task",
+      "continuation_policy": "independent_handoff",
+      "excluded_agents": ["monitor-origin"],
+      "claimed_by": null,
+      "role": "agent",
+      "required_capabilities": ["shell"]
+    }
+  },
+  "obligations": [
+    {
+      "id": "O1",
+      "name": "dispatchable_by_peer_vs_unclaimed_but_executor_excluded",
+      "retained_from": "#4311 acceptance: frontier projection distinguishes the two states",
+      "invariant": "One unclaimed independent_handoff successor that excludes the origin agent reads as selectable for a same-goal peer and as executor-excluded, non-selectable for the origin agent. The two readings come from the same projection, not two sources of truth.",
+      "asserted_by": "test_executor_excluded_successor_reads_dispatchable_for_a_peer_and_excluded_for_the_origin"
+    },
+    {
+      "id": "O2",
+      "name": "no_eligible_peer_is_typed_and_not_a_user_gate",
+      "retained_from": "#4311 acceptance: typed blocker without inventing a user gate",
+      "invariant": "When the Goal registers no agent other than the excluded origin, the derived eligible-peer set is empty and a dispatch attempt fails closed with an authorization error. No user gate, queued placeholder or invented owner is projected.",
+      "asserted_by": "test_no_eligible_peer_fails_closed_without_inventing_a_user_gate"
+    },
+    {
+      "id": "O3",
+      "name": "duplicate_ingress_does_not_redispatch",
+      "retained_from": "#4312: duplicate ingress and deterministic dispatch identity",
+      "invariant": "Repeating the same heartbeat-bound dispatch for the same recipient yields the same request id, reports replayed, and leaves exactly one durable entry. The dispatch identity is derived, never re-emitted.",
+      "asserted_by": "test_duplicate_dispatch_replays_one_durable_entry"
+    },
+    {
+      "id": "O4",
+      "name": "dispatched_read_claimed_survives_restart",
+      "retained_from": "#4312: dispatched -> read -> claimed relation after restart",
+      "invariant": "After the peer reads and acknowledges, a fresh read from the same runtime root still reports the complete delivery/read/decision chain. A restart observes the recorded decision rather than re-offering the same dispatch as pending work.",
+      "asserted_by": "test_dispatched_read_claimed_chain_survives_a_restart"
+    },
+    {
+      "id": "O5",
+      "name": "redispatch_after_claim_does_not_reset_the_decision",
+      "retained_from": "#4312: duplicate ingress reconciliation",
+      "invariant": "A repeated dispatch after the receiver already decided replays the same entry and leaves the recorded decision intact; the decision is never overwritten by a later delivery.",
+      "asserted_by": "test_redispatch_after_decision_keeps_the_recorded_decision"
+    },
+    {
+      "id": "O6",
+      "name": "stale_claim_conflict_is_terminal",
+      "retained_from": "#4312: stale claim conflict",
+      "invariant": "A second, conflicting acknowledgement for one request is rejected instead of silently overwriting the first decision. Conflicting claim history stays observable and never becomes a fabricated latest state.",
+      "asserted_by": "test_conflicting_acknowledgement_is_rejected_not_overwritten"
+    },
+    {
+      "id": "O7",
+      "name": "same_goal_agent_identity_isolation",
+      "retained_from": "#4311 acceptance: same-Goal agent identity isolation",
+      "invariant": "A dispatch addressed to one agent is invisible to another agent's inbox, and an acknowledgement under the wrong identity fails closed. Sharing a Goal is not sharing a handoff.",
+      "asserted_by": "test_peer_dispatch_is_invisible_to_the_origin_inbox"
+    },
+    {
+      "id": "O8",
+      "name": "deterministic_legacy_alias",
+      "retained_from": "#4330 section 8: preserve the tuple-derived dispatch identity as a legacy alias, never redispatch",
+      "invariant": "The dispatch request id is a pure function of the source identity and the exact recipient, and the successor handoff id is a pure function of the successor tuple. Equal inputs give equal ids across independent projections; different inputs give different ids.",
+      "asserted_by": "test_dispatch_and_handoff_identities_are_deterministic"
+    },
+    {
+      "id": "O9",
+      "name": "canonical_todo_claim_readback",
+      "retained_from": "#4312: canonical Todo claim readback before acknowledgement",
+      "invariant": "Linking a context request to a Core Todo requires the Todo to belong to the receiving agent, read back from the canonical Todo authority rather than from a copied projection.",
+      "asserted_by": null,
+      "covered_by_existing": "tests/test_manager_context_tracking.py::test_links_use_core_state_and_do_not_copy_progress",
+      "note": "Already pinned against the shipped tracking seam; re-characterizing it here would duplicate coverage."
+    }
+  ]
+}
