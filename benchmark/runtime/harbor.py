@@ -598,10 +598,12 @@ class BenchmarkCodex(CodexOffline):
                 if entry["status"] == "blocked":
                     return
             remaining = int(deadline - time.monotonic())
-            if remaining <= 150:
+            if remaining <= 160:
                 raise TimeoutError("Task budget exhausted before execution handoff")
             # Planning consumes the phase budget, including when the host later resumes.
-            host_timeout = min(self.execution.timeout_seconds, remaining - 150)
+            # Keep ten seconds for scheduler startup before the worker checks
+            # its execution window plus the existing 150-second settlement reserve.
+            host_timeout = min(self.execution.timeout_seconds, remaining - 160)
             env["LOOPX_CODEX_TURN_TIMEOUT_SEC"] = str(host_timeout)
             if self.execution.mode in {"heartbeat", "turn"}:
                 command = [
@@ -635,6 +637,8 @@ class BenchmarkCodex(CodexOffline):
             phase_log = f"/logs/agent/worker-phase-{self._phase_number:03d}.log"
             shell = (
                 "set +e; "
+                # Use the task environment's clock, including remote backends.
+                f"export LOOPX_PHASE_DEADLINE_EPOCH=$(( $(date +%s) + {remaining} )); "
                 f"timeout --signal=TERM --kill-after=30 {remaining}s "
                 f"{shlex.join(command)} >> {shlex.quote(phase_log)} 2>&1; "
                 "rc=$?; "

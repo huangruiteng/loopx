@@ -259,7 +259,8 @@ def test_planning_budget_and_blocked_handoff_use_the_real_adapter_run(
     if executions:
         command, env = executions[0]
         assert "--kill-after=30 300s" in command
-        assert float(env["LOOPX_CODEX_TURN_TIMEOUT_SEC"]) == 150
+        assert float(env["LOOPX_CODEX_TURN_TIMEOUT_SEC"]) == 140
+        assert "LOOPX_PHASE_DEADLINE_EPOCH=$(( $(date +%s) + 300 ))" in command
 
 
 def test_pending_turn_prevents_phase_input_replacement(tmp_path, monkeypatch):
@@ -281,3 +282,22 @@ def test_pending_turn_prevents_phase_input_replacement(tmp_path, monkeypatch):
                 SimpleNamespace(exec=pending), "next task", cwd=str(tmp_path)
             )
         )
+
+
+def test_late_scheduler_wake_does_not_open_an_unfinishable_turn(planning_env, monkeypatch):
+    from benchmark.runtime import worker
+
+    env = planning_env | {
+        "LOOPX_EXECUTION_MODE": "turn",
+        "LOOPX_TASK_STAGE": "execute",
+        "LOOPX_VALIDATION_COMMAND_JSON": '["python", "check.py"]',
+        "LOOPX_CODEX_TURN_TIMEOUT_SEC": "60",
+        "LOOPX_PHASE_DEADLINE_EPOCH": "310",
+    }
+    monkeypatch.setattr(worker.time, "time", lambda: 100)
+    monkeypatch.setattr(worker, "prepare_codex_home", lambda *a, **kw: pytest.fail("late wake must not launch a host"))
+    for entry in ("seeded-todo", "loopx-planned"):
+        receipt = run_once(env | {"LOOPX_TASK_ENTRY": entry})
+        assert receipt["budget_exhausted"] and receipt["host_invoked"] is False
+        assert receipt.get("turn_execution") is None
+    assert not (Path(env["LOOPX_RUNTIME_ROOT"]) / "benchmark-pending-turn.json").exists()

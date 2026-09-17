@@ -232,6 +232,14 @@ def run_once(env: dict[str, str]) -> dict:
         Path(env.get("LOOPX_RUNTIME_ROOT", str(home))) / "benchmark-pending-turn.json"
     )
     try:
+        if stage == "execute" and env.get("LOOPX_PHASE_DEADLINE_EPOCH"):
+            remaining = float(env["LOOPX_PHASE_DEADLINE_EPOCH"]) - time.time()
+            # A later scheduler wake must still leave room for host execution,
+            # validation and settlement. Do not open a transaction the outer
+            # phase timeout would interrupt solely because it started too late.
+            if remaining <= execution.timeout_seconds + 150:
+                receipt.update(ok=True, budget_exhausted=True, host_invoked=False)
+                return receipt
         prepare_codex_home(
             home,
             execution=execution,
