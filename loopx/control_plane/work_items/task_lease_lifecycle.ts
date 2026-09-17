@@ -2742,9 +2742,10 @@ function canonicalLifecycleEnvelope(request: LifecycleRequest, result: JsonObjec
     .map(key => [key, result[key]]));
   if (result.status === "applied" || result.status === "no_change" || result.status === "replayed" || result.status === "recovered") {
     const replayed = result.status === "replayed" || result.status === "recovered";
+    const idempotent = replayed || result.status === "no_change";
     return {ok: true, schema_version: "task_lease_v0", action: request.operation, status: result.status,
       ...Object.fromEntries(["renewed", "transferred", "released", "missing", "lease"].filter(key => result[key] !== undefined).map(key => [key, result[key]])),
-      idempotent: replayed, original_receipt: result.original_receipt,
+      idempotent, original_receipt: result.original_receipt,
       ...evidence, settlement: lifecycleSettlement(request, replayed ? "replayed" : "committed")};
   }
   const envelope = failureEnvelope(request, {code: String(result.reason_code ?? result.conflict_kind ?? "canonical_lease_failed"),

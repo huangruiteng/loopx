@@ -132,7 +132,7 @@ export const typedActionsScenario = {
     try {
       const { page } = operationUi;
       await page.locator(".personal-goal-link", { hasText: "Product Release" }).click();
-      await page.locator(".personal-goal-tabs button", { hasText: "Chat" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Chat|对话)$/ }).click();
 
       const pendingResult = page.locator(".personal-proposal-row", {
         hasText: "Simulation result awaiting card readback",
@@ -251,9 +251,8 @@ export const typedActionsScenario = {
     });
     try {
       await capabilityOff.page.locator(".personal-goal-link").first().click();
-      await capabilityOff.page.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      await capabilityOff.page.getByRole("group", { name: "Goal 设置" })
-        .getByRole("button", { name: /Goal 详情/ }).click();
+      await capabilityOff.page.getByRole("button", { name: "概览", exact: true }).click();
+      await capabilityOff.page.getByRole("button", { name: "Goal 信息", exact: true }).click();
       await capabilityOff.page.locator(".personal-drawer-header").waitFor({ state: "visible" });
       if (await capabilityOff.page.locator(".personal-goal-subagents").count()) {
         throw new Error("Capability-off Dashboard exposed Goal sub-agent controls");
@@ -350,8 +349,8 @@ export const typedActionsScenario = {
       await page.screenshot({ path: resolve(outputDir, "goal-lifecycle-directory.png"), fullPage: false, animations: "disabled" });
       pass(1, "Goal stop applies directly without a redundant confirmation, while resume stays reviewed; both update optimistically, roll back rejected applies, and reconcile status in the background.");
       await page.locator(".personal-goal-link").first().click();
-      await page.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      await page.getByRole("group", { name: "Goal 设置" }).getByRole("button", { name: /Goal 详情/ }).click();
+      await page.getByRole("button", { name: "概览", exact: true }).click();
+      await page.getByRole("button", { name: "Goal 信息", exact: true }).click();
       const drawerHeaderVisual = await page.locator(".personal-drawer-header").evaluate((element) => {
         const close = element.querySelector(".personal-drawer-close")?.getBoundingClientRect();
         const header = element.getBoundingClientRect();
@@ -509,8 +508,8 @@ export const typedActionsScenario = {
       }
       await productReleaseGoal.waitFor({ state: "visible" });
       await productReleaseGoal.click();
-      await page.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      await page.getByRole("group", { name: "Goal 设置" }).getByRole("button", { name: /Goal 详情/ }).click();
+      await page.getByRole("button", { name: "概览", exact: true }).click();
+      await page.getByRole("button", { name: "Goal 信息", exact: true }).click();
       await page.getByText("当前没有开放的 advancement Todo 声明 task_domain", { exact: false }).waitFor({ state: "visible" });
       const emptyDomainSwitch = page.getByRole("switch", { name: "预览开启子代理执行" });
       if (!(await emptyDomainSwitch.isEnabled())) throw new Error("A Goal without projected task domains could not enable unrestricted sub-agent execution");
@@ -546,16 +545,16 @@ export const typedActionsScenario = {
       await page.getByText("LoopX Manager", { exact: true }).first().waitFor({ state: "visible" });
       if (await page.locator("html").getAttribute("lang") !== "en") throw new Error("English locale did not survive reload");
       await page.locator(".personal-goal-link", { hasText: /loopx meta/i }).click();
-      await page.getByRole("button", { name: "Open Goal details or capability settings" }).click();
-      await page.getByRole("group", { name: "Goal settings" }).getByRole("button", { name: /Goal details/ }).click();
+      await page.getByRole("button", { name: "Overview", exact: true }).click();
+      await page.getByRole("button", { name: "Goal information", exact: true }).click();
       await page.getByText("Repository", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("Execution Session", { exact: true }).waitFor({ state: "visible" });
       await page.locator(".personal-goal-repository").getByText("Read only", { exact: true }).waitFor({ state: "visible" });
       await page.getByRole("button", { name: /Close details/ }).click();
       const englishGoalNavigation = page.getByRole("navigation", { name: "Goal view" });
-      await englishGoalNavigation.getByRole("button", { name: "Chat", exact: true }).click();
-      await page.getByText("Agent is waiting for your decision", { exact: true }).first().waitFor({ state: "visible" });
-      await englishGoalNavigation.getByRole("button", { name: "Files", exact: true }).click();
+      await englishGoalNavigation.getByRole("button", { name: /^(Chat|对话)$/, exact: true }).click();
+      await page.locator('[data-goal-panel="chat"]').getByText("Agent is waiting for your decision", { exact: true }).first().waitFor({ state: "visible" });
+      await englishGoalNavigation.getByRole("button", { name: /^(Files|成果)$/, exact: true }).click();
       const latestRunOutput = page.locator('[data-output-kind="evidence"]', { hasText: "Latest run" }).first();
       await latestRunOutput.waitFor({ state: "visible" });
       const englishProjectionText = await page.locator(".personal-workspace-main").innerText();
@@ -627,8 +626,8 @@ export const typedActionsScenario = {
       if (api.durableWriteCount !== writesBeforeEnglishPreviews) throw new Error("English write previews mutated durable state before confirmation");
       await page.getByRole("button", { name: "Close", exact: true }).click();
 
-      await page.getByRole("button", { name: "Open Goal details or capability settings" }).click();
-      await page.getByRole("group", { name: "Goal settings" }).getByRole("button", { name: /Goal details/ }).click();
+      await page.getByRole("button", { name: "Overview", exact: true }).click();
+      await page.getByRole("button", { name: "Goal information", exact: true }).click();
       await page.getByRole("button", { name: "Set up Heartbeat", exact: true }).click();
       const englishHeartbeatDraft = await page.getByLabel("Send a message to LoopX").inputValue();
       for (const field of ["Frequency: Daily", "Stop condition: Goal completes", "Notification: Only notify me when needed"]) {
@@ -646,7 +645,7 @@ export const typedActionsScenario = {
       await page.getByText("Applied. LoopX state will refresh.", { exact: true }).waitFor({ state: "visible" });
       if (api.durableWriteCount !== writesBeforeEnglishHeartbeatApply + 1) throw new Error("English Heartbeat apply did not produce exactly one durable write");
       await page.getByRole("button", { name: "View updated Goal", exact: true }).click();
-      await page.getByRole("navigation", { name: "Goal view" }).getByRole("button", { name: "Chat", exact: true }).click();
+      await page.getByRole("navigation", { name: "Goal view" }).getByRole("button", { name: /^(Chat|对话)$/, exact: true }).click();
       const englishHeartbeatSchedule = page.locator(".personal-schedule-row", { hasText: "Goal Heartbeat" }).first();
       await englishHeartbeatSchedule.waitFor({ state: "visible" });
       const englishHeartbeatScheduleText = await englishHeartbeatSchedule.innerText();
@@ -720,14 +719,14 @@ export const typedActionsScenario = {
       const goalButton = page.locator(".personal-goal-link").first();
       await goalButton.click();
       const goalNavigation = page.getByRole("navigation", { name: "Goal 视图" });
-      const defaultTasksTab = goalNavigation.getByRole("button", { name: "Tasks" });
+      const defaultTasksTab = goalNavigation.getByRole("button", { name: /^(Tasks|任务)$/ });
       if (await defaultTasksTab.getAttribute("aria-current") !== "page") throw new Error("Selecting a Goal did not prioritize its Tasks view");
       await page.screenshot({ path: resolve(outputDir, "goal-tasks-loopx-theme.png"), fullPage: false, animations: "disabled" });
-      await goalNavigation.getByRole("button", { name: "Files" }).click();
+      await goalNavigation.getByRole("button", { name: /^(Files|成果)$/ }).click();
       const publicFiles = page.locator(".personal-files-list > button");
       await publicFiles.first().waitFor({ state: "visible" });
       await page.screenshot({ path: resolve(outputDir, "goal-files-loopx-theme.png"), fullPage: false, animations: "disabled" });
-      await goalNavigation.getByRole("button", { name: "Chat" }).click();
+      await goalNavigation.getByRole("button", { name: /^(Chat|对话)$/ }).click();
       await page.locator(".personal-channel-timeline").waitFor({ state: "visible" });
       await page.screenshot({ path: resolve(outputDir, "goal-chat-loopx-theme.png"), fullPage: false, animations: "disabled" });
       await defaultTasksTab.click();
@@ -747,7 +746,7 @@ export const typedActionsScenario = {
           throw new Error(`Compact header icon button was compressed: ${JSON.stringify(box)}`);
         }
       }
-      const compactGoalSettingsBox = await page.locator(".personal-goal-tools-trigger").boundingBox();
+      const compactGoalSettingsBox = await page.locator(".personal-goal-settings-action").boundingBox();
       if (!compactGoalSettingsBox || compactGoalSettingsBox.width < 40 || compactGoalSettingsBox.height < 36) {
         throw new Error(`Compact Goal settings trigger was compressed: ${JSON.stringify(compactGoalSettingsBox)}`);
       }
@@ -923,14 +922,9 @@ export const typedActionsScenario = {
       await selectFirstGoal();
       await page.locator(".personal-object-list").first().waitFor({ state: "visible" });
       if (await page.locator(".personal-task-capability-callout").count()) throw new Error("Goal capability settings still consume a full-width Tasks row");
-      await page.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      const goalSettingsMenu = page.getByRole("group", { name: "Goal 设置" });
-      const capabilityMenuItem = goalSettingsMenu.getByRole("button", { name: /能力配置/ });
-      await capabilityMenuItem.waitFor({ state: "visible" });
-      await page.screenshot({ path: resolve(outputDir, "goal-settings-unified-menu.png"), fullPage: false, animations: "disabled" });
-      await capabilityMenuItem.click();
+      await page.getByRole("button", { name: "Goal 设置", exact: true }).click();
       await page.getByRole("heading", { level: 1, name: "Goal 能力", exact: true }).waitFor({ state: "visible" });
-      if (await page.locator(".personal-workspace-shell").count()) throw new Error("Unified Goal capability action did not open the Settings surface");
+      if (await page.locator(".personal-workspace-shell:visible").count()) throw new Error("Unified Goal capability action did not open the Settings surface");
       await page.getByRole("heading", { level: 2, name: /^周期报告/ }).waitFor({ state: "visible" });
       const goalCapabilityOrder = await page.locator(".personal-capability-list button strong").allTextContents();
       if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable Goal settings must not show internal editor-contract notices");
@@ -1034,9 +1028,9 @@ export const typedActionsScenario = {
       await page.locator(".personal-capability-raw-values > summary").click();
       await page.locator(".personal-capability-value-grid section").first().getByText(/validation/u).waitFor({ state: "visible" });
       await page.getByRole("button", { name: "返回工作区", exact: true }).click();
-      await page.getByRole("button", { name: "Tasks", current: "page" }).waitFor({ state: "visible" });
-      await page.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      await page.getByRole("group", { name: "Goal 设置" }).getByRole("button", { name: /Goal 详情/ }).click();
+      await page.getByRole("button", { name: /^(Tasks|任务)$/, current: "page" }).waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "概览", exact: true }).click();
+      await page.getByRole("button", { name: "Goal 信息", exact: true }).click();
       await page.getByText("仓库", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("执行 Session", { exact: true }).waitFor({ state: "visible" });
       await page.locator(".personal-goal-repository").getByText("只读", { exact: true }).waitFor({ state: "visible" });
@@ -1045,8 +1039,8 @@ export const typedActionsScenario = {
 
       await page.getByRole("button", { name: "设置", exact: true }).click();
       await page.getByRole("heading", { name: "Lark", exact: true }).waitFor({ state: "visible" });
-      if (await page.locator(".personal-workspace-shell").count()) throw new Error("Workspace Settings did not replace the workspace shell");
-      if (await page.locator(".personal-channel-composer").count()) throw new Error("Workspace Settings left the chat composer visible");
+      if (await page.locator(".personal-workspace-shell:visible").count()) throw new Error("Workspace Settings did not replace the workspace shell");
+      if (await page.locator(".personal-channel-composer:visible").count()) throw new Error("Workspace Settings left the chat composer visible");
       if (await page.locator("[data-context-drawer]").count()) throw new Error("Workspace Settings left the context drawer visible");
       await page.screenshot({ path: resolve(outputDir, "workspace-settings.png"), fullPage: false, animations: "disabled" });
 
@@ -1422,9 +1416,9 @@ export const typedActionsScenario = {
       await page.screenshot({ path: resolve(outputDir, "lark-goal-connections.png"), fullPage: false, animations: "disabled" });
       await page.getByRole("button", { name: "返回工作区", exact: true }).click();
       await selectProductReleaseGoal();
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Tasks" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Tasks|任务)$/ }).click();
       await page.locator(".personal-object-list").first().waitFor({ state: "visible" });
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Files" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Files|成果)$/ }).click();
       const reportOutput = page.getByTestId("personal-goal-outputs").getByRole("button", { name: /Product Release milestone report/ });
       await reportOutput.waitFor({ state: "visible" });
       await reportOutput.click();
@@ -1433,7 +1427,7 @@ export const typedActionsScenario = {
       if (await page.locator('[data-testid="frontstage-milestone-reports"]').count()) throw new Error("Milestone report still rendered in the deprecated Ops Frontstage");
       await page.getByRole("button", { name: /关闭详情/ }).click();
       await selectFirstGoal();
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Chat" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Chat|对话)$/ }).click();
 
       const composer = page.getByLabel("向 LoopX 发送消息");
       const previewCountBeforeSemanticIntent = api.actionPreviews.length;
@@ -1466,7 +1460,7 @@ export const typedActionsScenario = {
 
       const previewCountBeforeAnalysis = api.actionPreviews.length;
       const turnCountBeforeAnalysis = api.turnRequests.length;
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Tasks" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Tasks|任务)$/ }).click();
       await composer.fill("做一次只读分析：判断刚刚新增的 Todo 是否与当前 Goal 一致，并在当前 Chat 返回两点理由。不要修改状态。");
       await page.getByRole("button", { name: "发送", exact: true }).click();
       const taskConversationReceipt = page.getByRole("region", { name: "最近对话" });
@@ -1477,12 +1471,12 @@ export const typedActionsScenario = {
       await page.screenshot({ path: resolve(outputDir, "task-chat-receipt.png"), fullPage: false, animations: "disabled" });
       await taskConversationReceipt.getByRole("button", { name: "查看回复" }).click();
       await page.getByText("已沿用当前 Goal 与 Agent Session。接下来会先核对状态，再继续推进。", { exact: true }).last().waitFor({ state: "visible", timeout: 10_000 });
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Tasks" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Tasks|任务)$/ }).click();
       await page.getByRole("region", { name: "最近对话" }).getByRole("button", { name: "转为 Task" }).click();
       if (!(await composer.inputValue()).startsWith("创建一个 Task：")) throw new Error("Converting the latest reply did not create an editable Task draft");
       await page.getByText("已根据回复生成 Task 草稿。编辑后发送，LoopX 会先展示确认预览。", { exact: true }).waitFor({ state: "visible" });
       await composer.fill("");
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Chat" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Chat|对话)$/ }).click();
 
       await composer.fill("让 Claude Code 负责管理这个 Goal");
       await page.getByRole("button", { name: "发送", exact: true }).click();
@@ -1566,9 +1560,9 @@ export const typedActionsScenario = {
       if (!heartbeatPreview) throw new Error("Continuation intent did not map to heartbeat.bind");
       await page.getByRole("button", { name: "关闭", exact: true }).click();
 
-      await page.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      await page.getByRole("group", { name: "Goal 设置" }).getByRole("button", { name: /Goal 详情/ }).click();
-      await page.getByRole("button", { name: "Tasks" }).click();
+      await page.getByRole("button", { name: "概览", exact: true }).click();
+      await page.getByRole("button", { name: "Goal 信息", exact: true }).click();
+      await page.getByRole("button", { name: /^(Tasks|任务)$/ }).click();
       const taskCards = page.locator(".personal-object-list", { hasText: "进行中" }).locator(".personal-task-card");
       const taskRow = taskCards.first().locator(":scope > button");
       await taskRow.click();
@@ -1641,7 +1635,7 @@ export const typedActionsScenario = {
       await page.getByText(/^无法准备确认预览：/u).waitFor({ state: "visible", timeout: 1_000 });
       if (await quickComplete.isDisabled()) throw new Error("Quick Todo completion stayed disabled after a preview failure");
       if (api.actionPreviews.length !== quickPreviewCount + 1) throw new Error("A rejected quick completion preview was recorded as ready");
-      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Chat" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Chat|对话)$/ }).click();
       await page.getByRole("dialog").filter({ hasText: "确认执行" }).waitFor({ state: "hidden" });
 
       const writesBeforeMonitorShortcut = api.durableWriteCount;
@@ -1668,7 +1662,7 @@ export const typedActionsScenario = {
       if (monitorCreate.normalized_parameters.target !== "复盘是否包含已完成、阻塞、下周计划") throw new Error(`Monitor target drifted: ${JSON.stringify(monitorCreate.normalized_parameters)}`);
       await page.getByRole("button", { name: "关闭", exact: true }).click();
 
-      await goalNavigation.getByRole("button", { name: "Chat" }).click();
+      await goalNavigation.getByRole("button", { name: /^(Chat|对话)$/ }).click();
       const schedule = page.locator(".personal-schedule-row").first();
       for (const [label, operation] of [["立即运行", "run_now"], ["暂停", "pause"], ["改为每 2 小时", "edit"], ["停止定时检查", "stop"]]) {
         await schedule.click();
@@ -1687,8 +1681,8 @@ export const typedActionsScenario = {
           api.nextStatusDelayMs = 1_600;
           await page.getByRole("button", { name: "查看更新后的 Goal", exact: true }).click();
           await page.getByRole("dialog").filter({ hasText: "执行结果" }).waitFor({ state: "hidden", timeout: 600 });
-          await goalNavigation.getByRole("button", { name: "Tasks", current: "page" }).waitFor({ state: "visible", timeout: 600 });
-          await goalNavigation.getByRole("button", { name: "Chat" }).click();
+          await goalNavigation.getByRole("button", { name: /^(Tasks|任务)$/, current: "page" }).waitFor({ state: "visible", timeout: 600 });
+          await goalNavigation.getByRole("button", { name: /^(Chat|对话)$/ }).click();
         } else {
           await page.getByRole("button", { name: "关闭", exact: true }).click();
         }
@@ -1775,7 +1769,7 @@ export const typedActionsScenario = {
       await page.locator(".personal-manager-link").first().click();
       const sourceGoalCard = page.locator(".personal-home-goal-card").first();
       await sourceGoalCard.click();
-      await goalNavigation.getByRole("button", { name: "Chat" }).click();
+      await goalNavigation.getByRole("button", { name: /^(Chat|对话)$/ }).click();
       if (!(await page.locator(".personal-run-row").count())) throw new Error("Source Goal did not expose its execution row after direct navigation");
       pass(3, "Needs-you and running cards navigate directly to their source Goal and expose typed details.");
 

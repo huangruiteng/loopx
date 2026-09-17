@@ -190,7 +190,8 @@ hooks and writes no files (feature-off parity). When enabled, `observer.ts`
 observes only `session/created`, `session/event`, and `session/disposed`.
 Events from any other session are rejected as `identity_invalid`, so they can
 never be silently attributed to the configured goal. Token-level
-`assistant/chunk` events are not consumed.
+`assistant/chunk` events — a retired type that only older durable logs still
+replay — are not consumed.
 
 ## Validation
 

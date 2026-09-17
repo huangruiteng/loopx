@@ -150,6 +150,61 @@ loopx goal-lifecycle --goal-id <goal-id> --operation resume --execute
 
 ---
 
+### 4.2 Goal 概览与交付依据 / Goal overview
+
+Goal 顶部直接提供 **概览、任务、对话、成果**，分别用于判断进展、推进工作、
+与 Agent 沟通和查看产出。选择一个 Goal 后仍默认进入四列任务看板；
+看板与列表保持原有任务范围。切换页面后，任务筛选、已加载历史和各页滚动位置保留。
+右上角设置直接打开既有能力配置；返回后保留工作区。切换 Goal 或数据源则重新建立页面上下文。
+
+点击一次 **概览**，即可查看当前进展、需要处理的决定、执行记录和用量。
+决定与执行记录直接打开原有详情；「查看任务」「查看成果」前往对应页面。
+低频仓库、连接和运行信息保留在「Goal 信息」中，不再充当查看进展的必经路径。
+
+**交付与依据：**概览直接展示当前交付链、责任、关联关系和验收观察，
+不需要额外打开复盘弹窗。可按标题、负责人或引用搜索，选择节点沿关系追溯，
+并打开当前工作区中的任务、决定或执行记录。桌面支持关系图，手机默认列表。
+
+**范围与刷新：**交付链覆盖当前选中工作及有限前序，不是完整 Goal 依赖图。
+缺失前序、来源裁剪与未展开决定可展开查看；任务完成或缺口列表为空都不代表通过验收。
+仅进入概览或点击「刷新快照」时读取交付链；离开概览取消未完成请求，
+不增加普通状态读取的图计算。状态变化后旧快照的来源跳转和导出暂停，刷新后继续。
+读取失败保留其他概览内容并显示重试提示，不将失败视为工作已完成。
+
+**导出：**「导出交付快照」下载包含读取时间、完整当前链、关系、证据引用和验收观察的
+Markdown。搜索筛选不会裁剪导出；不包含原始日志、文件正文或对话正文。
+成果与报告继续由成果页统一展示，不在概览建立第二份成果清单。
+
+**边界：**本功能无需模型调用或新配置。远端只读来源可查看同步的概览和验收观察，
+不回退查询本机同名 Goal 的交付链。所有阅读、筛选与导出均不改变任务、租约、预算或
+审批；来源操作仍使用既有预览和权限检查。本次没有状态迁移，回滚沿用原安装流程。
+
+English: Use the direct **Overview / Tasks / Chat / Files** navigation. Goal
+selection still opens Tasks. Switching views or returning from settings retains
+task filters, loaded history and scroll; a different Goal or source starts a new
+view session. Settings opens the existing capability editor directly.
+
+Overview brings progress, pending decisions, execution and usage into one page.
+Its delivery section reads the bounded current chain and acceptance observations
+on entry or explicit refresh, with search, map/list layouts, source navigation
+and Markdown export. Leaving Overview aborts pending reads. Export retains the
+entire validated delivery snapshot regardless of filtering, excluding raw logs
+and conversation/file bodies. Outputs remain in Files. Missing observations
+never certify acceptance. Remote sources show their synchronized observations
+without querying the local delivery API. No model call, new configuration,
+write authority or migration is introduced.
+
+CLI readback uses the same existing owners:
+
+```bash
+loopx --format json status --goal-id example-goal --include-task-graph
+loopx --format json review-packet --goal-id example-goal
+```
+
+The local Chat HTTP read is `GET /api/chat/delivery-review?goal_id=example-goal`.
+Lark continues using its existing Goal Channel projection; this slice adds no
+Lark card or notification and does not qualify cross-channel presentation parity.
+
 ## 💬 5. 悬浮会话托盘（ManagerConversationTray）
 
 无论你在浏览总览还是在处理看板，只要点击带有 **`立即发送`** 标识的快捷指令，页面右下角都会弹出抽屉式的轻量对话托盘：
@@ -163,7 +218,7 @@ loopx goal-lifecycle --goal-id <goal-id> --operation resume --execute
 
 ## 🔍 6. Goal 诊断与 Lark / 飞书话题连接抽屉
 
-点击页面右上角的 **`[Goal 详情]`** 按钮，可从右侧滑出元数据诊断抽屉：
+进入 **概览**，点击 **Goal 信息**，可从右侧滑出元数据诊断抽屉：
 
 ![Goal 诊断与 Lark 连接状态抽屉](../assets/personal-workspace/guide_goal_context_drawer.png)
 
@@ -194,7 +249,7 @@ loopx dashboard --enable-goal-subagent-configuration
 
 然后要为一个 Goal 开启运行时能力：
 
-1. 进入该 Goal，点击 **`Goal 详情`**；
+1. 进入该 Goal 的 **概览**，点击 **Goal 信息**；
 2. 在「自适应子代理执行」中选择最多子代理数。任务领域限制是可选项：全部不选表示
    不按领域过滤；需要进一步收窄时，再从当前 Goal 开放 advancement Todo 已声明的
    `task_domain` 中多选。每个选项会显示当前匹配的开放 Todo 数量。控制台优先读取

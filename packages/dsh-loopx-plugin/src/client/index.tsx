@@ -1,8 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// The renderer owns the client slots service in DSH 0.1.5.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 import { LoopXGoalBar } from './LoopXGoalBar.tsx'
 import { ensurePluginStyle } from './goalbar.module.css'

@@ -716,6 +716,23 @@ reviewed 路径；远端 SSH 生命周期入口仍使用其自身的绑定与读
 
 ### Stage 4：Replan、Acceptance 与 Settlement Review
 
+本地 Goal「概览」中的交付与依据区域通过一次按需 Chat 读取，组合已有的有界
+`task_graph_projection_v0` 与 `goal_acceptance_observation_projection_v0`。
+支持关系图/列表、搜索、直接关联筛选、当前来源跳转和 Markdown 快照导出。
+覆盖范围、缺失前序、未展开 Gate 及尚未评估的验收保持可见。工作区变化后，
+须刷新才能继续来源跳转或导出；读取失败、来源或 Goal 不匹配不能显示为空成功。
+成果继续由原成果页展示，不作为验收证据导出。
+概览、任务、对话、成果作为 Goal 的直接导航，配置直接进入既有设置编辑器。
+同一 Goal/来源内保留各页筛选、已完成历史与滚动位置；交付区域直接呈现在概览，
+不作为看板/列表的第三种布局，也不经过嵌套设置弹窗。
+
+这是 S5/G2 的有界可见性切片，不代表 G2 资格通过或通用交互编译器完成。
+复用原有 graph、acceptance 和 preview/apply owner，不新增任务、租约、权限或
+验收写入者。CLI 回读继续使用相同投影，Lark Goal Channel 保持现状；跨渠道复盘
+展示及受治理的修订/结算交互，仍由本 tracker 的领域后继承担。验证入口：
+`tests/test_delivery_review.py`、Dashboard `smoke:delivery-review`，以及中英文、
+桌面/窄屏真实打包页面交互。
+
 - 为 material replan delta、acceptance gap 和 effect repair state 增加 domain adapters；
 - 每个 domain reducer 继续保持 authoritative；
 - 用 model-behavior tests 验证有意义的干预点。

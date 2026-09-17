@@ -32,19 +32,19 @@ excludes(routerSource, 'view: z.enum(["ops", "share"])', "legacy dual-view routi
 excludes(routerSource, 'chatRoute', "legacy standalone chat route removed");
 includes(dashboardSource, 'data-testid="personal-goal-home"', "personal workspace route");
 includes(dashboardSource, "<PersonalWorkspacePage", "personal workspace rendering");
-includes(dashboardSource, "buildPersonalHomeModel(payload, rows)", "public-safe workspace projection");
+includes(dashboardSource, "buildPersonalHomeModel(payload, rows,", "public-safe workspace projection");
 includes(dashboardSource, "fetchChatSessions({", "persisted session discovery");
 includes(dashboardSource, "interruptChatTurn", "interruptible Agent turn");
 includes(dashboardSource, "sendChatTurnStreaming", "streaming Agent turn");
 
 includes(shellSource, "data-workspace-sidebar", "single workspace sidebar");
 includes(shellSource, "data-context-drawer", "polymorphic context drawer");
-includes(sidebarSource, "LoopX 管家", "manager channel");
+includes(sidebarSource, 't("sidebar.manager")', "manager channel");
 includes(sidebarSource, "Goals", "Goal directory");
 excludes(sidebarSource, "<span>需要你</span>", "legacy attention sub-navigation");
 excludes(sidebarSource, "<span>运行中</span>", "legacy running sub-navigation");
 excludes(sidebarSource, "<span>最近产出</span>", "legacy output sub-navigation");
-includes(sidebarSource, 'aria-label="创建 Goal"', "Goal creation entry");
+includes(sidebarSource, 'aria-label={t("sidebar.createGoal")}', "Goal creation entry");
 excludes(dashboardSource, 'className="personal-global-rail"', "unexplained icon rail");
 excludes(dashboardSource, '>查看</button>', "repeated row View button");
 excludes(dashboardSource, '>纠偏</button>', "repeated row correction button");
@@ -65,9 +65,9 @@ includes(drawerSource, 'role="dialog"', "accessible drawer dialog");
 includes(drawerSource, 'event.key === "Escape"', "drawer Escape handling");
 includes(drawerSource, "callbacks.onCorrectRun", "same-session correction action");
 includes(drawerSource, "callbacks.onInterruptRun", "turn interruption action");
-includes(drawerSource, "设置 Heartbeat", "Goal heartbeat entry");
-includes(drawerSource, "添加定时检查", "Goal monitor entry");
-includes(drawerSource, "高级诊断", "collapsed diagnostics");
+includes(drawerSource, 't("drawer.setupHeartbeat")', "Goal heartbeat entry");
+includes(drawerSource, 't("drawer.scheduleAdd")', "Goal monitor entry");
+includes(drawerSource, 't("drawer.advancedDiagnostics")', "collapsed diagnostics");
 includes(drawerSource, "session_id:", "diagnostic Session id");
 includes(drawerSource, "turn_id:", "diagnostic Turn id");
 

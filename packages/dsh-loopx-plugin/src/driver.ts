@@ -287,12 +287,20 @@ function foldSessionActivation(session: Agent['session']): ActivationProjection 
     activated: false,
   }
   try {
-    for (const event of session.events) foldActivationEvent(projection, event)
+    for (const event of session.snapshotEvents()) foldActivationEvent(projection, event)
   } catch {
     projection.pendingModelCalls.clear()
     projection.activated = false
   }
   return projection
+}
+
+/**
+ * Whether an Agent still holds input it has not consumed. The 0.1.5 Inbox
+ * exposes the two pending queues instead of the retired `hasPending` flag.
+ */
+function inboxHasPending(inbox: Agent['inbox']): boolean {
+  return inbox.nextTurn.length > 0 || inbox.nextStep.length > 0
 }
 
 function exactBinding(
@@ -503,7 +511,7 @@ export class LoopXContinuationDriver {
     const state = this.stateFor(agent)
     this.cancelPending(state)
     this.retireReservation(state)
-    state.competing = agent.inbox.hasPending
+    state.competing = inboxHasPending(agent.inbox)
     state.pauseAfterTurnError = false
     state.schedulerToken = ''
     state.unchangedPolls = 0
@@ -518,7 +526,7 @@ export class LoopXContinuationDriver {
     if (state.reservation?.phase === 'claimed' || state.reservation?.phase === 'admitted') {
       this.retireReservation(state)
     }
-    state.competing = agent.inbox.hasPending
+    state.competing = inboxHasPending(agent.inbox)
     if (!state.pauseAfterTurnError) this.requestEvaluation(state)
   }
 
@@ -625,7 +633,7 @@ export class LoopXContinuationDriver {
     if (event.type === 'command/done') {
       state.commands.delete(String(event.data.commandId))
       if (state.commands.size === 0) {
-        state.competing = agent.inbox.hasPending
+        state.competing = inboxHasPending(agent.inbox)
         if (agent.status === 'idle' && !state.pauseAfterTurnError) {
           this.requestEvaluation(state)
         }
@@ -742,7 +750,7 @@ export class LoopXContinuationDriver {
         this.resolveEvaluationWaiters(existing, false)
         this.cancelPending(existing)
         this.retireReservation(existing)
-        existing.competing = agent.inbox.hasPending
+        existing.competing = inboxHasPending(agent.inbox)
         existing.pauseAfterTurnError = false
         existing.schedulerToken = ''
         existing.unchangedPolls = 0
@@ -756,7 +764,7 @@ export class LoopXContinuationDriver {
       activation: foldSessionActivation(agent.session),
       requested: false,
       stopping: false,
-      competing: agent.inbox.hasPending,
+      competing: inboxHasPending(agent.inbox),
       pauseAfterTurnError: false,
       schedulerToken: '',
       unchangedPolls: 0,
@@ -786,7 +794,7 @@ export class LoopXContinuationDriver {
       && state.reservation === undefined
       && this.isLiveAgent(state.agent)
       && state.agent.status === 'idle'
-      && !state.agent.inbox.hasPending
+      && !inboxHasPending(state.agent.inbox)
       && state.agent.id === state.agent.session.id
       && state.agent.id === state.agent.session.header.id
       && typeof state.agent.session.header.cwd === 'string'

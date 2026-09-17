@@ -33,8 +33,8 @@ const approvedRequires = new Set([
   'react-dom',
   'react-dom/client',
   '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-runtime/client',
   '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-renderer/client',
   '@deepseek-ai/dsh-client-ui-slots',
 ])
 const packedStaticEntries = new Set([
@@ -349,11 +349,24 @@ async function openPackedConnection(host, service) {
   ])
   const ctx = new Context()
   await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(HostConnectionService, [])
-  const disposeRpc = host.registerGoalBarConnectionRpc(ctx.connection, service)
+  // 0.1.5 constructs the service as `(ctx, trustedHosts, browserAuth)`. The
+  // deployment's Connection plugin owns the concrete browser-auth face and is
+  // gated on a `credentials` service, so this carrier probe supplies its own
+  // permissive face to isolate the host-half state machine; the real fence is
+  // asserted by the real-profile phase against the installed application.
+  const connection = new HostConnectionService(ctx, [], {
+    isAuthenticated: () => true,
+    authorizeIndex: () => true,
+    authenticatedUrl: url => url,
+  })
+  const disposeRpc = host.registerGoalBarConnectionRpc(connection, service)
   return {
     baseUrl: `http://127.0.0.1:${String(ctx.webServer.port)}`,
-    sharedApi: Reflect.has(HostConnectionService.prototype, 'fetch'),
+    // This phase registers the standalone authenticated `/loopx` channel
+    // explicitly, so its client must address that channel. The shared
+    // `/api/loopx.goalbar` route is owned by the real-profile phase, which goes
+    // through the installed `registerGoalBarConnectionTransport` dispatcher.
+    sharedApi: false,
     disposeRpc,
     close: () => ctx.fiber.dispose(),
   }
@@ -375,7 +388,10 @@ async function exercisePackedService(installed) {
   const session = {
     id: sessionId,
     header: { version: 0, id: sessionId, createdAt: 1, cwd: installed },
+    // The fixture owns the log: `events` stays its mutable store for the
+    // harness, and `snapshotEvents()` is the installed-generation reader.
     events,
+    snapshotEvents: () => events,
     surface: { nodes: [] },
   }
   const agent = {
@@ -683,6 +699,15 @@ async function createClientModuleSystem(context, staticModules) {
             rev: 'dsh-loopx-plugin-runtime-smoke',
             external: [],
           }],
+          // 0.1.5 requires every entry to belong to exactly one initial-load
+          // batch, so the synthetic manifest carries the application batch the
+          // real host composes around this single row.
+          batches: [{
+            phase: 'application',
+            url: `/plugins/${packageId}/client.js`,
+            rev: 'dsh-loopx-plugin-runtime-smoke',
+            entries: [packageId],
+          }],
         },
         staticModules,
       },
@@ -856,12 +881,14 @@ async function rpc(
   return { response, body, rpcId }
 }
 
-async function hostRpc(baseUrl, method, payload, extraHeaders = {}) {
+async function hostRpc(baseUrl, method, args, extraHeaders = {}) {
   const rpcId = randomUUID()
   const response = await fetch(`${baseUrl}/api/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...extraHeaders },
-    body: JSON.stringify({ type: 'client-request', rpcId, method, payload }),
+    // The 0.1.5 gateway accepts exactly one plain-object `args` field as the
+    // Remote-method payload instead of the bare request object.
+    body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args } }),
     signal: AbortSignal.timeout(5_000),
   })
   assert.equal(response.status, 200)
@@ -937,8 +964,8 @@ async function exerciseRealDshWeb(
     assert.deepEqual(row.inject, [
       '@deepseek-ai/dsh-client-connection',
       '@deepseek-ai/dsh-client-locale',
-      '@deepseek-ai/dsh-client-runtime',
       '@deepseek-ai/dsh-client-ui-conversation',
+      '@deepseek-ai/dsh-client-ui-renderer',
     ])
     const bundle = await fetch(new URL(row.url, baseUrl), {
       headers: authHeaders,
@@ -957,8 +984,15 @@ async function exerciseRealDshWeb(
       `automatic initialization did not create the isolated loopx skill: ${initializationLog}\n${redactWebOutput(output.text)}`,
     )
     if (!skipSessionFixture) {
-      await hostRpc(baseUrl, 'session.create', { sessionId, cwd: packageRoot }, authHeaders)
-      const skillCatalog = await hostRpc(baseUrl, 'skill.list', { sessionId }, authHeaders)
+      // 0.1.5 namespaces Remote endpoints as `<namespace>/<method>` and names
+      // the wire arguments after the Host method's own parameter, so the
+      // session and skill hosts are addressed by namespace and `request`.
+      await hostRpc(baseUrl, 'session/create', {
+        request: { sessionId, cwd: packageRoot },
+      }, authHeaders)
+      const skillCatalog = await hostRpc(baseUrl, 'skills/list', {
+        request: { sessionId },
+      }, authHeaders)
       assert(
         skillCatalog.skills.some(skill => skill.name === 'loopx'),
         `automatic initialization did not expose the loopx skill before DSH readiness: ${JSON.stringify(skillCatalog)}\n${redactWebOutput(output.text)}`,
@@ -1120,7 +1154,7 @@ esac
   process.stdout.write([
     'dsh-loopx GoalBar runtime smoke passed',
     `  real-profile: DSH ${dshVersion}, packed install, awaited automatic initialization, immediate /loopx skill readback, boot graph, served/materialized Client, loopback fence, process teardown, idle no-extra-CLI`,
-    '  packed-rc7-connection: live mid-turn binding, lease revision reconciliation, runtime-only update, pending-watch abort, successful Start/Pause, handler disposal',
+    '  packed-connection: live mid-turn binding, lease revision reconciliation, runtime-only update, pending-watch abort, successful Start/Pause, handler disposal',
     '  client-lifecycle: slot coexistence/session injection plus ordinary-unload and cached-reapply CSS cleanup',
     '  manual-evidence: mounted Client-to-carrier Start/Pause stays in the owner-reviewed packed-browser gate',
   ].join('\n') + '\n')

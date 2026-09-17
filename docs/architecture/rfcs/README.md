@@ -281,11 +281,12 @@ changes.
 - [Intelligent Review and Dynamic Presentation Surfaces v0](intelligent-review-presentation-surfaces-v0.md)
   ([中文版](intelligent-review-presentation-surfaces-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
-  - **Delivery on `main`:** Proposal only.
-  - **Current boundary:** Existing typed proposals, gates, planning projections,
-    receipts, and direct reversible-action UX are inputs. The shared
-    `action_review_plan_v0` compiler and dynamic card/report/wiki presentation
-    contract have not shipped.
+  - **Delivery on `main`:** Bounded action-review, attention-detail and local
+    delivery-review verticals implemented.
+  - **Current boundary:** Typed action plans serve Dashboard and the existing
+    Lark operation cards. Direct Goal workspace navigation and Overview compose
+    bounded graph/acceptance readback, source navigation and snapshot export. General cross-channel disclosure,
+    living documents and governed amendment/settlement review remain open.
 - [Human Attention Wishlist v0](human-attention-wishlist-v0.md)
   ([中文版](human-attention-wishlist-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.

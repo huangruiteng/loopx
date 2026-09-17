@@ -162,7 +162,7 @@ export const stewardJourneyScenario = {
       // answer and the plan card in the conversation the owner asked in.
       await stewardCard.first().click();
       const goalNavigation = page.getByRole("navigation", { name: "Goal 视图" });
-      await goalNavigation.getByRole("button", { name: "Chat" }).click();
+      await goalNavigation.getByRole("button", { name: /^(Chat|对话)$/ }).click();
       // The row is asserted rather than probed: it ships with the product, and
       // a regression here sends the owner back to typing, which is the
       // behaviour this beat exists to prevent. Read before the owner types, so

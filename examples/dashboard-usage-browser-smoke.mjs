@@ -50,8 +50,8 @@ async function openDrawer(page, name) {
     await page.getByRole("dialog", { name: /Goal navigation|Goal 导航/ }).waitFor({ state: "visible" });
   }
   await page.getByRole("button", { name: new RegExp(name, "i") }).first().click();
-  await page.locator(".personal-goal-tools-trigger").click();
-  await page.locator(".personal-goal-tools-menu button").first().click();
+  await page.getByRole("button", { name: /^(Overview|概览)$/, exact: true }).click();
+  await page.getByRole("button", { name: /^(Goal information|Goal 信息)$/, exact: true }).click();
   await page.locator(".personal-context-drawer").waitFor({ state: "visible" });
   return page.locator(".personal-context-drawer").innerText();
 }

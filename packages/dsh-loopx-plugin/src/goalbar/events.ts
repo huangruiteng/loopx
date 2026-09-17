@@ -67,15 +67,17 @@ function runtimeReceipt(
     : undefined
 }
 export function latestSessionEventSeq(session: Session): number | null {
-  for (let index = session.events.length - 1; index >= 0; index -= 1) {
-    const seq = session.events[index]?.seq
+  const events = session.snapshotEvents()
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const seq = events[index]?.seq
     if (isSequence(seq)) return seq
   }
   return null
 }
 export function latestGoalBarCandidateSeq(session: Session): number | null {
-  for (let index = session.events.length - 1; index >= 0; index -= 1) {
-    const event = session.events[index]
+  const events = session.snapshotEvents()
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
     if ((event?.type === 'step/end' || event?.type === 'turn/end') && isSequence(event.seq)) {
       return event.seq
     }

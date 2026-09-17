@@ -249,12 +249,22 @@ passivity is a property of the selected adapter and its loaded dependencies.
 
 The two LoopX surfaces that depend on dsh do not move together. The bounded Turn
 host uses the Python SDK/runtime pin recorded above (`0.1.5rc1`, the released
-channel). The dsh-side plugin (`packages/dsh-loopx-plugin`) still builds its
-development and client surfaces against `0.1.1-rc.2` while its clean-Docker smoke
-already asserts `dsh --version == 0.1.5-rc.1`, and the 0.1.5 line no longer
-publishes `@deepseek-ai/dsh-client-runtime` (last released 0.1.1-rc.2), moving
-the client runner to `@deepseek-ai/dsh-cordis-client-runner`. That upgrade is
-tracked as its own pin item and does not change the L1 observer contract above.
+channel). The dsh-side plugin (`packages/dsh-loopx-plugin`) now builds its
+development, host, and client surfaces on the same released `0.1.5-rc.2` line
+instead of the retired `0.1.1-rc.2` one, and its npm peer ranges admit only
+`>=0.1.5-rc.1`. Three upstream moves forced that, so it is a new release line
+rather than a patch: the 0.1.5 line no longer publishes
+`@deepseek-ai/dsh-client-runtime` (last released 0.1.1-rc.2), which moves the
+`slots` service seat to `@deepseek-ai/dsh-client-ui-renderer` — the package this
+manifest now names in `dsh.client.inject`; `Session.events` became
+`Session.snapshotEvents()` and `Inbox.hasPending` became the two pending queues;
+and the shared `/api` bridge addresses Remote methods as `<namespace>/<method>`
+with a single `args` payload field. One `dsh.client.inject` list cannot order
+boot rows for both generations at once, so the plugin cannot claim both. The L1
+observer contract above is unchanged: the observer still consumes only
+`session/created`, `session/event`, and `session/disposed`, and now treats
+token-level `assistant/chunk` rows as retired input replayed from older durable
+logs instead of a live event type.
 
 ## Data and Authority Flow
 

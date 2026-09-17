@@ -93,7 +93,7 @@ export function WorkspaceSettingsPage({
   return (
     <section aria-label={t("settings.title")} className="personal-settings-page" data-pw-theme={theme}>
       <aside className="personal-settings-sidebar">
-        <button className="personal-settings-back" onClick={onClose} type="button">
+        <button autoFocus className="personal-settings-back" onClick={onClose} type="button">
           <ArrowLeft size={17} />
           <span>{t("settings.back")}</span>
         </button>

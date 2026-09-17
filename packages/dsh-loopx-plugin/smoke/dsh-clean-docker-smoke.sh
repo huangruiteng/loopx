@@ -39,7 +39,7 @@ container_smoke() {
   mkdir -p "$workspace"
   timeout 180 dsh plugin --profile web add \
     /artifact/dsh-loopx-plugin.tgz --ignore-scripts
-  [[ "$(dsh --version)" == '0.1.5-rc.1' ]] || {
+  [[ "$(dsh --version)" == '0.1.5-rc.2' ]] || {
     echo 'clean Docker smoke: unexpected DSH regression version' >&2
     return 1
   }
