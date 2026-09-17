@@ -82,6 +82,7 @@ class BenchmarkCodex(CodexOffline):
         if not 1 <= self.replan_after_todos <= 5:
             raise ValueError("replan_after_todos must be between 1 and 5")
         self._phase_number = 0
+        self._seeded_todo_id: str | None = None
         super().__init__(*args, **kwargs)
 
     @staticmethod
@@ -385,8 +386,29 @@ class BenchmarkCodex(CodexOffline):
             )
 
     async def _seed_phase(self, environment: BaseEnvironment, *, cwd: str) -> None:
-        todo_id = f"benchmark-task-phase-{self._phase_number:03d}"
-        await self._loopx(
+        text = (
+            f"[P0] Execute benchmark phase {self._phase_number}. Read the exact "
+            f"current task from {self._task_document}; inspect the workspace, implement and "
+            "validate it, and create bounded successor Todos for remaining work."
+        )
+        if self._seeded_todo_id:
+            listed = await self._loopx(environment, [
+                "todo", "list", "--goal-id", _GOAL_ID, "--role", "agent",
+                "--todo-id", self._seeded_todo_id,
+            ], cwd=cwd)
+            current = next(iter(listed["todos"]), None)
+            if current and current.get("status") in {"open", "blocked"}:
+                if current.get("claimed_by") != _AGENT_ID:
+                    raise RuntimeError("Seeded task Todo is no longer owned by this agent")
+                # New phase input revises our still-live generic task; do not
+                # strand it behind an unfinished predecessor or clear a wait.
+                await self._loopx(environment, [
+                    "todo", "update", "--goal-id", _GOAL_ID,
+                    "--todo-id", self._seeded_todo_id, "--agent-id", _AGENT_ID,
+                    "--text", text, "--execute",
+                ], cwd=cwd)
+                return
+        created = await self._loopx(
             environment,
             [
                 "todo",
@@ -395,14 +417,8 @@ class BenchmarkCodex(CodexOffline):
                 _GOAL_ID,
                 "--role",
                 "agent",
-                "--todo-id",
-                todo_id,
                 "--text",
-                (
-                    f"[P0] Execute benchmark phase {self._phase_number}. Read the exact "
-                    f"current task from {self._task_document}; inspect the workspace, implement and "
-                    "validate it, and create bounded successor Todos for remaining work."
-                ),
+                text,
                 "--task-class",
                 "advancement_task",
                 "--action-kind",
@@ -415,6 +431,7 @@ class BenchmarkCodex(CodexOffline):
             ],
             cwd=cwd,
         )
+        self._seeded_todo_id = created["todo_id"]
 
     def _worker_env(self, *, cwd: str) -> dict[str, str]:
         env = self._profile_env()

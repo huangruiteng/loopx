@@ -51,8 +51,10 @@ validator protection remains the environment owner's responsibility.
 
 `task_entry` is independent of the execution mode:
 
-- `seeded-todo` (the compatibility default) writes one generic execution Todo
-  per native phase. The agent can still plan and replan during execution.
+- `seeded-todo` (the compatibility default) writes a generic execution Todo.
+  Follow-up phases update that Todo while it remains live and owned by this
+  agent; completed or deferred work gets a new Todo. Updates preserve blocked
+  state. The agent can still plan and replan during execution.
 - `loopx-planned` runs the installed `$loopx` skill against the public
   `loopx todo plan` checkpoint before execution. The checkpoint shares the
   product's planner and continuation-aware Todo delta; it creates no planning

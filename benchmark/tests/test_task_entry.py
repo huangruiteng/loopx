@@ -321,3 +321,55 @@ def test_remaining_phase_time_caps_later_host_windows(planning_env, monkeypatch)
             "LOOPX_CODEX_TURN_TIMEOUT_SEC": "60",
             "LOOPX_PHASE_DEADLINE_EPOCH": "300",
         })
+
+
+@pytest.mark.parametrize("status", ["open", "blocked", "done", "deferred"])
+def test_seeded_followup_uses_real_todo_delta_without_reviving_terminal_work(
+    planning_env, tmp_path, monkeypatch, status
+):
+    import contextlib
+    import io
+    pytest.importorskip("harbor")
+    from benchmark.runtime import harbor
+    from loopx.cli import main
+
+    monkeypatch.setattr(harbor, "_GOAL_ID", "planning-goal")
+    monkeypatch.setattr(harbor, "_AGENT_ID", "planner")
+    agent = harbor.BenchmarkCodex(logs_dir=tmp_path, model_name="openai/fixture")
+
+    async def cli(environment, args, **kwargs):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = main([
+                "--format", "json", "--registry", planning_env["LOOPX_REGISTRY"],
+                "--runtime-root", planning_env["LOOPX_RUNTIME_ROOT"], *args,
+            ])
+        assert code == 0, output.getvalue()
+        return json.loads(output.getvalue())
+
+    monkeypatch.setattr(agent, "_loopx", cli)
+
+    async def scenario():
+        agent._phase_number = 1
+        await agent._seed_phase(None, cwd=planning_env["LOOPX_PROJECT"])
+        original = agent._seeded_todo_id
+        transition = (["complete", "--no-follow-up", "--note", "Synthetic task independently validated; no remaining work"]
+                      if status == "done" else ["update", "--status", status])
+        if status == "deferred":
+            transition += ["--resume-when", "capacity_available:fixture_pool"]
+        await cli(None, ["todo", *transition, "--goal-id", "planning-goal",
+                        "--todo-id", original, "--agent-id", "planner", "--execute"])
+        agent._phase_number = 2
+        await agent._seed_phase(None, cwd=planning_env["LOOPX_PROJECT"])
+        listed = await cli(None, ["todo", "list", "--goal-id", "planning-goal", "--role", "agent"])
+        todos = {t["todo_id"]: t for t in listed["todos"]}
+        if status in {"open", "blocked"}:
+            assert agent._seeded_todo_id == original and len(todos) == 1
+            assert todos[original]["status"] == status
+            assert "task-phase-002.md" in todos[original]["text"]
+        else:
+            assert agent._seeded_todo_id != original and len(todos) == 2
+            assert todos[original]["status"] == status
+            assert "task-phase-001.md" in todos[original]["text"]
+
+    asyncio.run(scenario())

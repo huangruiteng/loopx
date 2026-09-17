@@ -357,7 +357,7 @@ def test_phase_bootstrap_uses_current_public_cli(tmp_path, monkeypatch, existing
         # launching a model or mutating any active project.
         build_parser().parse_args(args)
         calls.append(args)
-        return {"after": {"execution_profile": {"replan_after_completed_todos": 3}}}
+        return {"todo_id": "todo_fixture", "after": {"execution_profile": {"replan_after_completed_todos": 3}}}
 
     monkeypatch.setattr(agent, "_write_task_document", write_task)
     monkeypatch.setattr(agent, "_registry_exists", registry_exists)
