@@ -5,45 +5,15 @@ Receipts describe transport/consumption, never a second mutable work status.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
 import re
 
-from . import _hash, _read, _root, _write
+from . import _read, _root, _write
+from ...control_plane.collaboration.inbox import (
+    _now as _now, _entry as _entry, _receipt as _receipt, record_read as record_read,
+)
 from ...file_lock import exclusive_file_lock
 from ...todos import list_goal_todos
 from ...chat_manager_details import _text
-
-
-def _now():
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _entry(root, goal_id, agent_id, request_id):
-    if not isinstance(request_id, str) or not re.fullmatch(r"[a-f0-9]{64}", request_id):
-        raise ValueError("invalid context request id")
-    target = dict(goal_id=goal_id, agent_id=agent_id)
-    row = _read(_root(root) / "entries" / _hash(target) / (request_id + ".json"))
-    if any(row.get(k) != v for k, v in {**target, "request_id": request_id}.items()):
-        raise ValueError("context receipt scope mismatch")
-    return row
-
-
-def record_read(root: Path, items: list[dict]) -> None:
-    """CLI supplied these messages to the receiver; not proof of comprehension."""
-    for row in items:
-        _entry(root, row["goal_id"], row["agent_id"], row["request_id"])
-        path = _root(root) / "reads" / (row["request_id"] + ".json")
-        with exclusive_file_lock(path.with_suffix(".lock")):
-            if not path.exists():
-                _write(
-                    path,
-                    {k: row[k] for k in ("request_id", "goal_id", "agent_id")}
-                    | {
-                        "read_at": _now(),
-                        "kind": "receiver_cli_read",
-                    },
-                )
 
 
 def _core_todos(registry_path, root, goal_id):
@@ -94,48 +64,6 @@ def link(root, registry_path, goal_id, agent_id, request_id, todo_ids, evidence_
         if any(old.get(k) != v for k, v in value.items()):
             _write(path, value | {"updated_at": _now()})
     return {"ok": True, **value}
-
-
-def _receipt(root, lane, row):
-    path = _root(root) / lane / (row["request_id"] + ".json")
-    if not path.exists():
-        return {}, None
-    try:
-        value = _read(path)
-        if any(
-            value.get(k) != row.get(k) for k in ("goal_id", "agent_id", "request_id")
-        ):
-            raise ValueError("receipt identity conflict")
-        if lane == "decisions" and value.get("decision") not in {
-            "adopt",
-            "defer",
-            "reject",
-            "no_change",
-        }:
-            raise ValueError("invalid decision receipt")
-        if lane == "reads" and (
-            value.get("kind") != "receiver_cli_read"
-            or not isinstance(value.get("read_at"), str)
-        ):
-            raise ValueError("invalid read receipt")
-        if lane == "links":
-            for key, pattern in [
-                ("todo_ids", r"todo_[a-f0-9]{12}"),
-                ("evidence_ids", r"sha256:[a-f0-9]{64}"),
-            ]:
-                refs = value.get(key)
-                if (
-                    not isinstance(refs, list)
-                    or len(refs) > 16
-                    or any(
-                        not isinstance(ref, str) or not re.fullmatch(pattern, ref)
-                        for ref in refs
-                    )
-                ):
-                    raise ValueError("invalid linked reference")
-        return value, None
-    except (OSError, ValueError, TypeError):
-        return {}, lane + "_unreadable_or_conflicting"
 
 
 def query(
@@ -234,6 +162,10 @@ def query(
                     }
                 )
         item = {k: row[k] for k in ("request_id", "goal_id", "agent_id", "source_id")}
+        if row.get("source_kind") == "peer":
+            item.update(source_kind="peer", source_agent_id=row["source_agent_id"], parent_request_id=row.get("parent_request_id"))
+        if owner_scope and row.get("brief"):
+            item["brief"] = row["brief"]
         item.update(
             delivery={"status": "delivered", "at": row.get("delivered_at")},
             read={

@@ -1,3 +1,4 @@
+import { CollaborationCard } from "./collaboration-card";
 import { Bot, Sparkles } from "lucide-react";
 
 import { AttentionRow } from "./cards/attention-row";
@@ -77,7 +78,8 @@ export function ChannelTimeline({
           {item.message.attachments?.length ? <div className="personal-message-images">{item.message.attachments.map((attachment) => <img alt={attachment.name} key={attachment.id} src={attachment.dataUrl} />)}</div> : null}
           {item.message.role === "user" ? <p>{item.message.text}</p> : <MarkdownText text={item.message.text} />}
           {item.message.pending ? <span className="personal-message-pending">{t("timeline.pending")}</span> : null}
-          <ReturnDeliveryStatus delivery={item.message.returnDelivery} />
+          <CollaborationCard request={item.message.collaboration} />
+              <ReturnDeliveryStatus delivery={item.message.returnDelivery} />
         </div>
       </article>
     );

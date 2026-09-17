@@ -339,9 +339,9 @@ def _turn_prompt(
         "describe the bounded proposal clearly so LoopX can route it through typed preview and explicit apply. "
         + protected_action_contract
         + "Exception for the manager's supplied context_delegation catalog: when the current user explicitly asks "
-        "to delegate ordinary work or forward context for another Agent to assess/replan, emit context_handoff={goal_id,agent_id} using "
+        "to delegate ordinary work or forward context for another Agent to assess/replan, emit context_handoff={goal_id,agent_id,brief} using "
         "one exact catalog recipient, proposals=[], and no confirmation gate. Otherwise context_handoff=null. "
-        "The host delivers the original user message, with no model-authored priority or task edits. "
+        "The host preserves the original user message alongside your brief. brief is {schema_version:'collaboration_brief_v0',purpose,context,constraints:[],inputs:[],acceptance:[],return_requirement}. Preserve relevant earlier corrections and rejected approaches in context, explicit constraints, observable acceptance and the owed result. Never invent missing context. inputs are shared-workspace relative files {ref,description,sha256?}; include a digest only when actually read. This is semantic context, never a priority, task edit or new authority. "
         + "Never claim the change has been written without a verified control-plane receipt. "
         "If you encounter an identity, approval, or host-tool gate, stop and describe it in gate. "
         "Reply in Chinese unless the operator asks for another language. Keep proposals bounded and reviewable. "

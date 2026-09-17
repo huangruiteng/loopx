@@ -85,8 +85,38 @@ export const chatRecoveryScenario = {
       if (await page.locator(".personal-manager-conversation-tray").count()) throw new Error("Full manager Chat kept the compact home tray visible");
       if (await page.locator(".personal-channel-timeline .personal-message").count() < 4) throw new Error("Manager Chat did not show the complete conversation history");
       await page.screenshot({ path: resolve(outputDir, "manager-chat.png"), fullPage: false, animations: "disabled" });
+      await page.getByLabel("向 LoopX 发送消息").fill("请把库存方案交给 worker，保留预留两件的修订，并请同伴独立复核后回报。");
+      await page.getByRole("button", { name: "发送", exact: true }).click();
+      while (await page.getByRole("button", { name: "汇总所有 Goal 进展" }).isDisabled()) await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+      await page.screenshot({ path: resolve(outputDir, "collaboration-before.png"), fullPage: false, animations: "disabled" });
       const returnSessionId = api.turnRequests.at(-1).sessionId;
       const turnsBeforeReturn = api.turnRequests.length;
+      const delegatedMessage = page.__loopxRuntime.messages.get(returnSessionId).findLast((message) => message.role !== "user");
+      delegatedMessage.collaboration = {
+        schema_version: "collaboration_request_readback_v0", request_id: "a".repeat(64), agent_id: "worker",
+        brief: { purpose: "协作验证库存方案", context: "已否决平均分配；新补充是预留两件。",
+          constraints: ["不可超预算", "不可下真实订单"], inputs: [{ ref: "inputs/demand.csv", description: "需求数据" }],
+          acceptance: ["独立验证库存与预算"], return_requirement: "返回方案和复核结论" },
+        read_status: "pending", decision: "pending", returns: [],
+      };
+      const collaboration = page.getByRole("region", { name: "交办说明" });
+      await collaboration.waitFor({ state: "visible", timeout: 10000 });
+      await collaboration.getByText("查看交办内容", { exact: true }).click();
+      await collaboration.getByText("已否决平均分配；新补充是预留两件。", { exact: true }).waitFor({ state: "visible" });
+      if (!(await collaboration.innerText()).includes("不可超预算")) throw new Error("Delegation lost its constraints");
+      delegatedMessage.collaboration.read_status = "supplied";
+      delegatedMessage.collaboration.decision = "adopt";
+      await collaboration.getByText("接收方判断: 已采纳", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+      if (api.turnRequests.length !== turnsBeforeReturn) throw new Error("Collaboration readback started another model turn");
+      await page.setViewportSize({ width: 390, height: 844 });
+      await collaboration.evaluate((node) => node.scrollIntoView({ block: "start" }));
+      if (await collaboration.evaluate((node) => node.scrollWidth > node.clientWidth + 1)) throw new Error("Collaboration brief overflows on mobile");
+      await page.screenshot({ path: resolve(outputDir, "collaboration-brief-mobile.png"), fullPage: false, animations: "disabled" });
+      await page.setViewportSize({ width: 1512, height: 982 });
+      await collaboration.evaluate((node) => node.scrollIntoView({ block: "start" }));
+      await page.screenshot({ path: resolve(outputDir, "collaboration-brief-desktop.png"), fullPage: false, animations: "disabled" });
+      pass("collaboration-brief", "Original conversation preserves context, constraints, inputs and receiver decision without a new turn");
+
       const returnText = "处理结论：已核验新约束并关联现有计划，无需再次追问。";
       page.__loopxRuntime.messages.get(returnSessionId).push({
         message_id: "handoff.browser-fixture", turn_id: "original-delegation",

@@ -63,7 +63,7 @@ MANAGER_AGENT_OBJECTIVE = (
     "When artifact_read_status is not_read, distinguish the useful recorded finding from verification still missing instead of discarding the finding. "
     "Prefer short paragraphs or bullets to large tables. For Lark use readable Markdown paragraphs and lists, with blank lines between blocks; prefer short lists to large tables. "
     "Default to intent delegation: for an explicit request to pass context, objectives or constraints to another Agent, use context_handoff "
-    "with the exact goal_id and agent_id from the supplied context_delegation catalog. This is already authorized "
+    "with the exact goal_id and agent_id from the supplied context_delegation catalog and a collaboration_brief_v0 brief preserving the relevant conversation, corrections, rejected approaches, constraints, inputs, acceptance and return requirement. Do not reduce a multi-message request to the last sentence. This is already authorized "
     "context delivery, not a Todo proposal: do not ask for another confirmation, set priority, change a plan, "
     "or interrupt the receiver. The receiving Agent owns relevance, replanning, and reporting its decision. "
     "Emit proposals=[] for that request. Do not claim delivery before the host returns its receipt. "
@@ -601,7 +601,7 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 11
+MANAGER_CONTEXT_VERSION = 12
 
 
 def manager_skill_text() -> str:

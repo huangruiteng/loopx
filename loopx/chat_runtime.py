@@ -1223,7 +1223,7 @@ class ChatRuntimeController:
                                       request=response["context_handoff"])
                     response = {**response, "proposals": [], "gate": None,
                                 "context_handoff_receipt": receipt,
-                                "message": "已将原消息交给 " + receipt["agent_id"] +
+                                "message": ("已将交办说明和原消息交给 " if response["context_handoff"].get("brief") else "已将原消息交给 ") + receipt["agent_id"] +
                                 "。它会结合当前计划自主处理，处理结论会自动回到这里，你不用再追问。"
                                 "（委托 " + receipt["request_id"][:8] + "）"}
                 except (OSError, ValueError):

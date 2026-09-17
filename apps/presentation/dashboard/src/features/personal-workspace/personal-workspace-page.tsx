@@ -1,3 +1,4 @@
+import { CollaborationCard } from "./collaboration-card";
 import {
   compileActionReviewPlan,
   isStaleActionFailure,
@@ -295,6 +296,7 @@ function ManagerConversationTray({
             <div className="personal-manager-conversation-bubble">
               {message.role === "user" ? <p>{message.text}</p> : <MarkdownText text={message.text} />}
               {message.pending ? <small>{t("conversation.agentPending")}</small> : null}
+              <CollaborationCard request={message.collaboration} />
               <ReturnDeliveryStatus delivery={message.returnDelivery} />
             </div>
           </article>

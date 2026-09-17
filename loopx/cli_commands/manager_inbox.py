@@ -1,11 +1,11 @@
 """Private context consumption; never creates or reprioritizes Todos."""
 
 import json
+from pathlib import Path
 from ..agent_registry import registered_agent_ids_for_goal
 from ..history import load_registry
 from ..capabilities.manager_context import (
     acknowledge,
-    pending,
     configure_evidence_scope,
 )
 
@@ -20,6 +20,8 @@ def register_manager_inbox(subparsers, add_format):
         "manager_inbox_action",
         choices=(
             "read",
+            "request",
+            "acknowledge-return",
             "acknowledge",
             "link",
             "report",
@@ -28,6 +30,10 @@ def register_manager_inbox(subparsers, add_format):
             "configure-ssh-read-scope",
         ),
     )
+    parser.add_argument("--peer-agent-id", help="For request: a registered peer of the same Goal.")
+    parser.add_argument("--operation-id", help="For request: stable retry identity; use a new id for another review round.")
+    parser.add_argument("--brief-file", help="For request: collaboration_brief_v0 JSON file.")
+    parser.add_argument("--parent-request-id", help="For request: an inbox request received by the sender.")
     parser.add_argument("--goal-id")
     parser.add_argument("--agent-id")
     parser.add_argument("--channel-id")
@@ -71,11 +77,22 @@ def handle_manager_inbox(args, registry_path, runtime_root):
         )
         if not goal or args.agent_id not in registered_agent_ids_for_goal(goal):
             raise ValueError("recipient is not registered")
-        if args.manager_inbox_action == "read":
-            result = pending(runtime_root, args.goal_id, args.agent_id)
-            from ..capabilities.manager_context.tracking import record_read
-
-            record_read(runtime_root, result["items"])
+        if args.manager_inbox_action == "request":
+            from ..control_plane.collaboration.peers import request
+            if not args.brief_file:
+                raise ValueError("--brief-file is required for a peer request")
+            with Path(args.brief_file).open("rb") as stream:
+                raw = stream.read(128_001)
+            if len(raw) > 128_000:
+                raise ValueError("peer brief file is too large")
+            result = request(runtime_root, registry_path, args.goal_id, args.agent_id,
+                             args.peer_agent_id, args.operation_id, json.loads(raw), args.parent_request_id)
+        elif args.manager_inbox_action == "acknowledge-return":
+            from ..control_plane.collaboration.peers import consume_return
+            result = consume_return(runtime_root, args.goal_id, args.agent_id, args.request_id)
+        elif args.manager_inbox_action == "read":
+            from ..control_plane.collaboration.peers import read_inbox
+            result = read_inbox(runtime_root, registry_path, args.goal_id, args.agent_id, workspace=Path.cwd())
             result["followthrough"] = (
                 "After reading and deciding, associate Core work with manager-inbox link. Then use manager-inbox report --phase conclusion --reply-text to return this request's concrete result, replan decision, or explicit blocker/defer reason to its original audience automatically. Use optional --phase decision only for meaningful interim news during longer work. Adoption/linking alone is not a completed exchange. Do not wait for the owner to ask again. Write audience-ready text, not private deliberation."
             )

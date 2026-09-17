@@ -1,3 +1,4 @@
+import type { CollaborationReadback } from "../../data/chat";
 import type { TeamPlanAppliedOutcome } from "./team-plan-preview";
 import type { ActionReviewPlan } from "../../../../../../loopx/control_plane/presentation/action_review_plan.js";
 import type { GoalAcceptanceObservation } from "../../data/goal-acceptance-observation";
@@ -245,6 +246,7 @@ export type WorkspaceActionPreview = {
 };
 
 export type WorkspaceMessage = {
+  collaboration?: CollaborationReadback;
   agentLabel?: string;
   attachments?: WorkspaceImageAttachment[];
   id: string;

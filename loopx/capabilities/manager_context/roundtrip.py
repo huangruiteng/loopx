@@ -12,10 +12,12 @@ import threading
 from datetime import datetime, timezone, timedelta
 
 from . import _root, _read, _write, _hash, authority
-from .tracking import _entry, _now, _receipt
+from .tracking import _entry, _now
 from ...file_lock import exclusive_file_lock
 from ...presentation.public_safety import scan_public_boundary_text
 from ...control_plane.effect_runtime import EffectRuntimeRejected, effect_runtime_result
+
+from ...control_plane.collaboration.inbox import needs_conclusion as needs_conclusion
 
 PHASES = ("decision", "conclusion")
 DELIVERY_STATUSES = {
@@ -149,6 +151,8 @@ def _route(root, row):
             raise ValueError("original Chat return route unavailable or ambiguous")
         register(root, row, *matches[0])
     value = _read(path)
+    if value.get("kind") == "peer" and (row.get("source_kind") != "peer" or value.get("source_agent_id") != row.get("source_agent_id")):
+        raise ValueError("peer return route identity mismatch")
     if any(
         value.get(k) != row.get(k)
         for k in ("request_id", "goal_id", "agent_id", "source_id")
@@ -157,56 +161,16 @@ def _route(root, row):
     return value
 
 
-def needs_conclusion(root, request_id):
-    return (_root(root) / "roundtrips" / (request_id + ".json")).exists() and not (
-        _root(root) / "replies" / request_id / "conclusion.json"
-    ).exists()
-
-
 def report(root, goal_id, agent_id, request_id, phase, text):
-    """Receiver declares an audience-ready decision or this request's conclusion."""
+    """Chat audience adapter; the shared Inbox owns result validation/persistence."""
     row = _entry(root, goal_id, agent_id, request_id)
     route = _route(root, row)
-    decision, error = _receipt(root, "decisions", row)
-    if error or not decision:
-        raise ValueError("record the receiver decision before returning a reply")
-    if (
-        phase not in PHASES
-        or not isinstance(text, str)
-        or not text.strip()
-        or len(text) > 20000
-    ):
-        raise ValueError(
-            "a decision/conclusion phase and bounded reply text are required"
-        )
-    text = text.strip()
-    if route["channel_id"] != "manager" and not scan_public_boundary_text(text)["ok"]:
-        raise ValueError(
-            "reply contains private boundary material; write an audience-safe conclusion"
-        )
-    path = _root(root) / "replies" / request_id / (phase + ".json")
-    with exclusive_file_lock((_root(root) / "replies" / request_id / "report.lock")):
-        value = {k: row[k] for k in ("request_id", "goal_id", "agent_id", "source_id")}
-        value.update(phase=phase, text=text, decision=decision["decision"])
-        if path.exists():
-            old = _read(path)
-            if any(old.get(k) != v for k, v in value.items()):
-                raise ValueError(
-                    "reply already committed; conflicting replacement rejected"
-                )
-        else:
-            if phase == "decision" and (path.parent / "conclusion.json").exists():
-                raise ValueError(
-                    "cannot publish an intermediate decision after conclusion"
-                )
-            _write(path, value | {"created_at": _now()})
-    return {
-        "ok": True,
-        "request_id": request_id,
-        "phase": phase,
-        "status": "queued_for_original_conversation",
-        "delivered": False,
-    }
+    if route.get("kind") == "peer" and phase != "conclusion":
+        raise ValueError("peer replies require a conclusion; report a concrete result or blocker")
+    if route["channel_id"] not in {"manager", "peer"} and not scan_public_boundary_text(text)["ok"]:
+        raise ValueError("reply contains private boundary material; write an audience-safe conclusion")
+    from ...control_plane.collaboration.inbox import record_result
+    return {**record_result(root, row, phase, text), "status": "queued_for_requester" if route.get("kind") == "peer" else "queued_for_original_conversation"}
 
 
 def reply_status(root, row):
@@ -300,6 +264,8 @@ def project_chat_session_snapshot(root, store, session_id):
     snapshot["messages"] = project_chat_return_deliveries(
         root, session_id, snapshot["messages"]
     )
+    from .presentation import project_collaboration
+    snapshot["messages"] = project_collaboration(store, root, session_id, snapshot["messages"])
     return snapshot
 
 
@@ -337,6 +303,8 @@ def drain(root, registry, store, external_sender, *, now=None, cancelled=lambda:
                 ):
                     raise ValueError("return_reply_identity_mismatch")
                 route = _route(root, row)
+                if route.get("kind") == "peer":
+                    continue  # Delivered by the requester inbox, never a Chat audience.
                 session = store.load_session(route["session_id"])
                 turn = store.turn_for_client(
                     route["session_id"], route["client_turn_id"]
