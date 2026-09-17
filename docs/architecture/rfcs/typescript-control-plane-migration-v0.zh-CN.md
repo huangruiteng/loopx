@@ -89,16 +89,20 @@ coordination 路径使用同一份语言中立的 `coordination_state_contract_v
 仅将 typed read result 适配为兼容 summary。这是 contract 检查点，不是已经完成的
 CLI lifecycle cutover。
 
-### 既有 lease 整笔事务闭合（2026-09-17）
+### Lease 领取与生命周期收敛（2026-09-18）
 
-renew、transfer、release 共用 `coordination/task_lease_lifecycle.ts` 与既有 typed
-lifecycle decision/record materializer。Python 对 promoted 命令只路由一次；local
-opening handle 持有 provider 身份，含 service factory 的 PostgreSQL。独立的 renew
-构造器与重复记录修改规则已移除，旧存储仅为实际 caller 保留。转交保留 Todo claim
-和 scopes；到期或 owner 注销后，释放仍须匹配当前 proof。no-op 清理封存 receipt，
-历史 replay 不重新授予执行权；归档后的续租/转交与不安全 generation 递增会拒绝。
-见[操作、兼容与四臂演练](../../reference/canonical-lease-renew.md)。本次闭合 L3
-既有 lease 修改，不包含 acquire/reclaim、executor fence、D2/D3 或新 Goal 默认化。
+独立 acquire/接管和维护共用 local provider/source fence。`task_lease_acquire_decision.ts`
+拥有领取准入和 materializer，legacy acquire 与 canonical 原子 Todo claim 复用；
+`task_lease_state.ts` 解释完整 canonical facts，归档 holder 不再阻塞 scope。Python
+只通过一次 native 请求传注册事实，不重建 canonical Todo/lease head；generation
+耗尽明确拒绝。
+
+Acquire receipt 本身不证明当前执行权：创建 CAS 的原样重试恢复原决定，再检查
+当前 owner/key/epoch；续约后返回当前 proof，过期/释放/转交不会复活旧执行。
+Canonical 完成可经既有 outbox 重建缺失的 Markdown 展示。真实 CLI、规模及
+native/imported fixture、进程中断和只读四臂演练覆盖此边界。见[操作与兼容](../../reference/canonical-lease-renew.md)。
+跨外部 effect 的 executor 持锁、剩余 L2/L4/L5 caller、D2/D3 和新 Goal 默认化仍
+独立验收；本批不是全部 L3 或 T4 retirement。
 
 ### Local provider opening 边界（2026-09-13）
 

@@ -109,19 +109,23 @@ native creation, archival, receipt replay, and store reopen are tested without
 Markdown metadata. Python only adapts the typed read result to the compatibility
 summary. This is a contract checkpoint, not a completed CLI lifecycle cutover.
 
-### Existing-lease transaction closure (2026-09-17)
+### Lease acquisition and lifecycle convergence (2026-09-18)
 
-Renew, transfer and release now share `coordination/task_lease_lifecycle.ts` and
-the existing typed lifecycle decision/record materializer. The Python adapter
-routes promoted commands once; the local opening handle owns provider identity,
-including service-factory PostgreSQL. Renew-only constructors and duplicated
-record materialization are retired; legacy storage remains for its real callers.
-Transfer preserves Todo claims/scopes; release accepts expired or deregistered
-owners only with matching proof. No-op cleanup seals a receipt; historical
-replay cannot reacquire execution authority. Archived renew/transfer and unsafe
-generation increments fail closed. See [operation, compatibility and four-arm
-rehearsal](../../reference/canonical-lease-renew.md). This closes existing-lease
-L3 mutations, not acquisition/reclaim, executor fences, D2/D3 or new-Goal defaults.
+Standalone acquire/takeover and maintenance now share the local provider/source
+fence. `task_lease_acquire_decision.ts` owns acquire admission and materialization;
+legacy acquire and canonical atomic Todo claim reuse it. `task_lease_state.ts`
+provides full canonical facts, including archived-holder exclusion from scope
+conflicts. Python sends registration facts through one native request, without
+reconstructing the canonical Todo/lease head. Generation exhaustion fails closed.
+
+An acquire receipt alone is not current execution authority: exact create-CAS
+retry recovers the original decision and verifies the current owner/key/epoch;
+renewal returns current proof while expiry/release/transfer cannot revive it.
+Canonical completion can rebuild missing Markdown display through the existing
+outbox. Real CLI, scale/native/imported fixtures, process loss and four-arm
+read-only rehearsal cover the boundary. See [operation and compatibility](../../reference/canonical-lease-renew.md).
+Executor-held external-effect locks, remaining L2/L4/L5 consumers, D2/D3 and
+new-Goal defaults remain separate; this is not full L3 or T4 retirement.
 
 ### Local provider opening boundary (2026-09-13)
 

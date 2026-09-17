@@ -177,8 +177,10 @@ and `tests/control_plane/test_shadow_fence_caller_parity_e2e.py`; the
 `baseline` entries of that fixture document earlier revisions and are never
 executed.
 
-Promoted CLI renew, transfer and release rows now assert provider commits and
-independent lease readback; the direct legacy-wire rows remain fenced. The CLI
+Promoted CLI acquire, renew, transfer and release rows assert provider commits and
+independent lease readback; fresh acquisition C is separate from keyless A and
+existing-lease B so one newly working caller does not invalidate another row's intended negative precondition. Acquisition replay verifies current proof.
+The direct legacy-wire rows remain fenced. The CLI
 scenario carries the validated current owner/key/version after renewal or
 transfer, rejects the superseded completion proof, and previews with the current
 proof before release. Release follows the active-lease/quiescence checks and

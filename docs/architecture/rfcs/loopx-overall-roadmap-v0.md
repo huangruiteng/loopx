@@ -235,7 +235,7 @@ These priorities do not change live Goal quota or authorize experiments/cloud re
 
 ### R5: TS Convergence and Local Persistence
 
-Existing-lease L3 checkpoint: renew/transfer/release share one TS transaction and provider handle; real File/SQLite/PostgreSQL and immutable-legacy comparison cover handover, cleanup and historical replay. [Boundary and remaining callers](../../reference/canonical-lease-renew.md); R5, D2/D3 and new-Goal default qualification remain open.
+L3 checkpoint: standalone acquisition/takeover, atomic claim admission and maintenance share typed lease facts/rules and provider opening. Exact acquisition retry verifies current execution proof; real CLI completion can recover missing Markdown display. Full-state scope conflicts, process interruption and File/SQLite/PostgreSQL read-only rehearsal are covered. [Remaining executor and integration boundaries](../../reference/canonical-lease-renew.md); R5, D2/D3 and default qualification remain open.
 
 - **Owner:** TS T0–T4 and shared-authority D1–D3; retain their numbering and gates.
 - **Selection:** prioritize an entire hot-path transaction or recovery lifecycle used by R1–R4. Record before/after callers, owners, crossings, actual deletions and performance. Stop adding per-field Python→TS RPCs; do not rebuild the merged Todo update.
