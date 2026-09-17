@@ -668,8 +668,6 @@ deeper documents and versioned protocols.
 
 - [Showcase Catalog](docs/showcases/README.md): public-safe cases and evidence
   labels.
-- [Research and Evidence](docs/research/README.md): benchmark investigations
-  and source-backed findings.
 - [Update Notes](docs/update-notes/README.md): public-safe progress notes.
 
 ### Project and Community

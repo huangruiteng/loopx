@@ -95,7 +95,6 @@ DOCS_CATALOG_NAV_ALLOWLIST = {
     "project/licensing.md": "project meta linked from README community section",
     "project/trademarks.md": "project meta linked from README community section",
     "reference/effect-interpreter-packet.md": "deep packet doc reachable from Reference",
-    "research/README.md": "research evidence index; not a top-nav primary",
     "update-notes/README.md": "dated progress notes; catalog-only entry",
 }
 
@@ -135,7 +134,6 @@ STABLE_README_DOCS_ENTRY_LINKS = (
     "development/testing-and-quality.md",
     "public-private-boundary.md",
     "showcases/README.md",
-    "research/README.md",
     "update-notes/README.md",
     "project/technical-directions.md",
     "development/contributor-tasks.md",
@@ -619,7 +617,6 @@ def main() -> int:
         ],
         "Inspect Outcomes": [
             "docs/showcases/README.md",
-            "docs/research/README.md",
             "docs/update-notes/README.md",
         ],
         "Project and Community": [
@@ -703,7 +700,6 @@ def main() -> int:
         "docs/reference/README.md",
         "docs/reference/contracts/README.md",
         "docs/reference/protocols/README.md",
-        "docs/research/README.md",
         "docs/showcases/README.md",
         "docs/product/runtimes/codex-cli/codex-cli-tui-loop.md",
         "docs/project/technical-directions.md",
@@ -784,7 +780,6 @@ def main() -> int:
             read("docs/product/runtimes/codex-cli/README.md"),
             read("docs/reference/README.md"),
             read("docs/reference/protocols/README.md"),
-            read("docs/research/README.md"),
             read("benchmark/README.md"),
             read("deprecate/benchmark-legacy/README.md"),
             read("docs/showcases/README.md"),

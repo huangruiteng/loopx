@@ -20,7 +20,6 @@ for cosmetic reasons.
 | `docs/reference/protocols/` | Versioned, implementation-oriented protocols | Narrative product direction |
 | `docs/development/` | Contributor workflows, testing, and repository policy | End-user onboarding |
 | `docs/showcases/` | Public-safe cases and reproducible demonstrations | Raw private evidence |
-| `docs/research/` | Public research, benchmark evidence, and route packets | Stable first-line documentation |
 | `docs/archive/` | Superseded or dated records kept for historical value | Active guidance |
 
 The `docs/` root is a compatibility surface, not the default destination for

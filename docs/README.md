@@ -17,7 +17,7 @@ material available without putting all of it on one page.
 | Connect an agent runtime or provider | [Integrations](integrations/README.md) | [Extensions and capabilities](reference/extensions.md) |
 | See what contributors are building now | [Current technical directions](project/technical-directions.md) | [Contributor tasks](development/contributor-tasks.md) |
 | Build or review LoopX | [Developer guide](development/README.md) | [Testing and quality](development/testing-and-quality.md) |
-| Inspect real outcomes | [Showcases](showcases/README.md) | [Research and evidence](research/README.md) |
+| Inspect real outcomes | [Showcases](showcases/README.md) | [Update notes](update-notes/README.md) |
 
 The [public homepage](https://huangruiteng.github.io/loopx/) is the shortest
 product overview. The [project README](../README.md) keeps the source-linked
@@ -61,7 +61,6 @@ a longer onboarding path.
 - [Development](development/README.md): contributor workflows and quality gates.
 - [Capabilities](../loopx/capabilities/README.md): outcome-owned capability surfaces.
 - [Showcases](showcases/README.md): public-safe cases and reproducible demos.
-- [Research](research/README.md): public evidence and benchmark investigations.
 - [Update notes](update-notes/README.md): current public progress notes.
 - [Archive](archive/README.md): superseded and dated records.
 

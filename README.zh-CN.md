@@ -594,7 +594,6 @@ LoopX 当前有三个活跃战略计划和一个架构与研究孵化器。这�
 ### 查看结果与证据
 
 - [Showcase Catalog](docs/showcases/README.md)：public-safe 案例和 evidence label。
-- [Research and Evidence](docs/research/README.md)：benchmark 调查和有来源的结论。
 - [Update Notes](docs/update-notes/README.md)：公开安全的进展记录。
 
 ### 项目与社区
