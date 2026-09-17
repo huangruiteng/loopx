@@ -292,7 +292,7 @@ def test_late_scheduler_wake_does_not_open_an_unfinishable_turn(planning_env, mo
         "LOOPX_TASK_STAGE": "execute",
         "LOOPX_VALIDATION_COMMAND_JSON": '["python", "check.py"]',
         "LOOPX_CODEX_TURN_TIMEOUT_SEC": "60",
-        "LOOPX_PHASE_DEADLINE_EPOCH": "310",
+        "LOOPX_PHASE_DEADLINE_EPOCH": "260",
     }
     monkeypatch.setattr(worker.time, "time", lambda: 100)
     monkeypatch.setattr(worker, "prepare_codex_home", lambda *a, **kw: pytest.fail("late wake must not launch a host"))
@@ -301,3 +301,23 @@ def test_late_scheduler_wake_does_not_open_an_unfinishable_turn(planning_env, mo
         assert receipt["budget_exhausted"] and receipt["host_invoked"] is False
         assert receipt.get("turn_execution") is None
     assert not (Path(env["LOOPX_RUNTIME_ROOT"]) / "benchmark-pending-turn.json").exists()
+
+
+def test_remaining_phase_time_caps_later_host_windows(planning_env, monkeypatch):
+    from benchmark.runtime import worker
+
+    class CapturedWindow(Exception):
+        pass
+
+    def capture(home, *, execution, **kwargs):
+        assert execution.timeout_seconds == 40
+        raise CapturedWindow
+
+    monkeypatch.setattr(worker.time, "time", lambda: 100)
+    monkeypatch.setattr(worker, "prepare_codex_home", capture)
+    with pytest.raises(CapturedWindow):
+        run_once(planning_env | {
+            "LOOPX_TASK_STAGE": "execute",
+            "LOOPX_CODEX_TURN_TIMEOUT_SEC": "60",
+            "LOOPX_PHASE_DEADLINE_EPOCH": "300",
+        })

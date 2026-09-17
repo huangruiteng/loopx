@@ -11,6 +11,7 @@ import subprocess
 import time
 import uuid
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from benchmark.runtime.codex import Execution, prepare_codex_home, process_environment
@@ -234,12 +235,14 @@ def run_once(env: dict[str, str]) -> dict:
     try:
         if stage == "execute" and env.get("LOOPX_PHASE_DEADLINE_EPOCH"):
             remaining = float(env["LOOPX_PHASE_DEADLINE_EPOCH"]) - time.time()
-            # A later scheduler wake must still leave room for host execution,
-            # validation and settlement. Do not open a transaction the outer
-            # phase timeout would interrupt solely because it started too late.
-            if remaining <= execution.timeout_seconds + 150:
+            # Reserve startup and settlement on every wake, then allow the
+            # remaining time for work instead of reusing the initial timeout.
+            if remaining <= 160:
                 receipt.update(ok=True, budget_exhausted=True, host_invoked=False)
                 return receipt
+            execution = replace(
+                execution, timeout_seconds=min(execution.timeout_seconds, remaining - 160)
+            )
         prepare_codex_home(
             home,
             execution=execution,

@@ -79,9 +79,9 @@ identity and expose existing Todos to the planner; they do not clear waiting
 state or force the agent active. An unresolved Turn must be recovered before
 another phase can replace its task input. These wait/recovery rules apply to
 both entry policies; they correct the earlier unconditional phase reset.
-Every scheduler wake also checks the remaining phase deadline before opening a
-host execution. If the configured execution window plus settlement reserve no
-longer fits, it records a budget-exhausted no-op without creating a pending Turn.
+Every scheduler wake caps its host timeout against the remaining phase budget
+before opening an execution. If only startup and settlement reserve remains,
+it records a budget-exhausted no-op without creating a pending Turn.
 The deadline uses the task environment's clock, including remote Harbor backends.
 
 To compare entry policies, hold the execution mode, session policy, model,
