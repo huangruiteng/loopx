@@ -206,7 +206,11 @@ def run_once(env: dict[str, str]) -> dict:
         sandbox=env.get("LOOPX_CODEX_SANDBOX", "danger-full-access"),
         timeout_seconds=float(env.get("LOOPX_CODEX_TURN_TIMEOUT_SEC", "4700")),
         validation_command=json.loads(env.get("LOOPX_VALIDATION_COMMAND_JSON", "[]")),
+        task_entry=env.get("LOOPX_TASK_ENTRY", "seeded-todo"),
     )
+    stage = env.get("LOOPX_TASK_STAGE", "execute")
+    if stage not in {"plan", "execute"} or (stage == "plan" and execution.task_entry != "loopx-planned"):
+        raise ValueError("invalid task-entry stage")
     turn_id = f"wake-{time.time_ns()}-{uuid.uuid4().hex[:12]}"
     log_root = Path(env["LOOPX_WAKE_LOG_DIR"])
     wake = log_root / turn_id
@@ -218,6 +222,8 @@ def run_once(env: dict[str, str]) -> dict:
         "turn_id": turn_id,
         "mode": execution.mode,
         "context": execution.context,
+        "task_entry": execution.task_entry,
+        "stage": stage,
         "home_scope": "trial",
         "ok": False,
         "timed_out": False,
@@ -238,16 +244,23 @@ def run_once(env: dict[str, str]) -> dict:
             skills=Path(env["LOOPX_SHARED_SKILLS"]) if execution.uses_loopx else None,
         )
         body = "Finish the task."
-        if execution.mode in {"heartbeat", "loopx-goal"}:
+        if stage == "plan":
+            from benchmark.runtime.planning import task_plan_packet
+
+            planning_before = task_plan_packet(env, loopx_command(env))
+            body = "$loopx\n\nHost-supplied planning checkpoint:\n" + json.dumps(planning_before, ensure_ascii=False)
+            (wake / "planning-input.json").write_text(body, encoding="utf-8")
+            (wake / "planning-schema.json").write_text(json.dumps(planning_before["result_schema"]))
+        elif execution.mode in {"heartbeat", "loopx-goal"}:
             body = heartbeat_body(env, turn_id, native_goal=execution.native_goal)
         elif execution.mode == "plain":
             body = Path(env["LOOPX_TASK_DOC"]).read_text(encoding="utf-8")
         with (wake / "stderr.log").open("w") as stderr:
-            if execution.native_goal:
+            if execution.native_goal and stage == "execute":
                 run_native_goal(env, execution, body, receipt, stderr)
             else:
                 pending = {}
-                if execution.mode == "turn":
+                if execution.mode == "turn" and stage == "execute":
                     pending_path.parent.mkdir(parents=True, exist_ok=True)
                     if pending_path.exists():
                         pending = read_json(pending_path.read_text())
@@ -261,7 +274,7 @@ def run_once(env: dict[str, str]) -> dict:
                         pending["turn_instance_id"],
                         pending.get("resume_turn_key"),
                     )
-                    if execution.mode == "turn"
+                    if execution.mode == "turn" and stage == "execute"
                     else [
                         env["CODEX_BIN"],
                         "exec",
@@ -271,6 +284,11 @@ def run_once(env: dict[str, str]) -> dict:
                         execution.sandbox,
                         "--cd",
                         env["LOOPX_PROJECT"],
+                        *([
+                            "-c", "features.goals=false",
+                            "--output-schema", str(wake / "planning-schema.json"),
+                            "--output-last-message", str(wake / "planning-result.json"),
+                        ] if stage == "plan" else []),
                         "-",
                     ]
                 )
@@ -278,13 +296,26 @@ def run_once(env: dict[str, str]) -> dict:
                     with child_process(
                         command, env=env, stdout=stdout, stderr=stderr
                     ) as process:
-                        allowance = 150 if execution.mode == "turn" else 0
+                        allowance = 150 if execution.mode == "turn" and stage == "execute" else 0
+                        timeout = (float(env["LOOPX_PLANNING_TIMEOUT_SEC"]) if stage == "plan"
+                                   else execution.timeout_seconds + allowance)
                         process.communicate(
-                            input=body, timeout=execution.timeout_seconds + allowance
+                            input=body, timeout=timeout
                         )
                         receipt["return_code"] = process.returncode
                         receipt["ok"] = process.returncode == 0
-                if execution.mode == "turn":
+                if stage == "plan" and receipt["ok"]:
+                    from benchmark.runtime.planning import task_plan_packet, validate_plan_readback
+
+                    result = read_json((wake / "planning-result.json").read_text())
+                    receipt["planning"] = validate_plan_readback(
+                        result, planning_before, task_plan_packet(env, loopx_command(env)),
+                    )
+                    target = Path(env["LOOPX_PLANNING_RESULT"])
+                    temporary = target.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(receipt["planning"]))
+                    temporary.replace(target)
+                elif execution.mode == "turn" and stage == "execute":
                     result = read_json((wake / "stdout.jsonl").read_text())
                     receipt["turn_execution"] = result
                     receipt["ok"] = receipt["ok"] and result.get("ok") is True
@@ -298,8 +329,10 @@ def run_once(env: dict[str, str]) -> dict:
                         temporary.write_text(json.dumps(pending))
                         temporary.replace(pending_path)
     except subprocess.TimeoutExpired:
+        receipt["ok"] = False
         receipt["timed_out"] = True
     except BaseException as exc:
+        receipt["ok"] = False
         receipt["error_kind"] = type(exc).__name__
         raise
     finally:

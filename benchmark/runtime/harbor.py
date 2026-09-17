@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -55,6 +56,8 @@ class BenchmarkCodex(CodexOffline):
         turn_timeout_sec=4700,
         scheduler_timeout_sec=5080,
         replan_after_todos=3,
+        task_entry="seeded-todo",
+        planning_timeout_sec=300,
         **kwargs,
     ):
         if isinstance(validation_command, str):
@@ -65,7 +68,11 @@ class BenchmarkCodex(CodexOffline):
             codex_sandbox,
             float(turn_timeout_sec),
             validation_command if validation_command is not None else (),
+            task_entry,
         )
+        self.planning_timeout = float(planning_timeout_sec)
+        if not 0 < self.planning_timeout < float("inf"):
+            raise ValueError("planning timeout must be finite and positive")
         self.scheduler_timeout = int(scheduler_timeout_sec)
         if self.scheduler_timeout <= self.execution.timeout_seconds + 150:
             raise ValueError(
@@ -215,6 +222,7 @@ class BenchmarkCodex(CodexOffline):
             "runtime_profile": "generic_cli",
             "execution_mode": self.execution.mode,
             "iteration_context": self.execution.context,
+            "task_entry": self.execution.task_entry,
             "home_scope": "trial",
             "login_shell_node_path": _BASH_ENV,
             "scheduler_terminal_packet_compatibility": True,
@@ -239,12 +247,18 @@ class BenchmarkCodex(CodexOffline):
                 handle.write(instruction.strip())
                 handle.write("\n")
             await environment.upload_file(Path(name), _TASK_DOC)
+            await environment.upload_file(Path(name), self._task_document)
             await self.exec_as_root(
                 environment,
-                command=f"chmod 0644 {_TASK_DOC}",
+                command=f"chmod 0644 {_TASK_DOC} {self._task_document}",
             )
         finally:
             Path(name).unlink(missing_ok=True)
+
+    @property
+    def _task_document(self) -> str:
+        # Existing Todos keep their original input when Harbor supplies a new phase.
+        return f"{_CONTROL}/task-phase-{self._phase_number:03d}.md"
 
     async def _loopx(
         self,
@@ -291,6 +305,11 @@ class BenchmarkCodex(CodexOffline):
     async def _prepare_phase(
         self, environment: BaseEnvironment, instruction: str, *, cwd: str
     ) -> None:
+        pending = await environment.exec(
+            command=f"test -e {_LOOPX_RUNTIME}/benchmark-pending-turn.json"
+        )
+        if pending.return_code == 0:
+            raise RuntimeError("Resolve the pending Turn before entering another task phase")
         await self._write_task_document(environment, instruction)
         if not await self._registry_exists(environment):
             await self._loopx(
@@ -338,7 +357,7 @@ class BenchmarkCodex(CodexOffline):
                 cwd=cwd,
             )
         else:
-            # Harbor invoked a new task phase; this is not an automatic unblock.
+            # New input is not evidence that an existing wait or gate was resolved.
             await self._loopx(
                 environment,
                 [
@@ -347,14 +366,25 @@ class BenchmarkCodex(CodexOffline):
                     _GOAL_ID,
                     "--execution-replan-after-todos",
                     str(self.replan_after_todos),
-                    "--clear-waiting-on",
-                    "--agent-work-mode",
-                    f"{_AGENT_ID}=active",
                     "--execute",
                 ],
                 cwd=cwd,
             )
 
+        if self.execution.task_entry == "seeded-todo":
+            await self._seed_phase(environment, cwd=cwd)
+
+        cadence = await self._loopx(
+            environment, ["configure-goal", "--goal-id", _GOAL_ID], cwd=cwd,
+        )
+        configured_state = cadence.get("after") or cadence.get("before") or {}
+        configured = configured_state.get("execution_profile", {}).get("replan_after_completed_todos")
+        if configured != self.replan_after_todos:
+            raise RuntimeError(
+                f"replan cadence readback mismatch: expected {self.replan_after_todos}, got {configured!r}"
+            )
+
+    async def _seed_phase(self, environment: BaseEnvironment, *, cwd: str) -> None:
         todo_id = f"benchmark-task-phase-{self._phase_number:03d}"
         await self._loopx(
             environment,
@@ -370,7 +400,7 @@ class BenchmarkCodex(CodexOffline):
                 "--text",
                 (
                     f"[P0] Execute benchmark phase {self._phase_number}. Read the exact "
-                    f"current task from {_TASK_DOC}; inspect the workspace, implement and "
+                    f"current task from {self._task_document}; inspect the workspace, implement and "
                     "validate it, and create bounded successor Todos for remaining work."
                 ),
                 "--task-class",
@@ -386,20 +416,6 @@ class BenchmarkCodex(CodexOffline):
             cwd=cwd,
         )
 
-        cadence = await self._loopx(
-            environment,
-            ["configure-goal", "--goal-id", _GOAL_ID],
-            cwd=cwd,
-        )
-        configured_state = cadence.get("after") or cadence.get("before") or {}
-        configured = configured_state.get("execution_profile", {}).get(
-            "replan_after_completed_todos"
-        )
-        if configured != self.replan_after_todos:
-            raise RuntimeError(
-                f"replan cadence readback mismatch: expected {self.replan_after_todos}, got {configured!r}"
-            )
-
     def _worker_env(self, *, cwd: str) -> dict[str, str]:
         env = self._profile_env()
         if not self.execution.uses_loopx:
@@ -413,11 +429,12 @@ class BenchmarkCodex(CodexOffline):
                 "LOOPX_GOAL_ID": _GOAL_ID,
                 "LOOPX_AGENT_ID": _AGENT_ID,
                 "LOOPX_PROJECT": cwd,
-                "LOOPX_TASK_DOC": _TASK_DOC,
+                "LOOPX_TASK_DOC": self._task_document,
                 "LOOPX_WAKE_LOG_DIR": _WAKE_LOG_DIR,
                 "LOOPX_CODEX_HOME": _CODEX_HOME,
                 "LOOPX_SHARED_SKILLS": _SHARED_SKILLS,
                 "LOOPX_EXECUTION_MODE": self.execution.mode,
+                "LOOPX_TASK_ENTRY": self.execution.task_entry,
                 "LOOPX_ITERATION_CONTEXT": self.execution.context,
                 "LOOPX_CODEX_SANDBOX": self.execution.sandbox,
                 "LOOPX_VALIDATION_COMMAND_JSON": json.dumps(
@@ -524,6 +541,7 @@ class BenchmarkCodex(CodexOffline):
         context.metadata = {
             "execution_mode": self.execution.mode,
             "iteration_context": self.execution.context,
+            "task_entry": self.execution.task_entry,
             "home_scope": "trial",
             "replan_after_completed_todos": self.replan_after_todos,
             "benchmark_phase": self._phase_number,
@@ -543,6 +561,7 @@ class BenchmarkCodex(CodexOffline):
         if not self.model_name:
             raise ValueError("model_name is required")
         self._phase_number += 1
+        deadline = time.monotonic() + self.scheduler_timeout
         pwd = await self.exec_as_agent(environment, command="pwd", timeout_sec=30)
         cwd = (pwd.stdout or "").strip()
         if not cwd.startswith("/"):
@@ -557,6 +576,33 @@ class BenchmarkCodex(CodexOffline):
             else:
                 await self._write_task_document(environment, instruction)
             wake_command = [f"{_PYTHON}/bin/python3", "-m", _WORKER_MODULE]
+            env = self._worker_env(cwd=cwd)
+            if self.execution.task_entry == "loopx-planned":
+                result_path = f"{_CONTROL}/planning-phase-{self._phase_number:03d}.json"
+                planning_timeout = min(self.planning_timeout, deadline - time.monotonic() - 30)
+                if planning_timeout <= 0:
+                    raise TimeoutError("Task budget exhausted before planning")
+                await self.exec_as_agent(
+                    environment, command=shlex.join(wake_command), cwd=cwd,
+                    env=env | {
+                        "LOOPX_TASK_STAGE": "plan",
+                        "LOOPX_PLANNING_TIMEOUT_SEC": str(planning_timeout),
+                        "LOOPX_PLANNING_RESULT": result_path,
+                    },
+                    timeout_sec=planning_timeout + 30,
+                )
+                observed = await environment.exec(command=f"cat {result_path}")
+                entry = json.loads(observed.stdout or "")
+                if entry.get("state_readback_verified") is not True:
+                    raise RuntimeError("Planning did not return verified Todo readback")
+                if entry["status"] == "blocked":
+                    return
+            remaining = int(deadline - time.monotonic())
+            if remaining <= 150:
+                raise TimeoutError("Task budget exhausted before execution handoff")
+            # Planning consumes the phase budget, including when the host later resumes.
+            host_timeout = min(self.execution.timeout_seconds, remaining - 150)
+            env["LOOPX_CODEX_TURN_TIMEOUT_SEC"] = str(host_timeout)
             if self.execution.mode in {"heartbeat", "turn"}:
                 command = [
                     f"{_PYTHON}/bin/python3",
@@ -578,7 +624,7 @@ class BenchmarkCodex(CodexOffline):
                     "--wake-cmd",
                     "exec " + shlex.join(wake_command),
                     "--wake-timeout-seconds",
-                    str(self.execution.timeout_seconds + 150),
+                    str(host_timeout + 150),
                     "--quota-timeout-seconds",
                     "30",
                     "--error-backoff-seconds",
@@ -589,7 +635,7 @@ class BenchmarkCodex(CodexOffline):
             phase_log = f"/logs/agent/worker-phase-{self._phase_number:03d}.log"
             shell = (
                 "set +e; "
-                f"timeout --signal=TERM --kill-after=30 {self.scheduler_timeout}s "
+                f"timeout --signal=TERM --kill-after=30 {remaining}s "
                 f"{shlex.join(command)} >> {shlex.quote(phase_log)} 2>&1; "
                 "rc=$?; "
                 # Budget exhaustion retains partial artifacts for native scoring.
@@ -598,9 +644,9 @@ class BenchmarkCodex(CodexOffline):
             await self.exec_as_agent(
                 environment,
                 command=shell,
-                env=self._worker_env(cwd=cwd),
+                env=env,
                 cwd=cwd,
-                timeout_sec=self.scheduler_timeout + 60,
+                timeout_sec=remaining + 60,
             )
         finally:
             # Remote Harbor backends download logs after run(). Read them now

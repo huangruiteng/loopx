@@ -11,6 +11,7 @@ from pathlib import Path
 
 MODES = ("plain", "native-goal", "heartbeat", "turn", "loopx-goal")
 CONTEXTS = ("fresh", "resume-if-available")
+TASK_ENTRIES = ("seeded-todo", "loopx-planned")
 SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
 
 
@@ -21,10 +22,15 @@ class Execution:
     sandbox: str = "danger-full-access"
     timeout_seconds: float = 4700
     validation_command: tuple[str, ...] = ()
+    task_entry: str = "seeded-todo"
 
     def __post_init__(self) -> None:
         if self.mode not in MODES or self.context not in CONTEXTS:
             raise ValueError("unsupported execution mode or iteration context")
+        if self.task_entry not in TASK_ENTRIES:
+            raise ValueError("unsupported task entry")
+        if self.task_entry == "loopx-planned" and not self.uses_loopx:
+            raise ValueError("loopx-planned requires a LoopX execution mode")
         if self.context != "fresh" and self.mode != "turn":
             raise ValueError("resume-if-available currently requires mode=turn")
         if self.sandbox not in SANDBOXES:

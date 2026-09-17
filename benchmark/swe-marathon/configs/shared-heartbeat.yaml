@@ -6,6 +6,7 @@ agents:
     override_timeout_sec: 5400
     kwargs:
       execution_mode: heartbeat
+      task_entry: seeded-todo  # Use loopx-planned for the product planning checkpoint.
       iteration_context: fresh
       reasoning_effort: high
       turn_timeout_sec: 4700

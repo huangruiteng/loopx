@@ -47,6 +47,8 @@ LHTB_MODELONLY_GATEWAY="${LHTB_MODELONLY_GATEWAY:-192.0.2.1}"
 LOOPX_SRC_DIR="${LOOPX_SRC_DIR:-$LOOPX_ROOT}"
 export PYTHONPATH="$LOOPX_SRC_DIR${PYTHONPATH:+:$PYTHONPATH}"
 LOOPX_EXECUTION_MODE="${LOOPX_EXECUTION_MODE:-heartbeat}"
+LOOPX_TASK_ENTRY="${LOOPX_TASK_ENTRY:-seeded-todo}"
+LOOPX_PLANNING_TIMEOUT_SEC="${LOOPX_PLANNING_TIMEOUT_SEC:-300}"
 LOOPX_ITERATION_CONTEXT="${LOOPX_ITERATION_CONTEXT:-fresh}"
 LOOPX_VALIDATION_COMMAND_JSON="${LOOPX_VALIDATION_COMMAND_JSON:-[]}"
 SHARED_CODEX_AGENT_DIR="$LOOPX_SRC_DIR/benchmark/runtime"
@@ -115,7 +117,7 @@ if [[ "$MODE" == smoke ]]; then
   expected_task_count=1
   job_suffix="smoke-${SMOKE_TASK}"
 fi
-job_name="lhtb-${LOOPX_EXECUTION_MODE}-${LOOPX_ITERATION_CONTEXT}-${job_suffix}-${run_stamp}"
+job_name="lhtb-${LOOPX_EXECUTION_MODE}-${LOOPX_TASK_ENTRY}-${LOOPX_ITERATION_CONTEXT}-${job_suffix}-${run_stamp}"
 generated_config="$CODE_DIR/.generated/${job_name}.yaml"
 jobs_dir="$CODE_DIR/runs"
 
@@ -129,6 +131,8 @@ jobs_dir="$CODE_DIR/runs"
   --effort "$REASONING_EFFORT" \
   --timeout "$AGENT_TIMEOUT_SEC" \
   --execution-mode "$LOOPX_EXECUTION_MODE" \
+  --task-entry "$LOOPX_TASK_ENTRY" \
+  --planning-timeout "$LOOPX_PLANNING_TIMEOUT_SEC" \
   --iteration-context "$LOOPX_ITERATION_CONTEXT" \
   --validation-command-json "$LOOPX_VALIDATION_COMMAND_JSON" \
   --turn-timeout "$LOOPX_CODEX_TURN_TIMEOUT_SEC" \
