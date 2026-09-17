@@ -266,12 +266,25 @@ def validate(root, phase):
         )
     elif phase in {"builder-2", "builder-3"}:
         rows = pending(runtime, GOAL, "reviewer")["items"]
-        assert len(rows) == 1
-        refs = {item["ref"]: item.get("sha256") for item in rows[0]["brief"]["inputs"]}
-        for ref in ("solver.py", "inputs/scenario.json", "outputs/plan.json"):
-            assert (
-                refs[ref] == hashlib.sha256((workspace / ref).read_bytes()).hexdigest()
+        expected = {
+            ref: hashlib.sha256((workspace / ref).read_bytes()).hexdigest()
+            for ref in (
+                "solver.py",
+                "REQUIREMENTS.md",
+                "inputs/scenario.json",
+                "outputs/plan.json",
             )
+        }
+        # Interrupted attempts retain older immutable requests. Only the request
+        # matching current artifacts qualifies; the receiver must assess stale ones.
+        matching = []
+        for row in rows:
+            refs = {item["ref"]: item.get("sha256") for item in row["brief"]["inputs"]}
+            if all(refs.get(ref) == digest for ref, digest in expected.items()):
+                matching.append(row)
+        assert len(matching) == 1, (
+            "Expected one review request bound to current artifacts"
+        )
     elif phase == "builder-final":
         assert (workspace / "outputs/final.md").stat().st_size > 0
         meta = json.loads((root / "demo.json").read_text())
