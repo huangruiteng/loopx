@@ -75,6 +75,10 @@ def append_status_overview_markdown(
     if payload.get("goal_filter"):
         lines.append(f"- goal_filter: `{payload.get('goal_filter')}`")
 
+    projection_scope = as_dict(payload.get("goal_projection")).get("scope")
+    if projection_scope:
+        lines.append(f"- activation_filter: `{projection_scope}`")
+
     contract = as_dict(payload.get("contract"))
     summary = as_dict(contract.get("summary"))
     lines.append(
@@ -138,8 +142,10 @@ def append_runtime_projection_routes_markdown(
     healthy = diagnostics.get("healthy")
     if healthy is None:
         return
-    suffix = "" if healthy else ", details=loopx doctor"
-    lines.append(f"- runtime_projection_routes: healthy={healthy}{suffix}")
+    count = diagnostics.get("goal_count")
+    scope = f" (goals={count})" if isinstance(count, int) else ""
+    suffix = "" if healthy else ", global details=loopx doctor"
+    lines.append(f"- runtime_projection_routes: healthy={healthy}{scope}{suffix}")
 
 
 def append_global_registry_findings_markdown(

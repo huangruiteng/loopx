@@ -25,6 +25,7 @@ from loopx.control_plane.runtime.runtime_projection_route import (  # noqa: E402
     resolve_runtime_projection_route,
 )
 from loopx import doctor as doctor_module  # noqa: E402
+from loopx.paths import global_registry_path  # noqa: E402
 from loopx.presentation.renderers.status_markdown import (  # noqa: E402
     render_status_markdown,
 )
@@ -387,8 +388,10 @@ def main() -> None:
             shared_runtime=shared_runtime,
         )
         route_diagnostics = status["runtime_projection_routes"]
-        assert route_diagnostics == {"healthy": True}, route_diagnostics
+        assert route_diagnostics["healthy"] is True, route_diagnostics
+        assert route_diagnostics["goal_count"] == 1, route_diagnostics
         assert "runtime_projection_routes: healthy=True" in render_status_markdown(status)
+        assert "goals=1" in render_status_markdown(status), render_status_markdown(status)
 
         source_index = project_runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
         source_rows = [
@@ -420,7 +423,8 @@ def main() -> None:
             shared_runtime=shared_runtime,
         )
         lagging_routes = lagging_status["runtime_projection_routes"]
-        assert lagging_routes == {"healthy": False}, lagging_routes
+        assert lagging_routes["healthy"] is False, lagging_routes
+        assert lagging_routes["goal_count"] == 1, lagging_routes
         lagging_markdown = render_status_markdown(lagging_status)
         assert "runtime_projection_routes: healthy=False" in lagging_markdown
         assert "details=loopx doctor" in lagging_markdown
@@ -437,6 +441,26 @@ def main() -> None:
             item.get("goal_id") == GOAL_ID and item.get("status") == "lagging"
             for item in doctor_routes["items"]
         ), doctor_routes
+        # Same selected routes yield the same health even through different registries.
+        assert doctor_routes["healthy"] is lagging_routes["healthy"]
+        assert doctor_routes["goal_count"] == lagging_routes["goal_count"] == 1
+        assert doctor_routes["registry"] == str(global_registry_path(shared_runtime).resolve())
+        assert lagging_status["registry"] == str(source_registry)
+        assert doctor_routes["registry"] != lagging_status["registry"]
+        doctor_markdown = doctor_module.render_doctor_markdown(doctor)
+        assert f"registry=`{doctor_routes['registry']}`" in doctor_markdown
+        assert f"registry: `{source_registry}`" in lagging_markdown
+        assert f"goal_filter: `{GOAL_ID}`" in lagging_markdown
+        assert "global details=loopx doctor" in lagging_markdown
+
+        # A healthy unrelated registry can have the same count as the lagging one.
+        other_project, other_runtime, other_registry, other_global = write_fixture(Path(tmp) / "other")
+        other_status = run_cli("--registry", str(other_registry), "status", "--goal-id", GOAL_ID,
+                               cwd=other_project, shared_runtime=other_global.parent)
+        assert other_status["runtime_projection_routes"]["goal_count"] == doctor_routes["goal_count"]
+        assert other_status["runtime_projection_routes"]["healthy"] is True
+        assert other_status["registry"] != doctor_routes["registry"]
+        assert f"registry: `{other_registry}`" in render_status_markdown(other_status)
 
         single_runtime = Path(tmp) / "single-runtime"
         single_registry, single_goal = write_route_source(

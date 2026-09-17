@@ -694,6 +694,13 @@ def collect_runtime_projection_route_diagnostics(
     }
     return {
         "schema_version": RUNTIME_PROJECTION_ROUTE_DIAGNOSTICS_SCHEMA_VERSION,
+        "registry": str(registry_path.resolve()),
+        "runtime_root": str(runtime_root.resolve()),
+        "goal_filter": goal_id,
+        "activation_state_filter": (
+            normalize_goal_activation_state(activation_state_filter).value
+            if activation_state_filter is not None else None
+        ),
         "available": bool(items),
         "goal_count": len(items),
         "healthy": not any(

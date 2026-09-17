@@ -387,7 +387,9 @@ def main() -> int:
         status_items = status_payload["attention_queue"]["items"]
         assert status_items, status_payload
         assert "task_graph_projection" not in status_items[0], status_items[0]
-        assert status_payload["runtime_projection_routes"] == {"healthy": True}
+        route_health = status_payload["runtime_projection_routes"]
+        assert route_health["healthy"] is True, route_health
+        assert route_health["goal_count"] >= 1, route_health
         quota_payload = build_quota_should_run(
             status_payload,
             goal_id=GOAL_ID,
