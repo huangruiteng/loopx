@@ -80,3 +80,32 @@ def test_scan_public_boundary_reports_unreadable_file(tmp_path: Path) -> None:
 
     assert payload["ok"] is True
     assert payload["unreadable_files"] == ["locked.md: Permission denied"]
+
+
+def test_virtualenv_pruning_preserves_tracked_and_explicit_scan_targets(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    env = repo / "custom-python"
+    env.mkdir(parents=True)
+    (env / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+    payload = 'AUTH = "' + "tok" + 'en=syntheticsyntheticsynthetic"\n'
+    dependency = env / "dependency.py"
+    owned = env / "owned.py"
+    unmarked = repo / "unmarked" / "dependency.py"
+    unmarked.parent.mkdir()
+    for path in (dependency, owned, unmarked):
+        path.write_text(payload)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "add", "custom-python/owned.py"], check=True)
+
+    # Marked dependencies are omitted; owned content cannot hide behind a marker.
+    assert iter_scan_files(repo) == sorted([owned, unmarked])
+    assert iter_scan_files(env) == [owned]
+    result = scan_public_boundary([repo])
+    assert result["scanned_files"] == 2
+    assert result["ok"] is False
+    assert any("custom-python/owned.py" in hit for hit in result["hits"])
+    # An explicit file remains an explicit request even inside a pruned tree.
+    assert iter_scan_files(dependency) == [dependency]
+    assert scan_public_boundary([dependency])["hits"]
+    (env / "pyvenv.cfg").unlink()
+    assert dependency in iter_scan_files(repo)
