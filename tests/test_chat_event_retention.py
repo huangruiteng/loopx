@@ -5,6 +5,8 @@ import gc
 import json
 from pathlib import Path
 
+import pytest
+
 import loopx.chat_store as chat_store
 from loopx.chat_store import CHAT_TURN_SCHEMA_VERSION, ChatSessionStore
 
@@ -39,27 +41,76 @@ def _write_completed_turn(root: Path, *, with_events: bool = True) -> tuple[Path
     return turn_path, event_path
 
 
-def test_terminal_event_history_does_not_remain_in_the_hot_cache(
-    tmp_path: Path,
-) -> None:
+def test_completed_replay_reuses_log_until_an_external_append(tmp_path: Path, monkeypatch) -> None:
     store = ChatSessionStore(tmp_path)
     key = ("session", "turn")
-    store.append_event(
-        *key,
-        kind="assistant.delta",
-        payload={"text": "visible delta"},
-        buffered=True,
-    )
+    store.append_event(*key, kind="assistant.delta", payload={"text": "visible"}, buffered=True)
     store.append_event(*key, kind="turn.completed", payload={})
+    assert key not in store._event_cache
+    reads = []
+    read = chat_store._read_jsonl
 
+    def counted(path):
+        reads.append(path)
+        return read(path)
+
+    monkeypatch.setattr(chat_store, "_read_jsonl", counted)
+    for _ in range(5):
+        assert [row["sequence"] for row in store.events_after(*key, "0")] == [1, 2]
+    assert len(reads) == 1
+    other = ChatSessionStore(tmp_path)
+    other.append_event(*key, kind="turn.completed", payload={"recovered": True})
+    assert [row["sequence"] for row in store.events_after(*key, "2")] == [3]
+    assert len(reads) == 3  # independent writer plus invalidated reader
+
+
+def test_completed_replay_evicts_least_recently_used_log(tmp_path: Path) -> None:
+    store = ChatSessionStore(tmp_path)
+    for i in range(8):
+        store.append_event("session", str(i), kind="turn.completed", payload={})
+        store.events_after("session", str(i), None)
+    store.events_after("session", "0", None)
+    store.append_event("session", "8", kind="turn.completed", payload={})
+    store.events_after("session", "8", None)
+    assert ("session", "0") in store._event_cache
+    assert ("session", "1") not in store._event_cache
+    assert len(store._finished_event_cache) == 8
+
+
+@pytest.mark.parametrize("row_count,text_size", [(1, 2 * 1024 * 1024), (4096, 1)])
+def test_oversized_completed_log_is_replayable_but_not_retained(
+    tmp_path: Path, row_count: int, text_size: int,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    key = ("session", "large")
+    for _ in range(row_count):
+        store.append_event(*key, kind="assistant.delta", payload={"text": "x" * text_size}, buffered=True)
+    store.append_event(*key, kind="turn.completed", payload={})
+    assert len(store.events_after(*key, None)) == row_count + 1
     assert key not in store._event_cache
-    assert key not in store._event_cache_revision
-    assert [row["kind"] for row in store.events_after(*key, None)] == [
-        "assistant.delta",
-        "turn.completed",
-    ]
-    assert key not in store._event_cache
-    assert key not in store._event_cache_revision
+    assert key not in store._finished_event_cache
+
+
+def test_completed_replay_budget_is_aggregate(tmp_path: Path) -> None:
+    store = ChatSessionStore(tmp_path)
+    for turn in ("a", "b", "c"):
+        store.append_event("session", turn, kind="assistant.delta", payload={"text": "x" * 800_000}, buffered=True)
+        store.append_event("session", turn, kind="turn.completed", payload={})
+        store.events_after("session", turn, None)
+    assert ("session", "a") not in store._event_cache
+    assert set(store._finished_event_cache) == {("session", "b"), ("session", "c")}
+
+
+def test_old_replay_cannot_retain_a_replaced_snapshot(tmp_path: Path) -> None:
+    store = ChatSessionStore(tmp_path)
+    key = ("session", "turn")
+    store.append_event(*key, kind="turn.completed", payload={})
+    store.events_after(*key, None)
+    old = store._event_cache[key]
+    store.append_event(*key, kind="assistant.delta", payload={"text": "continued"})
+    store._retain_terminal_events(key, old)
+    assert key not in store._finished_event_cache
+    assert store.events_after(*key, "1")[0]["kind"] == "assistant.delta"
 
 
 def test_keyed_locks_are_released_after_callers_drop_them(tmp_path: Path) -> None:
