@@ -367,10 +367,7 @@ def return_result(root, goal_id, agent_id, request_id, text):
     """Route by the saved recipient, never by an Agent's coordinator role."""
     row = _entry(root, goal_id, agent_id, request_id)
     if row.get("source_kind") != "peer":
-        # Original Chat/Lark conversations keep their existing audience adapter.
-        from ...capabilities.manager_context.roundtrip import report
-
-        return report(root, goal_id, agent_id, request_id, "conclusion", text)
+        raise ValueError("peer result requires a peer return route")
     route = _read(_root(root) / "roundtrips" / (request_id + ".json"))
     if route.get("kind") != "peer" or any(
         route.get(k) != row.get(k)

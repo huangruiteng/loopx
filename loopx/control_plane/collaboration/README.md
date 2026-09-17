@@ -14,7 +14,7 @@ manager's conversation return adapter.
 | Discover collaborators | `control_plane/agents/directory.py`, `agent-directory` | Existing same-Goal directory remains the discovery contract; registration is not presence |
 | Validate semantic requests | `semantic_request.ts` | One typed validator for manager and peer callers |
 | Retain requests, decisions and results | `inbox.py`, `peers.py` | Immutable identity, parent lineage, artifact versions, explicit result consumption |
-| Sandboxed Agent access | `mcp.py` | Same tools and identity binding at every coordination level |
+| Sandboxed Agent access | `loopx/collaboration_mcp.py` | Same tools and identity binding at every coordination level |
 | Owner conversation and external audience | `capabilities/manager_context` | Intent extraction, ingress grants, Chat/Lark routing and display; no peer scheduling |
 
 The existing `manager-context` capability lifecycle, `manager-inbox` CLI and

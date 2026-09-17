@@ -329,7 +329,7 @@ configure the built-in, identity-scoped stdio tools for each worker. The host
 starts this command with trusted configuration:
 
 ```sh
-python -m loopx.control_plane.collaboration.mcp \
+python -m loopx.collaboration_mcp \
   --registry <registry.json> --runtime-root <runtime-root> \
   --goal-id allocation --agent-id builder --workspace <builder-worktree>
 ```
@@ -348,7 +348,7 @@ the normal governed Turn arguments:
         command: python
         args:
           - -m
-          - loopx.control_plane.collaboration.mcp
+          - loopx.collaboration_mcp
           - --registry
           - <registry.json>
           - --runtime-root

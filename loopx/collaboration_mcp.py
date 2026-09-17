@@ -14,8 +14,13 @@ from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 
-from .inbox import acknowledge
-from .peers import _goal, consume_return, read_inbox, request
+from .control_plane.collaboration.inbox import acknowledge, _entry
+from .control_plane.collaboration.peers import (
+    _goal,
+    consume_return,
+    read_inbox,
+    request,
+)
 
 
 def create_server(
@@ -73,9 +78,16 @@ def create_server(
     def return_result(request_id: str, text: str) -> dict:
         """Save an evidence-backed conclusion or explicit blocker for the original requester."""
         check_scope()
-        from .peers import return_result as save_result
+        row = _entry(root, goal_id, agent_id, request_id)
+        if row.get("source_kind") == "peer":
+            from .control_plane.collaboration.peers import return_result as save_result
 
-        return save_result(root, goal_id, agent_id, request_id, text)
+            return save_result(root, goal_id, agent_id, request_id, text)
+        # The host adapter selects Chat/Lark transport; the shared collaboration
+        # owner never depends on presentation or manager capabilities.
+        from .capabilities.manager_context.roundtrip import report
+
+        return report(root, goal_id, agent_id, request_id, "conclusion", text)
 
     @server.tool()
     def consume_peer_result(request_id: str) -> dict:

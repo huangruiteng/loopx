@@ -35,7 +35,7 @@ def test_scoped_stdio_tools_do_not_offer_shell_or_sender_override(tmp_path):
             command=sys.executable,
             args=[
                 "-m",
-                "loopx.control_plane.collaboration.mcp",
+                "loopx.collaboration_mcp",
                 "--runtime-root",
                 str(tmp_path),
                 "--registry",
