@@ -17,6 +17,7 @@ agents:
     override_timeout_sec: 5400
     kwargs:
       execution_mode: heartbeat
+      task_entry: seeded-todo
       iteration_context: fresh
       reasoning_effort: max
       codex_sandbox: danger-full-access
@@ -46,6 +47,52 @@ The runner supplies no HEAD-moved/clean-worktree/exit-only substitute and never
 calls hidden benchmark verification to provide intermediate feedback. Independent
 validator protection remains the environment owner's responsibility.
 
+## Task entry and planning ablation
+
+`task_entry` is independent of the execution mode:
+
+- `seeded-todo` (the compatibility default) writes one generic execution Todo
+  per native phase. The agent can still plan and replan during execution.
+- `loopx-planned` runs the installed `$loopx` skill against the public
+  `loopx todo plan` checkpoint before execution. The checkpoint shares the
+  product's planner and continuation-aware Todo delta; it creates no planning
+  Todo and starts no host loop. Select it only for heartbeat, Turn or LoopX Goal.
+
+The model writes or reuses actual task Todos through the public CLI. The worker
+reads the product packet again and checks the input digest, identity, Todo ids
+and runnable/blocked state. A fabricated id, changed input, wrong owner, failed
+planning process or missing result fails the entry; it never falls back to a
+generic Todo. A blocked entry retains the referenced blockers and starts no
+execution driver. Readback proves state and ownership, not semantic plan quality.
+
+Planning uses a separate fresh `codex exec` session with native Goals disabled
+for that call. Its session is not inserted into core Turn session bindings or
+resumed by the subsequent execution. This is a planning-contract ablation, not
+an exact reproduction of same-conversation interactive `$loopx` startup.
+The default `planning_timeout_sec` is 300; planning and preparation consume the
+same `scheduler_timeout_sec` phase budget as execution. Planning sessions are
+included in native session/token aggregation. No planning checkpoint is counted
+as a completed advancement Todo or settled work Turn.
+
+Each phase keeps an immutable task document. New phases preserve Goal/Agent
+identity and expose existing Todos to the planner; they do not clear waiting
+state or force the agent active. An unresolved Turn must be recovered before
+another phase can replace its task input. These wait/recovery rules apply to
+both entry policies; they correct the earlier unconditional phase reset.
+
+To compare entry policies, hold the execution mode, session policy, model,
+effort, tools, feedback and total budget fixed, and use separate trials:
+
+```yaml
+kwargs:
+  execution_mode: heartbeat
+  task_entry: loopx-planned
+  planning_timeout_sec: 300
+  iteration_context: fresh
+  turn_timeout_sec: 4700
+  scheduler_timeout_sec: 5080
+```
+
 ## Install and isolate
 
 From the candidate worktree, provide:
@@ -58,7 +105,7 @@ export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
 Also set `CODEX_OFFLINE_DIR` (Codex, code-mode sidecar, rg),
 `LOOPX_PORTABLE_PYTHON` (Python >=3.11 distribution) and `LOOPX_NODE_DIR`
-(Node >=22.18.0 distribution). Staging uses `git archive HEAD`, never local run
+(Node >=22.18.0 distribution). Staging archives the verified commit SHA, never local run
 artifacts. The host import must come from that checkout, whose tracked files
 must match HEAD. Commit the candidate before real validation. Baselines stage only
 the runner/native transport, without installing LoopX skills or initializing

@@ -118,6 +118,13 @@ accepts `resume-if-available`. Turn also requires `LOOPX_VALIDATION_COMMAND_JSON
 an argv array for the independently protected task validator. No generic
 benchmark scoring or hidden-verifier feedback is introduced.
 
+`LOOPX_TASK_ENTRY=seeded-todo` preserves the generic phase Todo default.
+`LOOPX_TASK_ENTRY=loopx-planned` invokes the product planning checkpoint before
+heartbeat, Turn or LoopX Goal execution. `LOOPX_PLANNING_TIMEOUT_SEC` defaults
+to 300 and consumes the existing phase budget. Both entry policies preserve
+existing waits when new phases arrive. See the shared runtime for session and
+planning-readback semantics.
+
 Model and effort defaults remain unchanged but may be selected explicitly.
 `run.sh prepare` performs networking/Harbor preparation. `preflight` now checks
 existing preparation without patching Harbor or creating a network. Smoke/full

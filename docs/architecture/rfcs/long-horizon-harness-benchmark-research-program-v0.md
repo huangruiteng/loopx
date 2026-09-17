@@ -952,6 +952,14 @@ product heartbeat, Turn and Goal execution while retaining native verification.
 Synthetic Harbor conformance qualifies this engineering seam only; E3 matched
 studies and E4 cross-benchmark claims remain separate acceptance.
 
+Task entry is a separate ablation axis: a runner-seeded execution Todo versus
+model planning through the product's `todo plan` checkpoint. Planning runs
+before the selected driver, uses the shared Goal planner/Todo-delta contract,
+and consumes the phase budget without counting as advancement. Qualification
+must read back task identity and actual Todos, preserve blocked state and
+disclose the separate planning session; synthetic task success alone does not
+prove equivalence to interactive `$loopx` startup or planning effectiveness.
+
 ### 11.3 Required delivery slice
 
 Every benchmark engineering PR or contributor task should identify a bounded
