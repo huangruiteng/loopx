@@ -16,6 +16,8 @@ from ...todos import list_goal_todos
 from ..todos.todo_semantics import todo_item_is_actionable_open
 from ..todos.contract import (
     TODO_STATUS_BLOCKED,
+    TODO_TERMINAL_STATUS_VALUES,
+    TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_USER_GATE,
 )
@@ -73,7 +75,7 @@ def build_task_planning_packet(
         t
         for t in todos
         if t.get("role") == "agent"
-        and t.get("task_class") == "advancement_task"
+        and t.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
         and todo_item_is_actionable_open(t)
     ]
     fine = execution_profile_is_fine_grained(goal.get("execution_profile"))
@@ -110,7 +112,7 @@ def build_task_planning_packet(
         "blocking_todo_ids": [
             t["todo_id"]
             for t in todos
-            if t.get("status") != "done"
+            if t.get("status") not in TODO_TERMINAL_STATUS_VALUES
             and (
                 t.get("status") == TODO_STATUS_BLOCKED
                 or t.get("task_class")

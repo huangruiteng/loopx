@@ -91,6 +91,26 @@ def test_unknown_identity_rejected_without_creating_it(bound_goal):
         build_task_planning_packet(**(bound_goal | {"agent_id": "unknown"}))
 
 
+def test_full_frontier_and_live_blockers_ignore_display_order_and_terminal_items(bound_goal):
+    state = bound_goal["project"] / "state.md"
+    work = [
+        f"- [ ] [P0] Task {i}.\n"
+        f"  <!-- loopx:todo todo_id=todo_work_{i} status=open task_class=advancement_task action_kind=test claimed_by=planner -->"
+        for i in range(40)
+    ]
+    gates = [
+        f"- [{'x' if status == 'done' else ' '}] [P0] Gate {status}.\n"
+        f"  <!-- loopx:todo todo_id=todo_gate_{status} status={status} task_class=user_gate action_kind=approve blocks_agent=planner -->"
+        for status in ("open", "blocked", "done", "deferred")
+    ]
+    for ordered in (work, list(reversed(work))):
+        state.write_text("# Active Goal State\n\n## Agent Todos\n" + "\n".join(ordered)
+                         + "\n\n## User Todos\n" + "\n".join(gates) + "\n")
+        packet = build_task_planning_packet(**bound_goal)
+        assert set(packet["runnable_todo_ids"]) == {f"todo_work_{i}" for i in range(40)}
+        assert set(packet["blocking_todo_ids"]) == {"todo_gate_open", "todo_gate_blocked"}
+
+
 def test_public_cli_returns_a_read_only_checkpoint_and_rejects_execution(bound_goal):
     command = [
         "--format",
