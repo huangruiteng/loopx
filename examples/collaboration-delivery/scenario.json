@@ -1,0 +1,65 @@
+{
+  "orders": [
+    {
+      "id": "a",
+      "region": "east",
+      "demand": 4,
+      "stock_group": "x",
+      "cost": 110,
+      "value": 9
+    },
+    {
+      "id": "b",
+      "region": "west",
+      "demand": 5,
+      "stock_group": "x",
+      "cost": 90,
+      "value": 7
+    },
+    {
+      "id": "c",
+      "region": "east",
+      "demand": 3,
+      "stock_group": "y",
+      "cost": 140,
+      "value": 12
+    },
+    {
+      "id": "d",
+      "region": "west",
+      "demand": 4,
+      "stock_group": "y",
+      "cost": 120,
+      "value": 10
+    },
+    {
+      "id": "e",
+      "region": "east",
+      "demand": 0,
+      "stock_group": "z",
+      "cost": 30,
+      "value": 20
+    },
+    {
+      "id": "f",
+      "region": "west",
+      "demand": 3,
+      "stock_group": "z",
+      "cost": 70,
+      "value": 6
+    }
+  ],
+  "stock": {
+    "x": 6,
+    "y": 5,
+    "z": 4
+  },
+  "region_cap": {
+    "east": 5,
+    "west": 7
+  },
+  "budget": 1000,
+  "reserve_per_group": 0,
+  "minimum_east": 0,
+  "tie_break": "lexicographically smallest allocation vector in sorted order id order"
+}

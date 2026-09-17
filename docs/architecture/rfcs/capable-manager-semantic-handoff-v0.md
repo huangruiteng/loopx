@@ -67,6 +67,20 @@ At `43d362532`, the private `manager_runtime` profile, steward executor configur
 
 The [overall roadmap](loopx-overall-roadmap-v0.md) records verified F1–F7 and R1–R7. Repair R1 commitment preservation, stale basis and recovery first, then qualify R2 small teams; M2/M3 converge through R3, and M4 requires real user journeys. Section 4 retains its older baseline as migration input, not an override of this checkpoint. Partial merges do not complete M1–M4. Parallel joins, pipeline dependencies, peer help/review, execution responsibility continuation and cross-host collaboration between long-running LoopX Agents follow the roadmap Section 5 matrix. R2 requires real inter-Agent handoff; M2/M3 cannot reduce to steward broadcasts or one-turn forwarding.
 
+The local semantic exchange now extends the existing `manager-context` owner:
+`collaboration_brief_v0` preserves corrections, constraints, relative artifact
+versions, acceptance and return requirements alongside the unchanged owner
+message. Same-Goal peers independently assess requests and return conclusions;
+the requester receives results again until explicit consumption. Owner-local Chat
+shows the brief and live read/decision/return facts in the original conversation.
+The optional identity-scoped stdio tools support sandboxed managed dsh workers.
+See the [three-Agent allocation demo](../../../examples/collaboration-delivery/README.md)
+for dependent artifacts, two review rounds and owner correction. The controller
+selects phases and transfers files; request transport adds no scheduling, lease
+transfer or shared-intent mutation. This is a bounded R3 slice, not M2–M4/G1
+completion; external-audience peer forwarding and cross-host continuation remain
+with their existing roadmap owners.
+
 ## 4. Current-system contract: audited facts
 
 The baseline already has substantial reusable machinery:

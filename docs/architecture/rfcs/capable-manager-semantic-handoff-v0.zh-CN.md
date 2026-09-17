@@ -67,6 +67,15 @@
 
 [整体路线总纲](loopx-overall-roadmap-v0.zh-CN.md) 记录已复核 F1–F7 与 R1–R7 执行卡。优先修 R1 承诺保留、stale basis 和恢复，再验 R2 小团队；M2/M3 按 R3 收敛，M4 需真实用户旅程。第 4 节的旧基线保留为迁移输入，不能覆盖本检查点；不因局部切片合并将 M1–M4 标为完成。 多个长程 LoopX Agent 的并行汇合、流水线依赖、peer 求助/复核、执行责任接续和跨 host 协作，统一按路线第 5 节协作矩阵验收；R2 必须包含真实 Agent 间 handoff，M2/M3 不能退化为管家广播或单轮转发。
 
+本地语义协作沿用 `manager-context` owner：`collaboration_brief_v0` 在原始用户
+消息旁保留修订、约束、相对产物版本、验收与回传要求。同 Goal 同伴独立判断请求并
+回传结论，请求者在明确消费前会持续收到结果。管家原对话展示交办内容和实时读取、
+判断、回传事实。显式配置的身份限定 stdio 工具支持保留沙箱的 managed dsh。
+[三 Agent 分配器 demo](../../../examples/collaboration-delivery/README.md#中文操作说明)
+覆盖依赖产物、两轮复核与用户修订；控制器选择阶段并交接文件。请求传输不授予调度、
+lease 转交或 shared-intent 修改权限。这是 R3 的有界切片，不代表 M2–M4/G1 完成；
+外部受众同伴转发与跨主机续接继续归现有路线 owner。
+
 ## 4. 当前系统：已核对的基线事实
 
 已有大量基础应该复用：

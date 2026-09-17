@@ -297,6 +297,7 @@ R2 的一条依赖必须通过真实 LoopX Agent 间的请求/产物交接完成
 | shared authority | `AuthorityStore`、File/SQLite 候选与 PostgreSQL store/service admission 接缝、恢复及 conformance 基础 | 已部署 authenticated 跨主机服务；已晋升任一默认 provider；分布式 quota 已成立 |
 | alignment | Stage 1/2 source-basis reader 与 amendment admission/retention | `source_basis_digest` 是完整 Goal intent revision；Stage 3 自动 commit 已成立 |
 | managed | `turn run-once`、managed step、attached broker 及单执行器围栏已有实现 | 有界片段等于无人值守长程监督；每个注册 Agent 都有健康执行器 |
+| 语义同伴协作 | 既有 Inbox/reply owner 承载不可变交办、同 Goal 同伴请求、结果消费及原对话读回；[真实 managed demo](../../../examples/collaboration-delivery/README.md#中文操作说明) | 控制器驱动阶段不证明自主调度、跨主机/Lark 同伴或完整 G1/M2–M4 |
 
 ### 已复核的问题
 
