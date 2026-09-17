@@ -36,7 +36,12 @@ only consumes this environment variable; it does not discover credentials or
 store them. Model runs are explicit, billable calls: seven successful phases,
 each capped at 600 seconds. Stop on a failed phase and inspect its private
 receipt before spending more; a retry may require a new Turn identity if the
-original Turn recorded terminal failure. No model calls run in CI.
+original Turn recorded terminal failure. Use `--attempt 2` (then 3, etc.) to
+create a new bounded Turn while retaining earlier results. Before a repair run,
+write concrete findings in that worker's `outputs/repair-feedback.md`; rerun the
+builder phase, transfer its artifacts, rerun the reviewer with the same new
+attempt number, then repeat the independent verifier. Never overwrite an approval
+or skip the failing case. No model calls run in CI.
 
 Define a convenience command in your shell:
 

@@ -25,13 +25,13 @@ ARTIFACTS = {
     "builder-2": (
         "builder",
         "reviewer",
-        ["solver.py", "outputs/model.json", "outputs/plan.json"],
+        ["solver.py", "REQUIREMENTS.md", "outputs/model.json", "outputs/plan.json"],
     ),
     "reviewer-1": ("reviewer", "builder", ["outputs/review-r1.md"]),
     "builder-3": (
         "builder",
         "reviewer",
-        ["solver.py", "inputs/scenario.json", "outputs/plan.json"],
+        ["solver.py", "REQUIREMENTS.md", "inputs/scenario.json", "outputs/plan.json"],
     ),
     "reviewer-2": ("reviewer", "builder", ["outputs/review-r2.md"]),
 }
@@ -196,7 +196,7 @@ def prepare(root):
         (workspace / "tasks").mkdir()
         args = [
             "-m",
-            "loopx.control_plane.collaboration.mcp",
+            "loopx.collaboration_mcp",
             "--registry",
             str(root / "registry.json"),
             "--runtime-root",
@@ -285,7 +285,7 @@ def validate(root, phase):
     )
 
 
-def run(root, phase, model, execute):
+def run(root, phase, model, execute, attempt):
     if not execute:
         raise SystemExit(
             "Model execution requires --execute and an externally configured DEEPSEEK_API_KEY"
@@ -293,6 +293,7 @@ def run(root, phase, model, execute):
     if not os.environ.get("DEEPSEEK_API_KEY"):
         raise SystemExit("DEEPSEEK_API_KEY is not configured")
     actor = phase.split("-")[0]
+    instance = phase if attempt == 1 else f"{phase}-attempt-{attempt}"
     workspace = worker(root, actor)
     meta = json.loads((root / "demo.json").read_text())
     (workspace / "OPERATING.md").write_text(
@@ -303,7 +304,15 @@ def run(root, phase, model, execute):
         "Never edit registry/state, commit Git, use network or invent another Agent's result. "
         f"Owner request ids: {', '.join(meta['requests'])}.\n"
     )
-    (workspace / "tasks" / f"{phase}.md").write_text(TASKS[phase] + "\n")
+    task = TASKS[phase]
+    if attempt > 1:
+        task += (
+            f"\nExplicit repair attempt {attempt}. Read outputs/repair-feedback.md and current "
+            "REQUIREMENTS.md. Preserve failed evidence; use a NEW peer operation id for a "
+            "new review, consume earlier peer results after assessing them, and never "
+            "reuse an old approval for changed artifacts."
+        )
+    (workspace / "tasks" / f"{phase}.md").write_text(task + "\n")
     todos = cli(root, "todo", "list", "--goal-id", GOAL)["todos"]
     owned = next(
         (
@@ -359,7 +368,7 @@ def run(root, phase, model, execute):
         "--agent-id",
         actor,
         "--turn-instance-id",
-        phase,
+        instance,
         "--host",
         "dsh",
         "--execution-mode",
@@ -367,7 +376,7 @@ def run(root, phase, model, execute):
         "--project",
         str(workspace),
         "--dsh-home",
-        str(root / f"home-{phase}"),
+        str(root / f"home-{instance}"),
         "--dsh-cordis",
         str(root / f"{actor}-cordis.yml"),
         "--dsh-model",
@@ -386,7 +395,7 @@ def run(root, phase, model, execute):
         "--execute",
         cwd=workspace,
     )
-    write(root / f"{phase}.json", result)
+    write(root / f"{instance}.json", result)
     print(
         json.dumps(
             {k: result.get(k) for k in ("ok", "status", "result_kind", "validation")}
@@ -434,8 +443,16 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(".local/allocation-demo"))
     parser.add_argument("--phase", choices=list(TASKS))
     parser.add_argument("--model", default="deepseek-v4-flash")
+    parser.add_argument(
+        "--attempt",
+        type=int,
+        default=1,
+        help="Explicit new Turn after failed or invalidated evidence; retains earlier receipts.",
+    )
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
+    if args.attempt < 1:
+        parser.error("--attempt must be positive")
     root = args.root.resolve()
     if args.action == "prepare":
         prepare(root)
@@ -448,7 +465,7 @@ def main():
     if args.action in {"run", "validate", "transfer"} and not args.phase:
         parser.error("--phase is required")
     if args.action == "run":
-        run(root, args.phase, args.model, args.execute)
+        run(root, args.phase, args.model, args.execute, args.attempt)
     elif args.action == "validate":
         validate(root, args.phase)
     elif args.action == "transfer":
