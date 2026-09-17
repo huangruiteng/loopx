@@ -328,11 +328,13 @@ CASES.append(Case("duplicate_mirror", (
 ), "tests/control_plane/test_shadow_drain_e2e.py::test_public_mutation_has_no_second_snapshot_mirror"))
 
 # Fenced sibling-caller parity: each mutant is caught by exactly one parity row.
+# Promoted CLI acquisition now succeeds through canonical authority. Probe the
+# retained native legacy entrypoint for its fence diagnostic/envelope contract.
 CASES.append(Case("native_fence_remediation_truncated", (
     (COORDINATION + "legacy_writer_fence.ts", replacement(
         'export const LEGACY_WRITER_FENCED_REMEDIATION =\n  "legacy coordination writer is fenced; use the promoted canonical authority ({authority_mode}) for goal {goal_id}; fence {fence_id}; the primary record was not changed";',
         'export const LEGACY_WRITER_FENCED_REMEDIATION =\n  "legacy coordination writer is fenced";')),
-), "tests/control_plane/test_shadow_fence_caller_parity_e2e.py::test_fence_caller_parity[cli-task_lease_acquire-engaged]"))
+), "tests/control_plane_ts/legacy_writer_fence_caller_parity.test.ts", pattern="^fence parity: ts-acquire-engaged$"))
 CASES.append(Case("python_fence_remediation_truncated", (
     (COORDINATION + "legacy_writer_fence.py", replacement(
         'LEGACY_WRITER_FENCED_REMEDIATION = (\n    "legacy coordination writer is fenced; use the promoted canonical authority "\n    "({authority_mode}) for goal {goal_id}; fence {fence_id}; "\n    "the primary record was not changed"\n)',
@@ -342,7 +344,7 @@ CASES.append(Case("fence_envelope_schema_leak", (
     (COORDINATION + "legacy_writer_fence.ts", replacement(
         "    this.payload = { write_check: writeCheck };",
         "    this.payload = writeCheck;")),
-), "tests/control_plane/test_shadow_fence_caller_parity_e2e.py::test_fence_caller_parity[cli-task_lease_acquire-engaged]"))
+), "tests/control_plane_ts/legacy_writer_fence_caller_parity.test.ts", pattern="^fence parity: ts-acquire-engaged$"))
 CASES.append(Case("fence_acquire_receipt_fabricated", (
     ("loopx/control_plane/work_items/task_lease_acquire.ts", replacement(
         '  return { code: error.code, message: error.message, payload: error.payload, stage: "validation", kind: "permission_denied" };',
