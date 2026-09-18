@@ -97,3 +97,18 @@ def test_absent_acceptance_does_not_change_summary_shape_or_executability(tmp_pa
     assert "goal_acceptance_contract" not in summary
     assert summary["first_executable_items"][0]["todo_id"] == "todo_work"
     assert "goal_acceptance_guard" not in json.dumps(summary)
+
+
+def test_public_todo_list_counts_and_selection_share_acceptance_guard(tmp_path):
+    from loopx.todos import list_goal_todos
+    from loopx.control_plane.todos.todo_semantics import todo_summary_open_task_counts
+
+    goal, runtime, state, registry = seed(tmp_path, enabled=True, monitor=True)
+    state.unlink()
+    result = list_goal_todos(registry_path=registry, runtime_root_arg=str(runtime), goal_id=goal["id"])
+    summary = result["agent_todos"]
+    assert summary["first_executable_items"] == []
+    assert todo_summary_open_task_counts(summary)["advancement"] == 0
+    assert todo_summary_open_task_counts(summary)["monitor"] == 1
+    assert "validation_argv" not in json.dumps(result)
+    assert not state.exists()
