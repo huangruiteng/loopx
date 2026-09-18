@@ -6,7 +6,7 @@ const read = (path) => readFileSync(fileURLToPath(new URL(`../${path}`, import.m
 const home = read("apps/presentation/site/src/App.tsx");
 const styles = read("apps/presentation/site/src/styles.css");
 assert.doesNotMatch(home, /href=.[^\n]*(?:deprecated|frontstage\/)/, "homepage must not promote retired surfaces");
-for (const destination of ["docs/guides/personal-workspace-user-guide/", "benchmarks/swe-marathon/", "benchmarks/deepswe/behavior-discovery/", "benchmarks/deepswe-sol/", "docs/showcases/index", "developers/projections/"]) {
+for (const destination of ["docs/guides/personal-workspace-user-guide/", "benchmarks/swe-marathon/", "benchmarks/lhtb/", "benchmarks/deepswe/behavior-discovery/", "benchmarks/deepswe-sol/", "docs/showcases/index", "developers/projections/"]) {
   assert.ok(home.includes(destination), `missing public destination: ${destination}`);
 }
 assert.ok(styles.includes("prefers-reduced-motion"));

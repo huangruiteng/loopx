@@ -229,12 +229,16 @@ creator dogfooding, reproducible demos, and explicit evidence-strength labels.
 - **[SWE-Marathon](https://huangruiteng.github.io/loopx/benchmarks/swe-marathon/):**
   Five execution modes on 15 matched tasks compare self-verification, scores,
   and cost. More self-verification did not consistently yield higher scores.
+- **[LHTB × LoopX](https://huangruiteng.github.io/loopx/benchmarks/lhtb/):**
+  Five execution mechanisms on 46 long-horizon terminal tasks compare durable
+  state, bounded Todos, replanning, and fresh executor sessions.
 - **[DeepSWE behavior analysis](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/)** (Chinese):
   Selected cases examine how domain hints relate to requirement retention and
   verification choices, offering mechanism hypotheses for further testing.
 
-SWE-Marathon has one trial per task and mode; DeepSWE uses selected cases and
-post-hoc analysis. Neither establishes a general performance gain.
+SWE-Marathon and LHTB have one effective trial per task and mode; DeepSWE uses
+selected cases and post-hoc analysis. None establishes a general performance
+gain.
 
 More inspectable surfaces:
 

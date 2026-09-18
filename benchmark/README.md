@@ -48,6 +48,9 @@ by itself establish a C2 uplift claim.
 
 - [`swe-marathon/README.md`](swe-marathon/README.md) links the published
   [SWE-Marathon research brief](https://huangruiteng.github.io/loopx/benchmarks/swe-marathon/).
+- [`LHTB/studies/five-arm-gpt56sol-max/README.md`](LHTB/studies/five-arm-gpt56sol-max/README.md)
+  documents the public-safe aggregate behind the bilingual
+  [LHTB research brief](https://huangruiteng.github.io/loopx/benchmarks/lhtb/).
 - [`deepswe/behavior-discovery/README.md`](deepswe/behavior-discovery/README.md)
   links the standalone
   [DeepSWE behavior-discovery article](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/).

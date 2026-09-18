@@ -200,11 +200,14 @@ creator dogfooding、reproducible demo 和证据强度标签见
 - **[SWE-Marathon](https://huangruiteng.github.io/loopx/benchmarks/swe-marathon/?lang=zh)**：
   在相同的 15 个任务上对照 5 种执行模式，比较自验证行为、得分与成本。
   更多自验证并未稳定转化为更高得分。
+- **[LHTB × LoopX](https://huangruiteng.github.io/loopx/benchmarks/lhtb/?lang=zh)**：
+  在 46 个长程终端任务上对比 5 种执行机制，研究持久状态、Todo、replan
+  与 fresh executor session。
 - **[DeepSWE 行为分析](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/)**：
   通过精选案例观察领域提示、需求保留与验证选择之间的关系，提出有待复验的机制假设。
 
-SWE-Marathon 每个任务、每种模式仅运行一次；DeepSWE 包含精选案例与事后分析。
-目前两者均不足以证明普遍的性能提升。
+SWE-Marathon 与 LHTB 每个任务、每种模式仅保留一条有效轨迹；DeepSWE 包含精选案例与
+事后分析。目前三者均不足以证明普遍的性能提升。
 
 更多可检查入口：
 
