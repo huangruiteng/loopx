@@ -19,9 +19,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from mcp.server.fastmcp import FastMCP
+if TYPE_CHECKING:
+    from mcp.server.fastmcp import FastMCP
 
 from .file_lock import exclusive_file_lock, LockAcquisitionPolicy, LockAcquireTimeoutError
 from .todos import list_goal_todos
@@ -44,6 +45,8 @@ def create_server(
     root: Path, registry: Path, goal_id: str, agent_id: str, workspace: Path,
     execution_config: Path | None = None,
 ) -> FastMCP:
+    from mcp.server.fastmcp import FastMCP
+
     server = FastMCP("loopx-collaboration")
     register_collaboration_tools(server, root, registry, goal_id, agent_id, workspace)
     if execution_config is not None:
@@ -186,6 +189,15 @@ class Delegations:
         if row["status"] not in {"accepted", "rejected"}:
             self.binding(row["identity"]["binding"]["id"], require_active=True)
             self._spawn(operation_id)
+        return self.read(operation_id)
+
+    def wait(self, operation_id: str) -> dict:
+        """Observe for at most 15 seconds; waiting neither starts nor resumes work."""
+        for _ in range(5):
+            result = self.read(operation_id)
+            if result["status"] in {"accepted", "rejected"} or result["recovery_required"]:
+                return result
+            time.sleep(3)
         return self.read(operation_id)
 
     def _bound(self, row: dict, *, require_active: bool = False) -> dict:
@@ -388,12 +400,7 @@ def register_delegation_tools(server, delegations: Delegations) -> None:
     @server.tool()
     async def wait_delegation(operation_id: str) -> dict:
         """Wait at most 15 seconds for an original operation; returning running is normal."""
-        for _ in range(5):
-            result = await asyncio.to_thread(delegations.read, operation_id)
-            if result["status"] in {"accepted", "rejected"} or result["recovery_required"]:
-                break
-            await asyncio.sleep(3)
-        return result
+        return await asyncio.to_thread(delegations.wait, operation_id)
 
     @server.tool()
     def resume_delegation(operation_id: str) -> dict:
