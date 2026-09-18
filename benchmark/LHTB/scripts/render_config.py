@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
 import yaml
+from benchmark.runtime.codex import CONTEXTS, MODES, TASK_ENTRIES, Execution
 
 
 def main() -> int:
@@ -21,6 +23,13 @@ def main() -> int:
     parser.add_argument("--effort", required=True)
     parser.add_argument("--timeout", type=int, required=True)
     parser.add_argument("--task", action="append", default=[])
+    parser.add_argument("--execution-mode", choices=MODES, default="heartbeat")
+    parser.add_argument("--iteration-context", choices=CONTEXTS, default="fresh")
+    parser.add_argument("--task-entry", choices=TASK_ENTRIES, default="seeded-todo")
+    parser.add_argument("--planning-timeout", type=float, default=300)
+    parser.add_argument("--validation-command-json", default="[]")
+    parser.add_argument("--turn-timeout", type=float, default=4700)
+    parser.add_argument("--scheduler-timeout", type=int, default=5080)
     args = parser.parse_args()
 
     if not 1 <= args.concurrency <= 64:
@@ -47,7 +56,23 @@ def main() -> int:
     agent["model_name"] = args.model
     agent["override_timeout_sec"] = args.timeout
     agent["kwargs"]["reasoning_effort"] = args.effort
-    agent["kwargs"]["goals"] = "false"
+    execution = Execution(
+        mode=args.execution_mode,
+        context=args.iteration_context,
+        timeout_seconds=args.turn_timeout,
+        validation_command=json.loads(args.validation_command_json),
+        task_entry=args.task_entry,
+    )
+    agent["kwargs"].update(
+        execution_mode=execution.mode,
+        iteration_context=execution.context,
+        validation_command=list(execution.validation_command),
+        turn_timeout_sec=execution.timeout_seconds,
+        scheduler_timeout_sec=args.scheduler_timeout,
+        task_entry=execution.task_entry,
+        planning_timeout_sec=args.planning_timeout,
+    )
+    agent["kwargs"]["goals"] = str(execution.native_goal).lower()
     agent["kwargs"]["web_search"] = "disabled"
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

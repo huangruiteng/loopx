@@ -72,6 +72,36 @@ const protocolActionFields = {
   agent_action: "advance one bounded segment",
 };
 
+test("Turn preserves checkpointed scope approval without lifting other gates", () => {
+  const source = payload();
+  const scope = source.goal_boundary as Record<string, unknown>;
+  scope.requires_parent_approval = ["write", "publish", "production-action"];
+  const render = () => buildTurnEnvelope({payload: source,
+    protocol_action_fields: protocolActionFields, scheduler_execution_args: ""});
+  const baseline = render();
+  scope.checkpointed_boundary_authority = {
+    schema_version: "checkpointed_boundary_authority_v0", active_count: 1,
+    active_write_scope: ["src/**"], entries: [{source: "operator-decision"}],
+  };
+  const approved = render();
+  const boundary = approved.boundary as Record<string, unknown>;
+  assert.deepEqual(boundary.checkpointed_boundary_authority, {
+    schema_version: "checkpointed_boundary_authority_v0", active_count: 1,
+    active_write_scope: ["src/**"],
+  });
+  assert.deepEqual(boundary.requires_parent_approval, ["write", "publish", "production-action"]);
+  for (const inactive of [
+    {schema_version: "checkpointed_boundary_authority_v0", active_count: 0, active_write_scope: []},
+    {schema_version: "unknown", active_count: 1, active_write_scope: ["**"]},
+    {schema_version: "checkpointed_boundary_authority_v0", active_count: 1, active_write_scope: ["x".repeat(181)]},
+  ]) {
+    scope.checkpointed_boundary_authority = inactive;
+    assert.deepEqual(render().boundary, baseline.boundary);
+  }
+  delete scope.checkpointed_boundary_authority;
+  assert.deepEqual(render(), baseline);
+});
+
 test("only active hook reads carry additive prompt budget through the envelope", () => {
   const source = payload();
   const baseline = buildTurnEnvelope({ payload: source, protocol_action_fields: protocolActionFields, scheduler_execution_args: "" });

@@ -77,7 +77,7 @@
 agents/    Harbor 适配器（LoopX treatment + codex 原生 goal baseline）
 scoring/   评分/聚合/可视化（口径见 _common.py）
 skills/    历史五模式 benchmark skill（不代表当前公开证据范围）
-runtime/   模式框架 + turn 驱动，含 automation 唤醒循环 loopx_turn_runner.py（见 runtime/RUNTIME.md）
+runtime/   共享执行入口与迁移说明；实现位于 ../runtime/（见 runtime/RUNTIME.md）
 data.json  pinned public-safe 聚合产物
 case_insights.json  非官方 draft case-insight 记录（scoring/case_insights.py 由 data.json 生成）
 ```

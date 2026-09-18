@@ -1229,6 +1229,72 @@ introduce a competing target state.
   shared blocker taxonomy and the statement that neither scanner interprets the
   module it reads; no invariant or milestone changes.
 
+### 2026-09-17 — Per-value meaning for the `cross_runtime` tier
+
+Non-normative for the model; it adds no invariant and changes no existing
+check's verdict. What changes is that every registered value now says what
+produces it.
+
+- Coverage moves from 68 of 149 values to 149 of 149. The 68 were the whole
+  kernel tier, documented by #4625 (the four canonical Turn vocabularies) and
+  #4626 (`effective_action` and `lease_action`). The 81 added here are the
+  whole `cross_runtime` tier, 20 vocabularies.
+- The tracking issue described this remainder as "117 values". That count was
+  taken before #4626 merged: 117 is everything #4625 did not cover, which then
+  still included `effective_action` (32) and `lease_action` (4). Both are
+  kernel-tier and already documented, so the work actually outstanding was
+  81 values. The registry is the measurement, not the issue text.
+- **What a note is required to say:** which condition produces the value — what
+  has to be true at runtime for the code to choose it. Not a restatement of the
+  identifier, and not only the disposition that follows. The three sets of notes
+  that existed at M0 recorded disposition, which is why a reader still had to
+  reconstruct control flow from the generated rule table; that is the failure
+  mode being closed. That is the bar review holds a note to; it is not a bar a
+  test can decide, and the ratchet below does not claim to.
+- Where the producing condition cannot be established, the note says so and names
+  the evidence that would settle it, in the form `Unresolved: … Missing
+  evidence: …`. Two of the 81 are in that state as measured here, and neither is
+  guessed at: `settlement_failure_kind.cancelled` is declared in both owners and
+  admitted by the decoders but selected by no branch under `loopx/`, exercised
+  only by tests that fabricate it, and carries no `compatibility_only`
+  declaration saying it is reserved; `todo_decision_scope_kind.other` is an
+  accepted member with no producer, no fallback — a kind outside the set is
+  rejected, not coerced to it — and no documented rule for when an author should
+  choose it.
+- A related boundary the notes now state rather than hide: several
+  `cross_runtime` values are **author-declared and only membership-validated**,
+  not selected by any branch. All four `goal_amendment_class` values, all of
+  `todo_decision_scope_kind` and `todo_decision_scope_granularity`, and
+  `delivery_outcome.primary_goal_outcome` are in this class. Their notes say who
+  declares the value and against what criterion, cite where that criterion is
+  normative, and say plainly that no code branch selects it. This is a real
+  property of the tier, and it is the reason `cross_runtime` declares no
+  producers and sits outside F1/F2.
+- The ratchet is a new file, `tests/architecture/test_cross_runtime_value_notes.py`,
+  rather than an addition to the end of `test_semantic_vocabulary_drift.py`,
+  where the kernel-tier ratchet lives and where several open branches already
+  collide. It derives its population from the registry, so a new `cross_runtime`
+  vocabulary is covered without editing the test. It fails a value with no
+  `value_notes` entry, an entry that is blank or whitespace, and an unresolved
+  marker that does not name its missing evidence; a further test fails if a
+  vocabulary is ever registered under a tier neither ratchet walks.
+- **Two gates the first revision of that file carried were removed under
+  review**, and the review is right. A character floor plus a count of
+  non-stopword words claimed to catch a note that only restates its own
+  identifier: a word count cannot show that a note names the producing
+  condition, and what it reliably changes is to reward padding. A budget pinning
+  the unresolved count at 2 claimed to stop "unresolved" becoming the cheap
+  default: a cap on honesty buys the smaller count by pressuring the next author
+  to invent a producing condition rather than record that the evidence is
+  missing, which is the outcome the evidence rules exist to prevent. Both
+  obligations remain real and both stay with review; the test now asserts only
+  what it can decide from the registry.
+- Not addressed here: the notes are prose, and nothing checks them for truth.
+  Nothing verifies that a stated producing condition was ever right, or still
+  matches the code after the code moves. For the `cross_runtime` tier there is
+  no producer scan to check it against, which is the same gap F1/F2's domain
+  bounds already disclose.
+
 ### 2026-09-17 — Formula, role and enforcement claims separated; formal signature mutated
 
 Normative for the enforcement-lane wording; the checks are unchanged except for
@@ -1480,6 +1546,7 @@ result on the current tree; what changes is what the invariants claim.
 | 2026-09-17 | B0: state schema validation, implementation stage, evidence status and blocking behaviour separately for I2/I11-I14 and the enforcement lanes; require each formal invariant id exactly once | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B0; PR review pending | Rename the `blocking_next` lane to match its behaviour (rejected: the lane name is the milestone that owns the check, and renaming it would lose that and collapse the two readings the other way); add a `blocks_today` boolean to `formal_model` (rejected: it would be one more declared field a reader could mistake for a measurement, and the fact is a property of the smoke's `main()`, which no registry edit can change); leave the lane gloss and note the gap in the ledger only (rejected: the gloss is the sentence a reviewer quotes) | 2, 5, 11, Appendix A, Appendix B |
 | 2026-09-17 | B2: give every unresolved producer site a specific blocker reason from one taxonomy shared by both runtimes; leave the bounded syntactic reach unchanged | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Bind same-module call results, ordered local rebinding, key-precise container writes and `**` spreads (implemented, then **rejected on review**: it closed one site and produced five confidently wrong "fully resolved" verdicts — a loop-carried write, a negative-index write, a spread of a mutated dict, a `global` rebinding, and a shadowed `String`; a wrong confident answer is worse for this gate than an admitted unknown); count a field-named keyword as production (rejected: it makes the obligation tautological, Section 5); leave `typescript_dynamic` as one catch-all (rejected: eight sites shared one reason, so the residue was not actionable); loosen a budget or anchor to bank the one closed site (rejected: the site was never proven) | 5, 9, Appendix A, Appendix C |
 | 2026-09-17 | Bound F1/F2 to the kernel tier and the scan reach, restate F4 as scope enumeration completeness, and give every obligation a derived `domain` | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447); **kernel-maintainer approval required, not yet given** | Leave the unconditional statements and record the gap in prose only (rejected: the statement was stronger than `validate_production`'s own docstring); restate F4 as per-context value-set disjointness (rejected: refuted by the repo's own data, since `scope_declarations` exists to permit legitimate same-name reuse); widen the scan so the unconditional claim becomes true (rejected: a separate change with its own risk) | 5, 9, Appendix B, Appendix C |
+| 2026-09-17 | Document every `cross_runtime` value with the condition that produces it, taking per-value coverage from 68/149 to 149/149, and ratchet it in a separate test file | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) Track A; PR review pending | Append to the kernel ratchet at the end of `test_semantic_vocabulary_drift.py` (rejected: three open PRs already collide on that tail, and a same-diff rule is exactly what a merge there loses); infer a meaning for the two values with no producer (rejected by the evidence rules: a guessed note is indistinguishable from a verified one once it is in the table); document only the values a branch selects (rejected: it would leave the author-declared values looking undocumented rather than declared, which is the more useful fact); enforce the "not a restatement" bar with a character floor plus a non-stopword word count, and cap the unresolved count at 2 (both rejected under review: a word count cannot show that a note names the producing condition and only rewards padding, and a budget on honesty pressures the next author to invent a condition rather than record missing evidence) | Appendix A, Appendix B |
 
 ## Appendix C: Evidence registry
 

@@ -314,6 +314,7 @@ def test_goal_runtime_waits_for_automatic_continuation_until_terminal() -> None:
 def test_goal_runtime_exposes_typed_deadline_when_active_goal_never_continues() -> None:
     transport = ContinuationTransport(terminal_after_second_turn=False)
     transport.events = transport.events[:2]
+    observed = []
 
     with pytest.raises(
         NativeGoalDeadlineExceeded,
@@ -323,7 +324,11 @@ def test_goal_runtime_exposes_typed_deadline_when_active_goal_never_continues() 
             transport,
             _config(),
             timeout_sec=0.01,
+            on_turn_started=observed.append,
         )
+    assert len(observed) == 1
+    assert observed[0].turn_completed_count == 1
+    assert observed[0].goal_status == "active"
 
 
 def _write_fake_app_server(path: Path) -> None:

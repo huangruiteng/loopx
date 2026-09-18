@@ -38,7 +38,7 @@ CODEX_CLI_RESULT_KINDS = (
     "wait",
     "iteration_failed",
 )
-CODEX_CLI_SANDBOXES = ("read-only", "workspace-write")
+CODEX_CLI_SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
 SESSION_ID_MAX_CHARS = 256
 OUTPUT_DRAIN_TIMEOUT_SECONDS = 2.0
 SESSION_INVALIDATING_FAILURE_CATEGORIES = frozenset(
@@ -345,6 +345,13 @@ def _prompt(request: Mapping[str, Any]) -> str:
         "Turn request:",
         request_json,
     ]
+    boundary = _mapping(_mapping(request.get("turn_envelope")).get("boundary"))
+    if boundary.get("checkpointed_boundary_authority"):
+        instructions.append(
+            "The boundary's checkpointed_boundary_authority records existing write approval "
+            "only within its active_write_scope. It satisfies the write approval requirement "
+            "for those scopes; other scopes, publish, and production actions retain their gates."
+        )
     if _has_subagent_topology(request):
         instructions[7:7] = [
             "When subagent_execution_topology is present, return one compact child_execution_receipts item for each observed child, including the actual context_mode. Never copy prompts, transcripts, tool output, credentials, private links, or local absolute paths into a receipt. If no child was observed, return an empty list.",
@@ -712,7 +719,7 @@ def run_codex_cli_host(
     if request.get("schema_version") != LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION:
         raise ValueError("unsupported LoopX Turn host request schema")
     if sandbox not in CODEX_CLI_SANDBOXES:
-        raise ValueError("Codex CLI sandbox must be read-only or workspace-write")
+        raise ValueError(f"Codex CLI sandbox must be one of {CODEX_CLI_SANDBOXES}")
     resolved = shutil.which(codex_bin) if os.path.sep not in codex_bin else codex_bin
     if not resolved or not Path(resolved).exists():
         raise ValueError("Codex CLI executable is unavailable")
@@ -807,6 +814,9 @@ def run_codex_cli_host(
             _terminate_process(proc)
             timed_out = True
             returncode = proc.returncode
+        except BaseException:
+            _terminate_process(proc)
+            raise
         finally:
             reader.join(timeout=OUTPUT_DRAIN_TIMEOUT_SECONDS)
             stderr_reader.join(timeout=OUTPUT_DRAIN_TIMEOUT_SECONDS)

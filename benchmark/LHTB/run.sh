@@ -18,9 +18,9 @@ LHTB_ROOT="$(cd "$LHTB_ROOT" && pwd)"
 MODE="${1:-preflight}"
 SMOKE_TASK="${2:-tabular-data-feature-covshift}"
 case "$MODE" in
-  preflight|smoke|full) ;;
+  prepare|preflight|smoke|full) ;;
   *)
-    echo "Usage: $0 {preflight|smoke [task-name]|full}" >&2
+    echo "Usage: $0 {prepare|preflight|smoke [task-name]|full}" >&2
     exit 2
     ;;
 esac
@@ -38,7 +38,6 @@ REASONING_EFFORT="${REASONING_EFFORT:-max}"
 CONCURRENCY="${CONCURRENCY:-4}"
 AGENT_TIMEOUT_SEC="${AGENT_TIMEOUT_SEC:-5400}"
 LOOPX_SCHEDULER_TIMEOUT_SEC="${LOOPX_SCHEDULER_TIMEOUT_SEC:-5080}"
-LOOPX_WAKE_TIMEOUT_SEC="${LOOPX_WAKE_TIMEOUT_SEC:-4800}"
 LOOPX_CODEX_TURN_TIMEOUT_SEC="${LOOPX_CODEX_TURN_TIMEOUT_SEC:-4700}"
 LHTB_MAX_RETRIES="${LHTB_MAX_RETRIES:-2}"
 RUNNER_RESTARTS="${RUNNER_RESTARTS:-2}"
@@ -46,7 +45,13 @@ LHTB_MODELONLY_NETWORK="${LHTB_MODELONLY_NETWORK:-lhtb-modelonly}"
 LHTB_MODELONLY_SUBNET="${LHTB_MODELONLY_SUBNET:-192.0.2.0/24}"
 LHTB_MODELONLY_GATEWAY="${LHTB_MODELONLY_GATEWAY:-192.0.2.1}"
 LOOPX_SRC_DIR="${LOOPX_SRC_DIR:-$LOOPX_ROOT}"
-SHARED_CODEX_AGENT_DIR="$LOOPX_SRC_DIR/benchmark/swe-marathon/agents"
+export PYTHONPATH="$LOOPX_SRC_DIR${PYTHONPATH:+:$PYTHONPATH}"
+LOOPX_EXECUTION_MODE="${LOOPX_EXECUTION_MODE:-heartbeat}"
+LOOPX_TASK_ENTRY="${LOOPX_TASK_ENTRY:-seeded-todo}"
+LOOPX_PLANNING_TIMEOUT_SEC="${LOOPX_PLANNING_TIMEOUT_SEC:-300}"
+LOOPX_ITERATION_CONTEXT="${LOOPX_ITERATION_CONTEXT:-fresh}"
+LOOPX_VALIDATION_COMMAND_JSON="${LOOPX_VALIDATION_COMMAND_JSON:-[]}"
+SHARED_CODEX_AGENT_DIR="$LOOPX_SRC_DIR/benchmark/runtime"
 [[ -f "$SHARED_CODEX_AGENT_DIR/codex_offline.py" ]] || \
   die "Shared offline Codex adapter not found: $SHARED_CODEX_AGENT_DIR/codex_offline.py"
 LOOPX_EXPECTED_COMMIT="${LOOPX_EXPECTED_COMMIT:-$(git -C "$LOOPX_SRC_DIR" rev-parse HEAD)}"
@@ -68,28 +73,25 @@ if [[ -z "${LOOPX_NODE_DIR:-}" ]]; then
   node_binary="$(readlink -f "$node_command" 2>/dev/null || true)"
   [[ -n "$node_binary" ]] && LOOPX_NODE_DIR="$(cd "$(dirname "$node_binary")/.." && pwd)"
 fi
-[[ -n "${LOOPX_NODE_DIR:-}" && -x "$LOOPX_NODE_DIR/bin/node" ]] || die "Set LOOPX_NODE_DIR to a Node >=22.6 root"
+[[ -n "${LOOPX_NODE_DIR:-}" && -x "$LOOPX_NODE_DIR/bin/node" ]] || die "Set LOOPX_NODE_DIR to a supported Node root"
 
 for value in "$CONCURRENCY" "$AGENT_TIMEOUT_SEC" "$LOOPX_SCHEDULER_TIMEOUT_SEC" \
-  "$LOOPX_WAKE_TIMEOUT_SEC" "$LOOPX_CODEX_TURN_TIMEOUT_SEC" "$LHTB_MAX_RETRIES" "$RUNNER_RESTARTS"; do
+  "$LOOPX_CODEX_TURN_TIMEOUT_SEC" "$LHTB_MAX_RETRIES" "$RUNNER_RESTARTS"; do
   [[ "$value" =~ ^[0-9]+$ ]] || die "numeric configuration expected, got: $value"
 done
-(( LOOPX_CODEX_TURN_TIMEOUT_SEC < LOOPX_WAKE_TIMEOUT_SEC )) || die "Codex turn timeout must be below wake timeout"
-(( LOOPX_WAKE_TIMEOUT_SEC < LOOPX_SCHEDULER_TIMEOUT_SEC )) || die "wake timeout must be below scheduler timeout"
+(( LOOPX_CODEX_TURN_TIMEOUT_SEC + 150 < LOOPX_SCHEDULER_TIMEOUT_SEC )) || die "scheduler timeout must exceed Codex timeout plus 150s cleanup allowance"
 (( LOOPX_SCHEDULER_TIMEOUT_SEC < AGENT_TIMEOUT_SEC )) || die "scheduler timeout must be below Harbor agent timeout"
-[[ "$MODEL_NAME" == "openai/gpt-5.6-sol" ]] || die "this treatment is pinned to openai/gpt-5.6-sol"
-[[ "$REASONING_EFFORT" == "max" ]] || die "this treatment is pinned to reasoning=max"
 
 gateway_host="$($VENV/bin/python -c 'from urllib.parse import urlsplit; import sys; print(urlsplit(sys.argv[1]).hostname or "")' "$OPENAI_BASE_URL")"
 [[ -n "$gateway_host" ]] || die "Invalid OPENAI_BASE_URL: $OPENAI_BASE_URL"
 
 echo "=== prepare Harbor model-only networking ==="
 HARBOR_DOCKER_DIR="$LHTB_ROOT/upstream/harbor/src/harbor/environments/docker"
-if ! grep -q 'LHTB_MODELONLY_NET' "$HARBOR_DOCKER_DIR/docker.py" 2>/dev/null; then
+if [[ "$MODE" != preflight ]] && ! grep -q 'LHTB_MODELONLY_NET' "$HARBOR_DOCKER_DIR/docker.py" 2>/dev/null; then
   LHTB_HARBOR_SRC="$LHTB_ROOT/upstream/harbor/src/harbor" \
     "$VENV/bin/python" "$CODE_DIR/harbor_patch/prepare_harbor_modelonly.py"
 fi
-if ! docker network inspect "$LHTB_MODELONLY_NETWORK" >/dev/null 2>&1; then
+if [[ "$MODE" != preflight ]] && ! docker network inspect "$LHTB_MODELONLY_NETWORK" >/dev/null 2>&1; then
   docker network create --driver bridge --internal \
     --subnet "$LHTB_MODELONLY_SUBNET" \
     --gateway "$LHTB_MODELONLY_GATEWAY" \
@@ -101,6 +103,11 @@ network_gateway="$(docker network inspect "$LHTB_MODELONLY_NETWORK" --format '{{
 [[ "$network_gateway" == "$LHTB_MODELONLY_GATEWAY" ]] || die "network gateway mismatch: $network_gateway"
 [[ "$gateway_host" == "$network_gateway" ]] || die "offline tasks can only reach $network_gateway; gateway uses $gateway_host"
 
+if [[ "$MODE" == prepare ]]; then
+  echo "Harbor model-only networking prepared. Run preflight next."
+  exit 0
+fi
+
 run_stamp="$(date +%Y%m%d-%H%M%S)"
 task_args=()
 expected_task_count=46
@@ -110,7 +117,7 @@ if [[ "$MODE" == smoke ]]; then
   expected_task_count=1
   job_suffix="smoke-${SMOKE_TASK}"
 fi
-job_name="lhtb-loopx-hb-gpt56sol-max-${job_suffix}-${run_stamp}"
+job_name="lhtb-${LOOPX_EXECUTION_MODE}-${LOOPX_TASK_ENTRY}-${LOOPX_ITERATION_CONTEXT}-${job_suffix}-${run_stamp}"
 generated_config="$CODE_DIR/.generated/${job_name}.yaml"
 jobs_dir="$CODE_DIR/runs"
 
@@ -123,17 +130,24 @@ jobs_dir="$CODE_DIR/runs"
   --model "$MODEL_NAME" \
   --effort "$REASONING_EFFORT" \
   --timeout "$AGENT_TIMEOUT_SEC" \
+  --execution-mode "$LOOPX_EXECUTION_MODE" \
+  --task-entry "$LOOPX_TASK_ENTRY" \
+  --planning-timeout "$LOOPX_PLANNING_TIMEOUT_SEC" \
+  --iteration-context "$LOOPX_ITERATION_CONTEXT" \
+  --validation-command-json "$LOOPX_VALIDATION_COMMAND_JSON" \
+  --turn-timeout "$LOOPX_CODEX_TURN_TIMEOUT_SEC" \
+  --scheduler-timeout "$LOOPX_SCHEDULER_TIMEOUT_SEC" \
   "${task_args[@]}"
 
 export OPENAI_BASE_URL OPENAI_API_KEY MODEL_NAME REASONING_EFFORT
 export CODEX_BIN CODEX_OFFLINE_DIR CODEX_WIRE_API="${CODEX_WIRE_API:-responses}"
 export LOOPX_SRC_DIR LOOPX_EXPECTED_COMMIT LOOPX_PORTABLE_PYTHON LOOPX_NODE_DIR
-export LOOPX_SCHEDULER_TIMEOUT_SEC LOOPX_WAKE_TIMEOUT_SEC LOOPX_CODEX_TURN_TIMEOUT_SEC
+export LOOPX_SCHEDULER_TIMEOUT_SEC LOOPX_CODEX_TURN_TIMEOUT_SEC
 export LHTB_MODELONLY_NETWORK CONCURRENCY AGENT_TIMEOUT_SEC
 export LHTB_MODELONLY_NET=1 HB_VERIFIER_FEEDBACK_MODE=binary
 export DOCKER_DEFAULT_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
 export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
-export PYTHONPATH="$CODE_DIR/agents:$SHARED_CODEX_AGENT_DIR:$LOOPX_SRC_DIR${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$LOOPX_SRC_DIR${PYTHONPATH:+:$PYTHONPATH}"
 export NO_PROXY="127.0.0.1,localhost,$gateway_host,${NO_PROXY:-}"
 export no_proxy="$NO_PROXY"
 
@@ -160,8 +174,7 @@ receipt="$CODE_DIR/reports/${job_name}.env"
   printf 'job_name=%s\nmode=%s\nmodel=%s\nreasoning_effort=%s\n' "$job_name" "$MODE" "$MODEL_NAME" "$REASONING_EFFORT"
   printf 'concurrency=%s\nagent_timeout_sec=%s\nscheduler_timeout_sec=%s\n' "$CONCURRENCY" "$AGENT_TIMEOUT_SEC" "$LOOPX_SCHEDULER_TIMEOUT_SEC"
   printf 'gateway=%s\nwire_api=%s\nweb_search=disabled\n' "$OPENAI_BASE_URL" "$CODEX_WIRE_API"
-  printf 'runtime_profile=generic_cli\ncodex_driver=fresh_exec_per_wake\ncodex_resume=false\n'
-  printf 'onboarding_connection_validation=provider-prevalidated\n'
+  printf 'execution_mode=%s\niteration_context=%s\ncodex_home_scope=trial\n' "$LOOPX_EXECUTION_MODE" "$LOOPX_ITERATION_CONTEXT"
   printf 'scheduler_terminal_packet_compatibility=true\n'
   printf 'replan_after_completed_todos=3\nverifier_policy=44_shared_2_separate\n'
   printf 'loopx_commit=%s\n' "$(git -C "$LOOPX_SRC_DIR" rev-parse HEAD)"

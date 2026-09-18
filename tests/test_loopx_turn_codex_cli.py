@@ -349,9 +349,11 @@ def test_codex_cli_prompt_isolates_subagent_instructions_to_enabled_request() ->
     assert "opaque evidence_refs such as artifact:child-result" in prompt
 
 
+@pytest.mark.parametrize("sandbox", ["read-only", "workspace-write", "danger-full-access"])
 def test_codex_cli_host_starts_then_resumes_opaque_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    sandbox: str,
 ) -> None:
     executable, log_path = _fake_codex(tmp_path)
     monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
@@ -365,7 +367,7 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
         runtime_root=runtime_root,
         project=project,
         codex_bin=str(executable),
-        sandbox="workspace-write",
+        sandbox=sandbox,
         timeout_seconds=5,
     )
     with pytest.raises(RuntimeError, match="binding changed after planning"):
@@ -385,7 +387,7 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
         runtime_root=runtime_root,
         project=project,
         codex_bin=str(executable),
-        sandbox="workspace-write",
+        sandbox=sandbox,
         timeout_seconds=5,
     )
 
@@ -399,7 +401,7 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
     assert "session-fixture-0001" in argv_rows[1]
     resume_argv = argv_rows[1]
     assert resume_argv[resume_argv.index("-c") + 1] == (
-        'sandbox_mode="workspace-write"'
+        f'sandbox_mode="{sandbox}"'
     )
     assert resume_argv[resume_argv.index("-C") + 1] == str(project)
     assert resume_argv.index("-C") < resume_argv.index("resume")
@@ -822,3 +824,19 @@ def test_public_e2e_smoke_runs_n_transactions_on_one_session() -> None:
         "scheduler_acknowledged": False,
         "state_written": False,
     }
+
+
+def test_checkpointed_write_approval_is_scoped_and_absent_by_default():
+    request = _request()
+    assert "It satisfies the write approval requirement" not in _prompt(request)
+    request["turn_envelope"]["boundary"] = {
+        "requires_parent_approval": ["write", "publish", "production-action"],
+        "checkpointed_boundary_authority": {
+            "schema_version": "checkpointed_boundary_authority_v0",
+            "active_count": 1,
+            "active_write_scope": ["src/**"],
+        },
+    }
+    prompt = _prompt(request)
+    assert "only within its active_write_scope" in prompt
+    assert "publish, and production actions retain their gates" in prompt

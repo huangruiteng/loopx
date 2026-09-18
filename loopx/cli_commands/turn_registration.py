@@ -209,9 +209,11 @@ def register_turn_commands(
     run_once.add_argument("--codex-model")
     run_once.add_argument(
         "--codex-sandbox",
-        choices=["read-only", "workspace-write"],
+        choices=["read-only", "workspace-write", "danger-full-access"],
         default="read-only",
-        help="Sandbox for a new Codex CLI session; resume preserves its original session policy.",
+        help=("Codex CLI sandbox (default: read-only). danger-full-access explicitly "
+              "disables the inner sandbox; callers must provide their own isolation. "
+              "The setting is passed explicitly for both new and resumed sessions."),
     )
     run_once.add_argument(
         "--dsh-provider",

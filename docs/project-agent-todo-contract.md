@@ -29,6 +29,29 @@ sync catch up.
 
 ## Write Contract
 
+For a caller-owned runtime that already registered its Goal/Agent, generate the
+model planning checkpoint before writing executable task Todos:
+
+```bash
+loopx --format json todo plan --goal-id <goal-id> --agent-id <registered-agent> \
+  --text '<exact new task or follow-up input>'
+```
+
+This read-only command reuses `/loopx`'s planner and Todo-delta contract. It
+returns the current frontier, typed result schema and an explicit caller-owned
+execution handoff; it does not run a model, create a Goal, write a Todo, activate
+a host loop or spend quota. A model consumes the packet and uses the existing
+Todo CLI to plan actual task work. No planning/setup Todo is required. Read back
+the returned ids and current state before the caller activates its driver and
+enters the normal quota guard. A planning result does not authorize execution.
+Follow-up input preserves the Goal/Agent and existing waits; reconcile the plan
+instead of restarting the Goal. Unrelated peers and their claims remain intact.
+
+The installed `$loopx` skill recognizes this explicit packet as a bounded
+planning checkpoint. Without one, its existing startup/continuation behavior is
+unchanged. Omit `todo plan` to use that ordinary interactive entry; callers must
+not simulate a planning checkpoint by prewriting an advancement Todo.
+
 When read-only analysis, a review packet, a gate checklist, or P0/P1 steering
 finds a concrete user or owner action, write it immediately with the todo CLI.
 Use `user_gate` only when the item blocks an agent or the whole goal:

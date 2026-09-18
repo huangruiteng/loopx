@@ -804,6 +804,17 @@ release promise：
 一个 adapter 可以在工程上达到 E1，但其 study 仍然只有 C0；如果 E2 runtime evidence
 不完整，C2 result 也不成立。
 
+[共享 Codex 研究 runtime](../../../benchmark/runtime/RUNTIME.md) 是
+LHTB/SWE-Marathon 原生桥接的工程检查点：共享 trial 初始化，复用产品的
+heartbeat、Turn 和 Goal 执行，并保留原生验证。合成 Harbor conformance
+只验证这条工程路径；E3 matched study 和 E4 跨 benchmark 结论仍需独立验收。
+
+任务入口是独立的消融轴：runner 预写执行 Todo，或模型通过产品 `todo plan`
+检查点进行规划。规划先于所选执行驱动，复用 Goal planner 和 Todo 增量契约，
+消耗 phase 总预算但不计作 advancement。验收须读回任务身份和真实 Todo，保留
+阻塞状态，并披露独立的规划会话；合成任务通过不能证明与交互式 `$loopx` 启动
+等价，也不能证明规划效果提升。
+
 ### 11.3 必需的 delivery slice
 
 每个 benchmark engineering PR 或 contributor task 都应声明一个有界 slice，包含：

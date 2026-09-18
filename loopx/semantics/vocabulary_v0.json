@@ -537,7 +537,13 @@
         "durable_writeback",
         "quota_spend",
         "terminal_closeout"
-      ]
+      ],
+      "value_notes": {
+        "validation": "The first planned step, whose precondition is that the typed host result passed independent task validation. It is the one step the dispatcher never executes: it is seeded, so its receipt is emitted directly when the completed phases already contain it and fails as receipt_missing otherwise. It carries no command template, and it is the step stamped on every identity-shaped failure, because identity checks are validation.",
+        "durable_writeback": "The second step, conditioned on the validation receipt existing, which persists the turn's result durably before any quota is consumed. It is the only step with both a distinct absence kind and a distinct rejection kind, and the only entry in the default missing-failure mapping.",
+        "quota_spend": "The third step, conditioned on a matching durable writeback receipt, so the slot is debited only after the work is durably recorded and never before. Its callback rejection is the one that splits by reason text into budget_rejected or quota_spend_rejected.",
+        "terminal_closeout": "The conditional fourth step, planned only when a Todo binding exists and executed as its own single-phase transaction outside the main phase list. It requires the closeout to be required and the turn result to be validated_completion, and readback accepts it only against an event declaring no followup; requesting it without those, or supplying it unrequested, fails as terminal_closeout_rejected."
+      }
     },
     "settlement_binding_kind": {
       "meaning": "How a settlement step binds to its receipt.",
@@ -551,7 +557,12 @@
         "todo",
         "autonomous_replan",
         "unbound"
-      ]
+      ],
+      "value_notes": {
+        "todo": "Chosen by settlementIdentity when the todo id is non-blank after trimming; supplying both a todo id and a replan obligation id throws before this point. It fixes the effect id to the goal, agent, todo and turn instance form, and is re-derived when a persisted identity payload is decoded.",
+        "autonomous_replan": "Chosen when the todo id is blank and the replan obligation id is non-blank after trimming, so the turn settles a replan obligation rather than a selected Todo. The effect id gains an explicit autonomous_replan segment instead of a Todo segment.",
+        "unbound": "Chosen when both ids are blank, naming a goal, agent and turn with no work-item binding at all. It is reachable mainly because some constructors pass an empty string rather than validating, and every validating entry path refuses it; readback also reports it as failure detail to describe a heartbeat receipt that carries neither binding."
+      }
     },
     "settlement_failure_kind": {
       "meaning": "Typed failure class of a settlement step.",
@@ -573,7 +584,20 @@
         "permission_denied",
         "budget_rejected",
         "effect_outcome_unknown"
-      ]
+      ],
+      "value_notes": {
+        "invalid_identity": "A validation-step rejection of the identity's own shape, judged in isolation before any comparison with a durable record: no identity object, a blank goal, agent or turn instance id, both or neither work-item binding, a turn instance id failing the public-safe pattern, a missing effect id, or an effect id that disagrees with the one recomputed from that same identity. Self-inconsistency inside one plan, as opposed to identity_mismatch which compares two records.",
+        "receipt_missing": "A receipt or phase record needed to proceed is absent or not durably committed and no more specific kind applies: completed phases are not an ordered prefix of the transaction phases, validation is required but not completed, a phase marked completed carries a payload that is not committed, or readback finds no heartbeat receipt, quota spend or terminal closeout event.",
+        "identity_mismatch": "A well-formed identity compared against a second durable record names a different effect or binding: the journal's committed effect id differs from the plan's, a heartbeat receipt's binding or settlement effect id differs from the request, or a prepared attempt's effect reference does not match the effect id and step kind. The contrast with invalid_identity is that this failure needs two records to detect.",
+        "writeback_missing": "Raised at exactly one site, in the writeback readback, when the accountable refresh-state run or its matching event is null for this identity: the durable writeback receipt was never found. It is absence, never refusal, which is what separates it from writeback_rejected.",
+        "writeback_rejected": "Raised when the durable_writeback callback ran and returned a payload that is not a committed result, and in the task-lease verbs when a failure arose past the validation stage with a code outside the identity and permission sets. The writeback was attempted and refused, as opposed to writeback_missing where it was never observed.",
+        "quota_spend_rejected": "Raised when a settlement callback returned a non-committed payload on a step that is neither durable_writeback nor terminal_closeout, and the rejection reason text does not contain the word budget. It is the same branch as budget_rejected, separated only by that substring test.",
+        "terminal_closeout_rejected": "Raised on three branches: the terminal_closeout callback returned a non-committed payload; closeout was required but the turn's result kind is set and is not validated_completion, so there is no completed turn to close out; or a closeout payload was supplied when closeout was not required at all.",
+        "cancelled": "Unresolved: the value is declared in both owner modules and admitted by the decoders, but no branch under loopx/ selects it. A search of the literal, the enum member form and member value reads finds only the two definition sites; every other occurrence of the token in the tree belongs to an unrelated vocabulary such as the chat proposal status, the subagent execution status or a CI conclusion, and the only settlement-shaped uses are tests that fabricate it to check a failure is not erased. Missing evidence: a producing branch, or a compatibility_only declaration saying it is reserved for an external or future canceller. Because the cross_runtime tier declares no producers and is outside the F2 liveness check, a dead value here is not caught by the drift smoke, so whether this is reserved or actually dead is an open question for a maintainer.",
+        "permission_denied": "Raised when a task-lease verb was refused by an authority check before any durable write: the failure code is corrupt_lease or one of the registered owner and Todo eligibility codes, or a promoted-authority fence rejected a legacy writer. The invariant is that it was denied at the validation stage and nothing was written. These sites emit the bare string rather than a typed member, so the value is only checked when a decoder parses the envelope.",
+        "budget_rejected": "Raised on the same branch as quota_spend_rejected, a non-committed callback payload on a step that is neither durable_writeback nor terminal_closeout, and separated from it only by the derived reason text containing the word budget, case-insensitively. That is a substring test on free-form callback text, not a structured budget signal, so a budget refusal phrased without the word is reported as quota_spend_rejected instead.",
+        "effect_outcome_unknown": "Raised when the effect was prepared and dispatched but its outcome cannot be decided either way: the provider's observation for the step is explicitly unknown, or an observation exists that is neither unknown nor a committed payload, meaning the adapter never durably checkpointed it. It is the only failure kind asserting no outcome; every other kind asserts a known one, which is why it must neither be retried nor declared done."
+      }
     },
     "receipt_bound_monitor_phase": {
       "meaning": "Receipt-bound phase of a monitor poll settlement.",
@@ -587,7 +611,12 @@
         "poll_due",
         "settlement_pending",
         "settled"
-      ]
+      ],
+      "value_notes": {
+        "poll_due": "Emitted when no quota monitor poll run exists for this settlement identity of goal, agent, turn instance and, where bound, Todo. The observation record itself is missing, so the system does not yet know whether anything is owed. This is what distinguishes it from the replay vocabulary's open, where the observation exists but its completion receipt does not.",
+        "settlement_pending": "Emitted when a monitor poll exists and reports a material change, but the durable writeback and quota spend readbacks have not both resolved without failure. A material poll owes receipts and at least one is still absent or failing.",
+        "settled": "Emitted on two disjoint routes: a poll that reports no material change owes nothing and is settled on arrival with no receipt at all, or a material poll whose durable writeback and quota spend readbacks both resolved. The first route is the shortcut the replay vocabulary deliberately lacks."
+      }
     },
     "receipt_bound_replay_phase": {
       "meaning": "Receipt-bound phase of a Turn journal replay settlement.",
@@ -601,7 +630,12 @@
         "open",
         "settlement_pending",
         "settled"
-      ]
+      ],
+      "value_notes": {
+        "open": "Emitted when the binding is not yet complete: for a Todo or unbound binding no todo_complete step event exists for this identity, and for an autonomous_replan binding the durable writeback receipt is absent. The journal exists and is being replayed; the evidence that opens its settlement chain has not landed. Unlike the monitor vocabulary's poll_due, the observation is already known here.",
+        "settlement_pending": "Emitted once the binding is complete, by completion receipt or by writeback for an autonomous replan, but the durable writeback and quota spend are not both present. The chain is open and partially receipted.",
+        "settled": "Emitted when the binding is complete and both the durable writeback and the quota spend are present. A replay has no nothing-was-owed shortcut, so unlike the monitor vocabulary's settled this always requires both receipts."
+      }
     },
     "handoff_mode": {
       "meaning": "Authority handoff mode between agents.",
@@ -615,7 +649,12 @@
         "legacy",
         "soft_claim",
         "hard_lease"
-      ]
+      ],
+      "value_notes": {
+        "legacy": "The default whenever a Goal's mode is absent or blank; normalize_handoff_mode returns it for empty input and the coordination snapshot falls back to it. It permits soft-claim and hard-lease behaviour at once and leaves the known claim-versus-lease split brain open on purpose, surfacing it additively rather than repairing it silently.",
+        "soft_claim": "Set by an operator declaring the Todo claim to be the only ownership record, so lease acquire, renew and transfer are typed-rejected while release and inspect stay open to clean up leftover leases. A Goal in this mode also fails closed on bootstrap into shared authority, because a shared claim mints a lease and would invert the declared no-lease semantics.",
+        "hard_lease": "Set by an operator requiring lease-backed ownership, and the only mode v0 shared authority accepts, so a bootstrapped head is minted with it. Ownership of an existing Todo may then change only for the agent holding that Todo's time-active lease; the one audited door is the delegated lifecycle-authority override, which authorises the ownership change but not the completion fence."
+      }
     },
     "scheduler_cadence_transition": {
       "meaning": "Legal scheduler cadence state transition.",
@@ -632,7 +671,15 @@
         "hold_active_initial",
         "advance_after_interval",
         "hold_until_interval"
-      ]
+      ],
+      "value_notes": {
+        "initial": "Emitted by evaluateCadence when no scheduler state is persisted at all, so the state blob has zero keys. There is no prior cadence to continue, and the progression index is forced to 0.",
+        "identity_reset": "Emitted when a scheduler state exists but its stored reset token or identity signature differs from the caller's, so the retained progression belongs to a different run identity. The progression is discarded back to index 0 rather than carried across identities.",
+        "retry_unacknowledged_failure": "Emitted on a matching identity when the unexpired host-update failure cache is non-empty and the normalized last applied rrule does not equal the rrule for the applied index, meaning the previous apply failed and was never acknowledged. The index is pinned at the applied index so the same target is retried, and this branch outranks every other same-identity branch.",
+        "hold_active_initial": "Emitted on a matching identity with no unacknowledged failure when the caller did not ask to advance, which is the case for consistency repair and for active work that is not a capability-bridge wait. The index resets to 0, holding the tightest interval while real work is in flight instead of backing off.",
+        "advance_after_interval": "Emitted on a matching identity with no unacknowledged failure when advancing was asked for and the applied interval has elapsed, measured from the state's updated_at plus the interval of the last applied rrule. The index moves one step up the progression, clamped at its last entry; an unparseable timestamp or interval counts as elapsed.",
+        "hold_until_interval": "Emitted on the same path as advance_after_interval but while the applied interval has not yet elapsed. The backoff is eligible and simply not yet due, so the index stays where it was."
+      }
     },
     "scheduler_host_transition": {
       "meaning": "Legal scheduler host state transition.",
@@ -647,7 +694,13 @@
         "host_match_ack_required",
         "recorded_failure_suppressed",
         "settled"
-      ]
+      ],
+      "value_notes": {
+        "apply_required": "The fall-through when the target rrule is not effective at the host, or is effective but the identity was reset, and no cached failure records that identical target and observed pair. The host cadence actually has to be written.",
+        "host_match_ack_required": "First branch of evaluateHost: the host reported a cadence that already equals the current target, but something still owes an acknowledgement, because the scheduler state's last applied rrule does not match the target, the identity is not a clean match, or the retained failure cache holds a failure for this target. Nothing needs applying; only the ack has to be written.",
+        "recorded_failure_suppressed": "Emitted when the target is not effective yet but the selected unexpired failure cache entry records the identical pair of target rrule and observed host rrule, so the exact same apply attempt already failed with nothing changed since. The retry is suppressed rather than looped.",
+        "settled": "Emitted when the target rrule is already effective at the host and the scheduler state acknowledges it under a matching identity with no cached failure for that target. It also covers the monitor_wait stale-tolerance fallback, where no host rrule was observed but the last applied cadence is no looser than the target and still inside the tolerance window."
+      }
     },
     "todo_completion_continuation": {
       "meaning": "Continuation declared by a completing Todo.",
@@ -661,7 +714,12 @@
         "active_goal",
         "successor",
         "no_followup"
-      ]
+      ],
+      "value_notes": {
+        "active_goal": "Selected when a Todo is written to done with no effective no-followup flag and no successor todo ids: the default, meaning the Goal stays active and work continues under it. The durable completion backfill applies the same three-way choice when a stored completion has no recorded continuation.",
+        "successor": "Selected when no-followup is false and at least one successor todo id exists, either requested on the completion or already present on the block. Linking newly generated successor ids into a block also stamps this continuation unconditionally, so the successor link and the continuation cannot disagree.",
+        "no_followup": "Selected when the effective no-followup flag is true, set either by the completion request or by the Todo block's own metadata in any of its accepted spellings. It requires zero successors and the write is rejected if both are present, which is what makes it the terminal continuation."
+      }
     },
     "todo_completion_recovery": {
       "meaning": "Recovery path when a Todo completion cannot continue.",
@@ -674,7 +732,11 @@
       "values": [
         "same_turn_terminal_closeout",
         "lifecycle_reentry_terminal_closeout"
-      ]
+      ],
+      "value_notes": {
+        "same_turn_terminal_closeout": "Selected only under the re-completion guard, where a Todo is already done, the caller now requests no-followup, and the stored continuation is active_goal. This value is the branch taken when the completion identity source is the current turn's settlement or is unscoped, so the closeout happens inside the turn that owns that settlement identity.",
+        "lifecycle_reentry_terminal_closeout": "Selected under the same re-completion guard when the completion identity source is lifecycle reentry, which the CLI sets when there is no fresh turn settlement but the caller supplied an explicit completion identity key. The closeout re-enters an already settled lifecycle under a replayed key rather than under a live turn."
+      }
     },
     "delivery_outcome": {
       "meaning": "Outcome class of a delivered work item.",
@@ -689,7 +751,13 @@
         "outcome_gap",
         "outcome_progress",
         "primary_goal_outcome"
-      ]
+      ],
+      "value_notes": {
+        "surface_only": "Written by a writeback that touched control-plane or scheduler surface but produced no product result: a monitor poll whose observation reports no material change, every scheduler heartbeat follow-up record, and the promotion-readiness smoke record. Consumers read it as follow-through still owing, mapping it to contract-only preparation.",
+        "outcome_gap": "The only branch that selects it is a forced downgrade during an autonomous-replan refresh, applied when the agent claimed progress or a primary outcome but the built repair-delta contract carries no delta or the delta kinds fail the accountable-progress check. Otherwise the delivering agent declares it. It settles a blocker for exactly one Turn, and only when the same writeback carries a typed progress observation with result_class blocked, a stable blocker id, a work item id matching exactly one of the todo or replan obligation, and stable evidence ids.",
+        "outcome_progress": "Selected when a machine-observable material transition is established: a monitor poll whose observation reports a material change, a Host adapter whose returned result kind is one of validated_progress, repair_required or replan_required, or a verifier approving the Todo. Declared through the CLI it is an accountable outcome and triggers completion validation, and it is the exact value delivery continuity requires before it will resume an in-flight delivery.",
+        "primary_goal_outcome": "No branch in the tree selects this value; it is claimed by the delivering agent on refresh-state and the code only bounds the claim negatively. diagnoseDeliveryClaim rejects it when the turn kind is contract-only preparation, when the turn is a blocker writeback or the progress observation is blocked, or when follow-through is still required, and the replan writeback downgrades it to outcome_gap when the delta is empty. What the claim asserts positively is stated in prose in docs/quota-allocation.md and docs/integration.md, not derived anywhere in code."
+      }
     },
     "delivery_workspace_kind": {
       "meaning": "Workspace kind a delivery runs in.",
@@ -703,7 +771,12 @@
         "canonical_checkout",
         "independent_git_worktree",
         "local_goal_workspace"
-      ]
+      ],
+      "value_notes": {
+        "canonical_checkout": "Captured inside a git repository when the resolved git dir and the git common dir are the same path, which is what distinguishes the main checkout from a linked worktree. A goal that requires peers to deliver from their own worktrees rejects a delivery captured with this kind.",
+        "independent_git_worktree": "Captured inside a git repository when the resolved git dir differs from the git common dir, the signal that this delivery ran in its own linked worktree. It is the kind a multi-agent goal demands: state refresh raises when a peer independent worktree is required and the capture says otherwise, and completion validation names it as the required workspace.",
+        "local_goal_workspace": "Captured on the same non-git local-goal branch that produces the local_goal identity kind, so the two are always emitted together. The snapshot validator rejects a non-git identity paired with any other workspace kind, with a revision digest, or with a peer independent worktree requirement."
+      }
     },
     "delivery_workspace_identity_kind": {
       "meaning": "How a delivery workspace is identified.",
@@ -716,7 +789,11 @@
       "values": [
         "git_repository",
         "local_goal"
-      ]
+      ],
+      "value_notes": {
+        "git_repository": "Captured when git rev-parse resolves a worktree root from the delivery path, the origin remote normalizes to a canonical repository identity, and both the git dir and the git common dir resolve. A missing origin or an unresolvable git dir yields no snapshot at all rather than downgrading to local_goal, so this kind always means a verified remote-backed identity.",
+        "local_goal": "Captured when the delivery path is inside no git worktree, no peer independent worktree is required, a local goal id was supplied, the path is the registered local project root or a child of it, and the resolved project identity carries the loopx prefix. Any one of those failing produces no snapshot, so this kind is never a fallback for a partially identified workspace."
+      }
     },
     "delivery_workspace_requirement": {
       "meaning": "Workspace requirement a settlement asserts before delivery.",
@@ -730,7 +807,12 @@
         "required",
         "not_required",
         "unknown"
-      ]
+      ],
+      "value_notes": {
+        "required": "Classified when the normalized Todo contract declares repository-write causality: a non-empty task repository, non-empty required write scopes, or filesystem_write among the required capabilities. It commits the settlement to producing a workspace snapshot, and a missing snapshot is then treated as a hard gap rather than an omission.",
+        "not_required": "Classified in three disjoint cases: a contract with no repository, write scopes or filesystem_write whose continuation policy is explicitly same-agent non-delivery; a settlement bound to an autonomous replan, which is non-repository control-plane work; or a legacy-receipt settlement carrying exactly the validation and durable_writeback steps with a matching effect id and no workspace present. State refresh then raises if a delivery workspace path is passed against such a settlement.",
+        "unknown": "The conservative fall-through when the Todo contract is simply silent: no repository, no write scopes, no filesystem_write and a continuation policy other than explicit non-delivery, or no causality normalizable for a todo binding with legacy receipts absent. It is not read as permission: the resolver returns a repair-contract decision naming the two accepted resolutions, and the repair path keeps the value unknown if re-deriving from the completed contract still cannot settle it."
+      }
     },
     "goal_amendment_class": {
       "meaning": "Class of a proposed Goal amendment.",
@@ -745,7 +827,13 @@
         "shared_work_graph",
         "shared_acceptance",
         "protected_authority"
-      ]
+      ],
+      "value_notes": {
+        "lane_route": "Declared by the proposer when the amendment only reorders that Agent's own unclaimed steps inside one lane, so the owning Agent is the committer and no work outside the lane is affected. No branch selects it: goal_amendment_proposal.ts only checks membership and echoes the token into the admission record, whose canonical_effect is always none, so the class stays inert metadata until a per-class commit path exists. Criterion is normative in docs/architecture/rfcs/shared-goal-alignment-and-governed-amendment-v0.md Section 5, not inferred from a producer.",
+        "shared_work_graph": "Declared when the amendment adds a Todo or a dependency to the shared work graph while preserving root intent, so any registered Agent may propose it and unrelated work continues. It is the only class the planned first shared-authority commit slice would be allowed to commit. Selected by no branch today; membership-validated and echoed only, criterion normative in shared-goal-alignment-and-governed-amendment-v0.md Section 5.",
+        "shared_acceptance": "Declared when the amendment refines an acceptance condition or a non-goal while staying inside root intent, which is why it needs an independent verifier Agent and gates the affected acceptance path meanwhile. Distinguished from shared_work_graph by touching the shared intent surface rather than the work graph. Selected by no branch today; criterion normative in shared-goal-alignment-and-governed-amendment-v0.md Section 5.",
+        "protected_authority": "Declared when the amendment acquires a new permission or leaves root intent, so it never auto-commits unless the immutable envelope already delegates that exact class and affected work fails closed. It is the only class whose blast radius escapes the Goal's declared authority. Selected by no branch today; criterion normative in shared-goal-alignment-and-governed-amendment-v0.md Section 5."
+      }
     },
     "goal_amendment_proposal_admission": {
       "meaning": "Admission verdict for a Goal amendment proposal.",
@@ -758,7 +846,11 @@
       "values": [
         "admitted",
         "needs_rebase"
-      ]
+      ],
+      "value_notes": {
+        "admitted": "Emitted by admissionOutcome when no staleness fact accumulated: the derived basis is a state event log and the proposal's base sequence equals the derived head with a matching digest, or there is no event log to compare against. Not the same as fact-free, because the two no-event-log routes carry base_source_basis_unverifiable alongside the verdict.",
+        "needs_rebase": "Emitted by admissionOutcome as soon as one staleness fact accumulates, meaning the base the proposal bound to is no longer the derived basis. It is not a rejection and the proposal is still retained; a base sequence ahead of the derived head or an unproducible sequence throws instead of reaching a verdict."
+      }
     },
     "goal_amendment_proposal_admission_fact": {
       "meaning": "Fact recorded with a Goal amendment admission verdict.",
@@ -773,7 +865,13 @@
         "base_source_basis_digest_mismatch",
         "base_source_basis_unverifiable",
         "base_revision_basis_superseded"
-      ]
+      ],
+      "value_notes": {
+        "base_state_event_basis_sequence_behind_derived_head": "Recorded only on the event-log path, when the proposal's base sequence is strictly less than the derived head: state events were appended after the proposal was produced. This is the positional basis, compared numerically against the append log, and it is the one fact that cannot arise where no event log exists.",
+        "base_source_basis_digest_mismatch": "Recorded when the proposal's source digest differs from the derived one. The load-bearing case is an equal sequence with a differing digest: the digest also covers goal status, registered agents, revision basis and checksum, so basis identity can move without the sequence moving, and checking it separately stops an equal sequence being read as fresh.",
+        "base_source_basis_unverifiable": "Recorded when the Goal has no state event log, so no staleness verdict is derivable at all: the derived basis is markdown active state, or a canonical Todo snapshot the proposal matched exactly. Both project sequence 0. This fact rides on admitted rather than needs_rebase, because the code refuses to fabricate a stale verdict where no comparable history exists.",
+        "base_revision_basis_superseded": "Recorded when the basis kind itself changed under the proposal, chiefly when the Goal has since grown a typed event log while the proposal bound to a markdown base. It is checked first and short-circuits, so it never co-accumulates with the sequence and digest facts, and it is deliberately not treated as a fabricated history, which throws instead."
+      }
     },
     "todo_decision_scope_kind": {
       "meaning": "Scope kind of a Todo decision.",
@@ -791,7 +889,16 @@
         "public_claim",
         "direction",
         "other"
-      ]
+      ],
+      "value_notes": {
+        "private_read": "Author-declared in the kind:granularity:scope_key token and only membership-checked; no branch selects it. It names the private-material-read authority in the decision catalogue, and because dominance requires an exact kind match, a gate of this kind never covers a decision of any other kind however broad its granularity.",
+        "write_scope": "Author-declared and only membership-checked. It names the write-boundary authority in the decision catalogue, distinguishing a decision about what may be written from one about spending a resource or making a public claim. Kinds never cross-cover.",
+        "resource": "Author-declared and only membership-checked. It names the resource-spend authority in the decision catalogue, the decision about consuming budget or capacity rather than about writing or publishing.",
+        "production": "Author-declared and only membership-checked. It names the production-action authority in the decision catalogue, the decision to actually run the producing action rather than to authorise its scope.",
+        "public_claim": "Author-declared and only membership-checked. It names the public-submission authority in the decision catalogue, the decision to put a claim outside the system where it cannot be silently withdrawn.",
+        "direction": "Author-declared and only membership-checked. It names the product-direction authority in the decision catalogue, the choice of what to aim at; the capability paths that assert an expected scope literal all expect this kind at action granularity.",
+        "other": "Unresolved: no branch selects it, nothing falls back to it, and a kind outside the set is rejected rather than coerced to it, so it is not a code-level catch-all; it is only an accepted member an author may write, and like every kind it covers nothing but an identical requirement. Missing evidence: any spec, schema description or authoring rule saying when an author should choose other rather than one of the six named kinds. The protocol reference lists it in the enum without a definition and the catalogue gloss enumerates only the other six."
+      }
     },
     "todo_decision_scope_granularity": {
       "meaning": "Granularity of a Todo decision scope.",
@@ -807,7 +914,14 @@
         "goal",
         "project",
         "global"
-      ]
+      ],
+      "value_notes": {
+        "action": "Author-declared, not code-selected: it is written in the kind:granularity:scope_key token and only membership-checked. It is the lowest rank in the dominance order action, lane, goal, project, global, so a gate declared at this granularity covers only the single action it was taken for, while any broader gate of the same kind also covers it.",
+        "lane": "Author-declared and only membership-checked. It sits one rank above action, so a gate at this granularity covers the actions of one work lane and is itself covered by a goal, project or global gate of the same kind.",
+        "goal": "Author-declared and only membership-checked. It sits above lane, so a gate at this granularity covers decisions across the Goal rather than a single lane, and is covered in turn by a project or global gate of the same kind.",
+        "project": "Author-declared and only membership-checked. It sits above goal, so a gate at this granularity covers decisions across the project and is covered only by a global gate of the same kind.",
+        "global": "Author-declared and only membership-checked. It is the highest rank, so a gate at this granularity covers a required decision at any granularity of the same kind and nothing else can cover it. Only the ordinal position is enforced in code; the breadth each rank names is not checked."
+      }
     },
     "delivery_continuity_preemption": {
       "meaning": "Reason a delivery continuity is preempted.",
@@ -823,7 +937,14 @@
         "autonomous_replan",
         "control_repair",
         "delivery_not_allowed"
-      ]
+      ],
+      "value_notes": {
+        "heartbeat_receipt": "Appended first by _delivery_preemptions_for_route when the turn is already bound to a committed heartbeat receipt, either because the caller passed a receipt-bound todo id or because an allowed autonomous-replan obligation carries selection_binding heartbeat_receipt. The route must resume that exact receipt-bound item, so free reselection is preempted. Only the first entry of the ordered list becomes the emitted reason, so this outranks the other four.",
+        "blocking_work_lane": "Appended when a lane-level obligation outranks advancement delivery this turn: a due monitor attempt, an inbox priority due such as an operator reply or material review, an actionable task-orchestration contract, a capability monitor fallback, or a pending external evidence observation. The lane work is not the delivery, so continuity is preempted rather than cancelled.",
+        "autonomous_replan": "Appended when the replan decision is allowed, meaning no inbox priority is due and the replan obligation passes plan health, workspace guard, automation-prompt and registered-agent checks. The same branch clears normal delivery and sets the effective action to autonomous_replan_required, so the replan owns the whole turn.",
+        "control_repair": "Appended when the turn is routed to a control-plane repair instead of delivery: stall self-repair, a capability gate asking to repair the bridge, a workspace guard being present, or a required automation-prompt upgrade. The repair is control-plane work, so it displaces the delivery it would otherwise run alongside.",
+        "delivery_not_allowed": "The catch-all appended last when normal delivery is off for a reason none of the four specific causes names, such as a monitor-only work mode, a settled receipt-bound monitor, a monitor-quiet skip or an external-evidence wait. Because it is appended last it only surfaces as the chosen reason when no more specific cause applies."
+      }
     }
   },
   "relations": {

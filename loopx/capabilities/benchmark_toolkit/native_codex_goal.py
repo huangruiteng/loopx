@@ -15,7 +15,7 @@ import subprocess
 import threading
 import time
 from collections import Counter, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Protocol, Self, TextIO
@@ -414,6 +414,7 @@ def run_native_goal_until_terminal(
     config: NativeGoalConfig,
     *,
     timeout_sec: float,
+    on_turn_started: Callable[[NativeGoalTurn], None] | None = None,
 ) -> NativeGoalTurn:
     """Run one native Goal until its status leaves ``active``.
 
@@ -425,6 +426,8 @@ def run_native_goal_until_terminal(
     if timeout_sec <= 0:
         raise ValueError("timeout_sec must be positive")
     turn = start_native_goal_turn(transport, config)
+    if on_turn_started is not None:
+        on_turn_started(turn)
     deadline = time.monotonic() + timeout_sec
     completed_before = turn.turn_completed_count
     while True:

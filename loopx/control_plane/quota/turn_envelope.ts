@@ -327,6 +327,22 @@ function boundary(payload: JsonObject): JsonObject {
     const values = textList(source[field], 16, 180);
     if (values.length > 0) result[field] = values;
   }
+  // Carry the already resolved approval from quota; dropping it leaves only
+  // the bootstrap approval requirement and strands authorized execution.
+  const approved = object(source.checkpointed_boundary_authority);
+  const approvedScopes = Array.isArray(approved.active_write_scope)
+    ? approved.active_write_scope.filter((scope): scope is string =>
+      typeof scope === "string" && scope.length > 0 && scope.length <= 180).slice(0, 16)
+    : [];
+  if (approved.schema_version === "checkpointed_boundary_authority_v0"
+      && Number.isInteger(approved.active_count) && Number(approved.active_count) > 0
+      && approvedScopes.length > 0) {
+    result.checkpointed_boundary_authority = {
+      schema_version: approved.schema_version,
+      active_count: approved.active_count,
+      active_write_scope: approvedScopes,
+    };
+  }
   const guards = textList(source.guards, 8, 280);
   if (guards.length > 0) result.guards = guards;
   const stopCondition = text(source.stop_condition, 320);

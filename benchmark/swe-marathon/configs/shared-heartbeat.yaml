@@ -1,0 +1,13 @@
+# Merge this agent section into the native SWE-Marathon job configuration.
+# Keep native datasets/tasks, environment, feedback and verifier settings.
+agents:
+  - import_path: benchmark.runtime.harbor:BenchmarkCodex
+    model_name: openai/gpt-5.6-sol
+    override_timeout_sec: 5400
+    kwargs:
+      execution_mode: heartbeat
+      task_entry: seeded-todo  # Use loopx-planned for the product planning checkpoint.
+      iteration_context: fresh
+      reasoning_effort: high
+      turn_timeout_sec: 4700
+      scheduler_timeout_sec: 5080

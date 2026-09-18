@@ -30,14 +30,16 @@ def _wait_for_process(process: subprocess.Popen[bytes], timeout: float) -> bool:
     return True
 
 
-def _terminate_posix_process_group(process: subprocess.Popen[bytes]) -> None:
+def _terminate_posix_process_group(
+    process: subprocess.Popen[bytes], grace_seconds: float
+) -> None:
     process_group_id = process.pid
     try:
         os.killpg(process_group_id, signal.SIGTERM)
     except ProcessLookupError:
         process.wait()
         return
-    _wait_for_process(process, _PROCESS_TERMINATE_GRACE_SECONDS)
+    _wait_for_process(process, grace_seconds)
     try:
         os.killpg(process_group_id, signal.SIGKILL)
     except ProcessLookupError:
@@ -47,7 +49,9 @@ def _terminate_posix_process_group(process: subprocess.Popen[bytes]) -> None:
         process.wait()
 
 
-def _terminate_windows_process_tree(process: subprocess.Popen[bytes]) -> None:
+def _terminate_windows_process_tree(
+    process: subprocess.Popen[bytes], grace_seconds: float
+) -> None:
     if process.poll() is not None:
         return
     subprocess.run(
@@ -56,7 +60,7 @@ def _terminate_windows_process_tree(process: subprocess.Popen[bytes]) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    if _wait_for_process(process, _PROCESS_TERMINATE_GRACE_SECONDS):
+    if _wait_for_process(process, grace_seconds):
         return
     subprocess.run(
         ["taskkill", "/PID", str(process.pid), "/T", "/F"],
@@ -67,17 +71,19 @@ def _terminate_windows_process_tree(process: subprocess.Popen[bytes]) -> None:
     process.wait()
 
 
-def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+def _terminate_process_tree(
+    process: subprocess.Popen[bytes], grace_seconds: float
+) -> None:
     if os.name == "posix":
-        _terminate_posix_process_group(process)
+        _terminate_posix_process_group(process, grace_seconds)
         return
     if os.name == "nt":  # pragma: no cover - exercised on Windows hosts.
-        _terminate_windows_process_tree(process)
+        _terminate_windows_process_tree(process, grace_seconds)
         return
     if process.poll() is not None:  # pragma: no cover - unsupported platform fallback.
         return
     process.terminate()
-    if not _wait_for_process(process, _PROCESS_TERMINATE_GRACE_SECONDS):
+    if not _wait_for_process(process, grace_seconds):
         process.kill()
         process.wait()
 
@@ -90,6 +96,7 @@ def run_capped_process(
     output_limit_bytes: int,
     env: Mapping[str, str] | None = None,
     cwd: str | Path | None = None,
+    termination_grace_seconds: float = _PROCESS_TERMINATE_GRACE_SECONDS,
 ) -> CappedProcessResult:
     """Run a provider while bounding both output streams during execution."""
 
@@ -179,24 +186,29 @@ def run_capped_process(
 
     deadline = time.monotonic() + timeout_seconds
     timed_out = False
-    while process.poll() is None:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            timed_out = True
-            _terminate_process_tree(process)
-            break
-        if limit_event.wait(timeout=min(0.05, remaining)):
-            _terminate_process_tree(process)
-            break
+    try:
+        while process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                _terminate_process_tree(process, termination_grace_seconds)
+                break
+            if limit_event.wait(timeout=min(0.05, remaining)):
+                _terminate_process_tree(process, termination_grace_seconds)
+                break
+    except BaseException:
+        _terminate_process_tree(process, termination_grace_seconds)
+        raise
+    finally:
+        for thread in threads:
+            thread.join(timeout=_PROCESS_TERMINATE_GRACE_SECONDS)
+        for stream in (process.stdout, process.stderr):
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
 
     returncode = process.wait()
-    for thread in threads:
-        thread.join(timeout=_PROCESS_TERMINATE_GRACE_SECONDS)
-    for stream in (process.stdout, process.stderr):
-        try:
-            stream.close()
-        except (OSError, ValueError):
-            pass
     return CappedProcessResult(
         returncode=returncode,
         stdout=bytes(stdout),

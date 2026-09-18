@@ -112,7 +112,9 @@ is its `schema_version`, not its enclosing field. The shared TypeScript authorin
 boundary rejects misplaced declared deltas before any write, including through
 CLI and Turn. It does not infer a protocol from ordinary metadata field names.
 Existing packets may omit the nested schema version; an explicitly supplied
-version must match. Historical read compaction remains unchanged.
+version must match. The look-back rides the existing `--agent-vision-json`
+boundary, so it stays explicit without adding more inline CLI flags or expanding
+the heartbeat prompt. Historical read compaction remains unchanged.
 
 ```json
 {

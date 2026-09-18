@@ -25,6 +25,7 @@ from hashlib import sha256
 import json
 import os
 import shlex
+import signal
 import sys
 import time
 from dataclasses import dataclass
@@ -268,6 +269,7 @@ def _run_wake(command: str, *, timeout_seconds: float) -> CappedProcessResult:
         stdin=b"",
         timeout_seconds=max(0.01, timeout_seconds),
         output_limit_bytes=PROCESS_OUTPUT_LIMIT_BYTES,
+        termination_grace_seconds=10,
     )
 
 
@@ -558,4 +560,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    def cancelled(signum, frame):
+        raise KeyboardInterrupt("scheduler cancelled")
+
+    signal.signal(signal.SIGTERM, cancelled)
     raise SystemExit(main())

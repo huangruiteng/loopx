@@ -7,6 +7,8 @@ import argparse
 import importlib.util
 import json
 import os
+import re
+import tempfile
 import subprocess
 import sys
 import tomllib
@@ -14,10 +16,15 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import yaml
+from benchmark.runtime.codex import Execution
+from loopx.control_plane.effect_runtime import (
+    MINIMUM_NODE_VERSION,
+    MINIMUM_NODE_VERSION_TEXT,
+)
 
 
 EXPECTED_SEPARATE = {"langchain-version-migration", "nbody-accel-iterative"}
-EXPECTED_AGENT = "codex_loopx_heartbeat:LoopxHeartbeatCodex"
+EXPECTED_AGENT = "benchmark.runtime.harbor:BenchmarkCodex"
 
 
 def command(argv: list[str], timeout: int = 30) -> tuple[int, str]:
@@ -82,9 +89,16 @@ def main() -> int:
         if manifest.get("environment", {}).get("allow_internet") is False:
             offline += 1
         verifier = manifest.get("verifier", {})
-        if verifier.get("environment_mode") == "separate" or verifier.get("environment") is not None:
+        if (
+            verifier.get("environment_mode") == "separate"
+            or verifier.get("environment") is not None
+        ):
             separate.add(task.name)
-    check("LHTB internet policy", offline == 22, f"offline={offline}, online={46 - offline}")
+    check(
+        "LHTB internet policy",
+        offline == 22,
+        f"offline={offline}, online={46 - offline}",
+    )
     check(
         "LHTB verifier policy",
         separate == EXPECTED_SEPARATE,
@@ -95,19 +109,46 @@ def main() -> int:
     selected = config["datasets"][0]["task_names"]
     check(
         "selected task coverage",
-        len(selected) == args.expected_task_count and set(selected) <= {p.name for p in task_dirs},
+        len(selected) == args.expected_task_count
+        and set(selected) <= {p.name for p in task_dirs},
         f"{len(selected)}/{args.expected_task_count}",
     )
     agent = config["agents"][0]
     kwargs = agent.get("kwargs", {})
-    check("Harbor adapter", agent.get("import_path") == EXPECTED_AGENT, str(agent.get("import_path")))
-    check("model", agent.get("model_name") == "openai/gpt-5.6-sol", str(agent.get("model_name")))
-    check("reasoning", kwargs.get("reasoning_effort") == "max", str(kwargs.get("reasoning_effort")))
-    check("native Goal disabled", kwargs.get("goals") == "false", str(kwargs.get("goals")))
-    check("web search disabled", kwargs.get("web_search") == "disabled", str(kwargs.get("web_search")))
+    check(
+        "Harbor adapter",
+        agent.get("import_path") == EXPECTED_AGENT,
+        str(agent.get("import_path")),
+    )
+    check("model selected", bool(agent.get("model_name")), str(agent.get("model_name")))
+    check(
+        "reasoning selected",
+        bool(kwargs.get("reasoning_effort")),
+        str(kwargs.get("reasoning_effort")),
+    )
+    execution = Execution(
+        mode=kwargs.get("execution_mode", "heartbeat"),
+        task_entry=kwargs.get("task_entry", "seeded-todo"),
+        context=kwargs.get("iteration_context", "fresh"),
+        validation_command=kwargs.get("validation_command", []),
+    )
+    check(
+        "native Goal setting",
+        kwargs.get("goals") == str(execution.native_goal).lower(),
+        str(kwargs.get("goals")),
+    )
+    check(
+        "web search disabled",
+        kwargs.get("web_search") == "disabled",
+        str(kwargs.get("web_search")),
+    )
 
     actual_commit = command(["git", "-C", str(args.loopx_src), "rev-parse", "HEAD"])[1]
-    check("LoopX commit", actual_commit == args.expected_commit, actual_commit or "unavailable")
+    check(
+        "LoopX commit",
+        actual_commit == args.expected_commit,
+        actual_commit or "unavailable",
+    )
     check(
         "LoopX external scheduler",
         (args.loopx_src / "scripts" / "external_scheduler_worker.py").is_file(),
@@ -155,90 +196,43 @@ def main() -> int:
         terminal_compatible,
         terminal_detail,
     )
-    shared_codex_adapter = (
-        args.loopx_src / "benchmark" / "swe-marathon" / "agents" / "codex_offline.py"
-    )
+    shared_codex_adapter = args.loopx_src / "benchmark" / "runtime" / "codex_offline.py"
     check(
         "shared offline Codex adapter",
         shared_codex_adapter.is_file(),
         str(shared_codex_adapter),
     )
-    rc, help_text = command([str(args.loopx_src / "scripts" / "loopx"), "configure-goal", "--help"])
+    rc, help_text = command(
+        [str(args.loopx_src / "scripts" / "loopx"), "configure-goal", "--help"]
+    )
     check(
         "Todo replan cadence CLI",
         rc == 0 and "--execution-replan-after-todos {1,2,3,4,5}" in help_text,
         "supports threshold 1..5",
     )
 
-    wake_path = args.config.resolve().parents[1] / "runtime" / "wake_once.py"
     try:
-        wake = load_module(wake_path, "lhtb_loopx_wake_once")
-        turn_id = "preflight-unique-turn"
-        heartbeat = wake.build_heartbeat_argv(
-            cli="/opt/loopx",
-            registry="/tmp/registry.json",
-            runtime_root="/tmp/runtime",
-            goal_id="goal",
-            agent_id="agent",
-            turn_id=turn_id,
-        )
-        codex = wake.build_codex_argv(
-            codex_bin="codex", model="gpt-5.6-sol", effort="max", cwd="/app"
-        )
-        check(
-            "generic_cli heartbeat contract",
-            "generic_cli" in heartbeat and "--turn-instance-id" in heartbeat and turn_id in heartbeat,
-            "runtime_profile=generic_cli + explicit TURN_ID",
-        )
-        check(
-            "fresh Codex exec contract",
-            codex[:2] == ["codex", "exec"] and "resume" not in codex,
-            "codex exec; resume absent",
-        )
-        check("Codex effort", 'model_reasoning_effort="max"' in codex, "max")
-        check("Codex web search", 'web_search="disabled"' in codex, "disabled")
-        check("Codex native Goal", "features.goals=false" in codex, "disabled")
-    except Exception as exc:
-        check("wake module", False, f"{type(exc).__name__}: {exc}")
+        from benchmark.runtime.harbor import BenchmarkCodex
 
-    agent_source = args.config.resolve().parents[1] / "agents" / "codex_loopx_heartbeat.py"
-    source_text = agent_source.read_text(encoding="utf-8")
-    check(
-        "replan threshold pinned",
-        "_REPLAN_AFTER_TODOS = 3" in source_text
-        and '"--execution-replan-after-todos", str(_REPLAN_AFTER_TODOS)' in source_text,
-        "3 with readback gate",
-    )
-    check(
-        "benchmark-owned onboarding",
-        '"--no-onboarding-scan"' in source_text
-        and '"--onboarding-connection-validation", "provider-prevalidated"' in source_text
-        and '"--accept-onboarding-agent-todos"' not in source_text,
-        "provider-prevalidated; no unrelated repo-intake Todo",
-    )
-    check(
-        "LoopX install profile directories",
-        "_PROFILE_HOME" in source_text
-        and "_SHARED_CODEX_HOME" in source_text
-        and "{_PROFILE}/releases" in source_text,
-        "HOME, CODEX_HOME, bin, releases and man are pre-created",
-    )
-    check(
-        "clean LoopX source staging",
-        "_copy_git_snapshot" in source_text
-        and "self._copy_git_snapshot(container_id, loopx_src, _SRC)" in source_text,
-        "pinned git snapshot excludes local benchmark runs and artifacts",
-    )
-    check(
-        "Codex login-shell Node bridge",
-        '"BASH_ENV": _BASH_ENV' in source_text
-        and "export PATH={_NODE}/bin:$PATH" in source_text,
-        "portable Node survives bash -lc",
-    )
+        with tempfile.TemporaryDirectory(prefix="benchmark-preflight-") as directory:
+            candidate = BenchmarkCodex(
+                logs_dir=Path(directory), model_name=agent["model_name"], **kwargs
+            )
+            check(
+                "shared runtime configuration",
+                True,
+                f"{candidate.execution.mode}/{candidate.execution.context}",
+            )
+    except (ImportError, TypeError, ValueError) as exc:
+        check("shared runtime configuration", False, str(exc))
 
     harbor = lhtb_root / ".venv" / "bin" / "harbor"
     check("Harbor", harbor.is_file() and os.access(harbor, os.X_OK), str(harbor))
-    check("Codex binary", args.codex_bin.is_file() and os.access(args.codex_bin, os.X_OK), str(args.codex_bin))
+    check(
+        "Codex binary",
+        args.codex_bin.is_file() and os.access(args.codex_bin, os.X_OK),
+        str(args.codex_bin),
+    )
     check(
         "Codex code-mode sidecar",
         (args.codex_bin.parent / "codex-code-mode-host").is_file(),
@@ -249,20 +243,45 @@ def main() -> int:
         (args.portable_python / "bin" / "python3").is_file(),
         str(args.portable_python),
     )
-    check("Node runtime", (args.node_dir / "bin" / "node").is_file(), str(args.node_dir))
+    rc, node_version = command([str(args.node_dir / "bin" / "node"), "--version"])
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", node_version)
+    check(
+        "Node runtime",
+        rc == 0
+        and match is not None
+        and tuple(map(int, match.groups())) >= MINIMUM_NODE_VERSION,
+        f"{node_version}; requires >= {MINIMUM_NODE_VERSION_TEXT}",
+    )
 
-    docker_source = lhtb_root / "upstream/harbor/src/harbor/environments/docker/docker.py"
-    patched = docker_source.is_file() and "LHTB_MODELONLY_NET" in docker_source.read_text(encoding="utf-8")
+    docker_source = (
+        lhtb_root / "upstream/harbor/src/harbor/environments/docker/docker.py"
+    )
+    patched = (
+        docker_source.is_file()
+        and "LHTB_MODELONLY_NET" in docker_source.read_text(encoding="utf-8")
+    )
     check("model-only Harbor patch", patched, str(docker_source))
     rc, output = command(["docker", "info"])
     check("Docker daemon", rc == 0, output.splitlines()[0] if output else "unavailable")
-    rc, output = command(["docker", "network", "inspect", args.network, "--format", "{{.Internal}}"])
-    check("internal model network", rc == 0 and output == "true", f"{args.network}: {output or 'missing'}")
+    rc, output = command(
+        ["docker", "network", "inspect", args.network, "--format", "{{.Internal}}"]
+    )
+    check(
+        "internal model network",
+        rc == 0 and output == "true",
+        f"{args.network}: {output or 'missing'}",
+    )
 
     parsed = urlsplit(args.gateway)
     health = f"{parsed.scheme}://{parsed.netloc}/health"
-    rc, output = command(["curl", "-sS", "--noproxy", "*", "-m", "5", health], timeout=10)
-    check("model gateway", rc == 0 and bool(output), f"{health}: {(output or 'unreachable')[:120]}")
+    rc, output = command(
+        ["curl", "-sS", "--noproxy", "*", "-m", "5", health], timeout=10
+    )
+    check(
+        "model gateway",
+        rc == 0 and bool(output),
+        f"{health}: {(output or 'unreachable')[:120]}",
+    )
 
     receipt = {
         "ok": not failures,
@@ -270,7 +289,9 @@ def main() -> int:
         "task_count": len(selected),
         "loopx_commit": actual_commit,
         "runtime_profile": "generic_cli",
-        "codex_driver": "fresh_exec_per_wake",
+        "execution_mode": execution.mode,
+        "iteration_context": execution.context,
+        "home_scope": "trial",
         "model": agent.get("model_name"),
         "reasoning_effort": kwargs.get("reasoning_effort"),
         "replan_after_completed_todos": 3,
