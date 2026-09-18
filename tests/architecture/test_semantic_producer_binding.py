@@ -63,23 +63,55 @@ def ts_scan(text):
 # the complete set is unknown.
 
 
-def test_a_loop_carried_write_is_not_the_first_iteration_alone():
+@pytest.mark.parametrize('text', [
+    # a `for` back edge: iteration two emits 'drop'
+    'def emit(rows):\n chosen = "run"\n for row in rows:\n'
+    '  build({"action": chosen})\n  chosen = "drop"\n',
+    # a `while` back edge
+    'def emit(rows):\n chosen = "run"\n while rows:\n'
+    '  build({"action": chosen})\n  chosen = "drop"\n  rows = rows[1:]\n',
+    # the carrying write sits in the outer loop, the read in the inner one
+    'def emit(rows):\n chosen = "run"\n for row in rows:\n  for inner in row:\n'
+    '   build({"action": chosen})\n  chosen = "drop"\n',
+    # `finally` runs after the read and feeds the next iteration
+    'def emit(rows):\n chosen = "run"\n for row in rows:\n  try:\n'
+    '   build({"action": chosen})\n  finally:\n   chosen = "drop"\n',
+])
+def test_a_loop_carried_write_is_not_the_first_iteration_alone(text):
     """The second iteration emits ``drop``; only the first write precedes the read.
 
-    Ordering a local's writes by source position is sound only in straight-line
-    code. Inside a loop the textually *later* write reaches the read on the next
-    iteration, so 'the writes above this line' is not the set of possible values.
+    Ordering a local's writes by source position is execution order only where
+    no back edge crosses it. Inside a loop the textually *later* write reaches
+    the read on the next iteration, so "the writes above this line" is not the
+    set of possible values, and reporting it states a closed value set that is
+    not closed. F1 asks whether a producer writes only registered values; a
+    producer emitting an unregistered value on every iteration after the first
+    would pass it.
     """
-    rows = only(scan('def emit(rows):\n choice = "run"\n for row in rows:\n'
-                     '  packet = {"action": choice}\n  choice = "drop"\n return packet\n'), 'dict')
-    assert rows and all(row.unresolved for row in rows)
+    rows = only(scan(text), 'dict')
+    assert rows, 'the dict write must still be observed'
+    assert all(row.unresolved for row in rows)
     assert blockers(rows) == {'unstable_local'}
     assert known(rows) == set()
 
 
-def test_a_negative_index_write_is_not_a_write_to_a_different_key():
-    """``codes[-1]`` and ``codes[0]`` are the same element of a one-item list."""
-    rows = only(scan('def emit():\n codes = ["run"]\n codes[-1] = "drop"\n'
+def test_a_single_write_inside_a_loop_is_still_its_only_value():
+    """Staying unresolved must not become staying blind: one store is one value."""
+    rows = only(scan('def emit(rows):\n for row in rows:\n  chosen = "run"\n'
+                     '  build({"action": chosen})\n'), 'dict')
+    assert known(rows) == {'run'} and not any(row.unresolved for row in rows)
+
+
+@pytest.mark.parametrize('store', [
+    # `codes[-1]` and `codes[0]` are the same element of a one-item list, so a
+    # key map recorded under -1 leaves the read looking at a replaced slot.
+    'codes[-1] = "drop"',
+    # and a literal non-negative store is no safer: this scan does not model
+    # container mutation at all, so the whole container stops being evidence.
+    'codes[0] = "drop"',
+])
+def test_a_subscript_write_discards_the_container_it_mutates(store):
+    rows = only(scan('def emit():\n codes = ["run"]\n ' + store + '\n'
                      ' return {"action": codes[0]}\n'), 'dict')
     assert rows and all(row.unresolved for row in rows)
     assert blockers(rows) == {'unstable_local'}
