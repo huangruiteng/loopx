@@ -179,6 +179,10 @@ def guided_todo_delta_schema_versions(value: Any) -> list[str]:
     return _schema_versions_for_key(value, "todo_delta")
 
 
+def todo_work_counts_schema_versions(value: Any) -> list[str]:
+    return _schema_versions_for_key(value, "work_counts")
+
+
 def markdown_headings(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if _MARKDOWN_HEADING.match(line)]
 

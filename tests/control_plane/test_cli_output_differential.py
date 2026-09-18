@@ -19,6 +19,7 @@ from loopx.control_plane.testing.cli_output_semantics import (
     planning_horizon_schema_versions,
     planning_inventory_detail_schema_versions,
     runtime_root_command_route_count,
+    todo_work_counts_schema_versions,
 )
 
 
@@ -44,6 +45,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "planning_horizon_schema_versions": [],
         "guided_todo_delta_schema_versions": [],
         "planning_inventory_detail_schema_versions": [],
+        "todo_work_counts_schema_versions": [],
         "runtime_root_command_route_count": 0,
     }
     row.update(overrides)
@@ -331,6 +333,44 @@ def test_growth_above_policy_allowance_fails() -> None:
     result = compare_cli_output_receipts(base, candidate)
     assert result["ok"] is False
     assert "chars grew" in result["rows"][0]["failures"][0]
+
+
+def test_todo_work_count_schema_migration_has_one_time_bounded_budget() -> None:
+    payload = {"agent_todos": {"work_counts": {"schema_version": "todo_work_counts_v0"}}}
+    assert todo_work_counts_schema_versions(payload) == ["todo_work_counts_v0"]
+    candidate = _row(
+        chars=40_300,
+        utf8_bytes=40_300,
+        lines=1_010,
+        compact_payload_chars=20_180,
+        todo_work_counts_schema_versions=["todo_work_counts_v0"],
+    )
+
+    result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
+
+    assert result["ok"] is True
+    assert result["review_required"] is True
+    assert result["rows"][0]["allowances"] == {
+        "chars": 320,
+        "utf8_bytes": 320,
+        "lines": 10,
+        "compact_payload_chars": 192,
+    }
+    assert result["rows"][0]["review_signals"] == [
+        "Todo work-count schema migrated: none -> todo_work_counts_v0"
+    ]
+
+
+def test_todo_work_count_schema_migration_still_fails_above_bounded_growth() -> None:
+    candidate = _row(
+        chars=40_321,
+        todo_work_counts_schema_versions=["todo_work_counts_v0"],
+    )
+
+    result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
+
+    assert result["ok"] is False
+    assert "chars grew by 321; allowance is 320" in result["rows"][0]["failures"]
 
 
 def test_shrink_with_semantic_shape_retained_passes() -> None:
