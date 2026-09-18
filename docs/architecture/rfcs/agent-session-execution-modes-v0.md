@@ -221,6 +221,54 @@ monitor, or lifecycle truth; conversation text as a receipt; a second scheduler
 for the same binding; a Goal-wide default binding; and a mode change inferred
 from a probe, a transport, or a prompt.
 
+### Reusable Agent operations and continuation ownership
+
+This proposed extension refines the managed-team delivery contract; it does not
+add CLI flags, promote a host, or change existing session/profile defaults.
+Keep three identities separate: the registered Agent, its current host session
+and execution generation, and each work request/attempt. Creating an Agent is
+not starting a process, attaching a session is not claiming work, and a returned
+artifact is not accepted work.
+
+| Operation family | Existing owner to reuse | Required observation |
+| --- | --- | --- |
+| Discover/create/reuse an Agent | Registry, directory, onboarding and configured execution profile | Stable Agent identity, effective scope and supported capabilities; repeated creation does not duplicate the identity |
+| Attach/start/resume/stop | This RFC's binding and the selected host adapter | Exact session/generation, actual running or blocked state, cancellation and replacement readback; attached hosts never acquire a substitute executor |
+| Send/receive/return | Collaboration request owner and the [ingress policies](desktop-execution-frontends-v0.md#agent-scoped-bot-ingress-modes) | Requested/effective inbox, queue or steer semantics; delivery, consumption and work adoption remain distinct |
+| Claim/validate/settle | Existing Todo, lease, acceptance and quota owners | Current execution proof and independent acceptance; a host cannot certify its own completion |
+
+These are semantic operation families, not a new universal adapter API. Both a
+lead Agent and an authorized managed worker may call them. Host lifecycle
+differences remain explicit; a coordination role grants no extra authority.
+
+**Continuation ownership is a separate axis from session mode and provider.**
+Each binding has one qualified owner of the next execution opportunity:
+
+- **LoopX-governed Turn:** the existing runtime/scheduler admits a complete
+  bounded work unit; the host runs its own model/tool loop and returns a typed
+  candidate for independent validation and settlement. Local and cloud hosts
+  may implement the same contract. A Turn is not one model call or a scripted
+  business phase; the Agent may investigate, delegate and revise within scope.
+- **Native Goal runtime:** submit one Goal/task body and let that runtime own
+  continuation, with qualified handling of LoopX continue/defer/complete,
+  cancellation, budget and result readback. A prompt alone is not a scheduler;
+  provider Goal evaluation does not replace LoopX work acceptance.
+- **Same-session host driver:** an explicitly activated host integration can
+  obtain fresh LoopX admission and enqueue the next task in the existing
+  session. Qualify this separately from a provider's native Goal evaluator.
+
+Never wrap a self-continuing native Goal in repeated externally driven Turns on
+the same binding. To change the continuation owner, stop new admission, reconcile
+pending tools and uncertain effects, fence the old executor, and read back the
+new binding before execution. Disconnection does not authorize that switch.
+
+For the first mixed managed cohort, qualify a cloud adapter against the same
+governed Turn contract as the local worker before expanding native Goal profiles.
+This is a delivery priority, not a default migration. The
+[harness selection RFC](harness-selection-dsh-pi-v0.md) owns provider qualification.
+Reuse the existing profile editor and session projections; do not add a
+manager-only creation service, task ledger or scheduling loop.
+
 ### State model and schema
 
 The binding is the unit of mode ownership. Its canonical fields:
@@ -307,11 +355,12 @@ it may not claim an executing session binding.
 
 ### Capability and delivery-mode orthogonality
 
-Five axes that are frequently confused, each with one owner:
+Six axes that are frequently confused, each with one owner:
 
 | Axis | Values | Owner |
 | --- | --- | --- |
 | Execution mode | `managed_runtime`, `attached_host` | This RFC |
+| Continuation owner (proposed) | LoopX Turn driver, native Goal runtime, same-session host driver | This RFC; qualification per selected profile, never inferred from provider or location |
 | Transport | web chat, Lark, CLI | Desktop frontends RFC; transports never change mode |
 | Event source | group message, document comment, monitor observation, inbound file | Connector and collaboration contracts |
 | Ingress/delivery mode | `live_steering`, `session_queue`, `async_inbox` | Desktop frontends RFC, gated per binding |
@@ -432,6 +481,14 @@ future evidence and must not be reported as green.
 
 Deterministic package tests are not sufficient for admission. A new host needs
 at least one real-host row: a live process, a real bind, and a real restart.
+
+The proposed continuation extension also requires an installed local/cloud pair
+to use the same admission/result/independent-validation contract, a managed
+worker to request and adopt another worker's artifact, and a driver-switch race
+to reject the old executor. Test ordinary waiting, pending tools, budget
+exhaustion and native Goal defer/terminal handling separately. None of these
+rows is qualified by registration, HTTP acknowledgement or a fixed phase script.
+Preserve feature-off behavior for every existing profile and entrypoint.
 
 ## 11. Operational contract
 

@@ -375,6 +375,21 @@ with T1–T3/D1/D2; changing storage/profile/source or retiring a whole legacy
 Goal writer still requires the applicable D3/T4 boundary. A new handoff is
 not a provider promotion request.
 
+Hierarchical coordination uses these same boundaries at every hop. Parent/request
+lineage is not an authority token, and a child coordinator does not receive a
+fresh copy of the team's quota. Admission, reservations, claim/lease and accepted
+effects stay with their existing typed owners; provider session status and
+inbox/queue/steer receipts remain execution or transport observations. A native
+Goal evaluator cannot declare canonical work complete on their behalf.
+
+For the roadmap's first mixed-execution slice, an already supported local
+authority may receive scoped commands through a host facade while cloud Agents
+execute work. This creates neither a new authority provider nor independent
+cloud writers. An outage must preserve the selected-source and stale-fence
+rules; it cannot trigger local/cloud authority fallback. Independently scheduling
+hosts still require authenticated service transport and applicable D1–D3
+qualification. In-process admission code is not evidence of that deployment.
+
 ## 2. What We Will Do, and What We Will Not
 
 **What this version will do**

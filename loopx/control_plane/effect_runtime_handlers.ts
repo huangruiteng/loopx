@@ -187,6 +187,8 @@ import {
   normalizeManagerReturnDeliveryAttempt,
 } from "./collaboration/return_delivery.ts";
 
+import { normalizeCollaborationRequest } from "./collaboration/semantic_request.ts";
+
 type EffectRuntimeHandler = (params: JsonObject) => unknown | Promise<unknown>;
 
 export interface EffectRuntimeHandlerContext {
@@ -621,6 +623,10 @@ export function createEffectRuntimeHandlers(
     [
       "capability_hook.post_writeback.transaction",
       evaluatePostWritebackHookTransaction,
+    ],
+    [
+      "collaboration.request.normalize",
+      (params) => normalizeCollaborationRequest(params.request),
     ],
     [
       "manager.return_delivery.normalize_attempt",

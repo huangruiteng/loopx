@@ -254,11 +254,11 @@ def assert_event_only_todo_receipts_are_not_runtime_work() -> None:
         if isinstance(row, dict)
     }
     assert by_agent["agent-reviewer"]["current_todo"]["todo_id"] == "todo_live_handoff", by_agent
-    assert by_agent["agent-event-only"]["state"] == "unknown", by_agent
+    assert by_agent["agent-event-only"]["state"] == "registered", by_agent
     assert "current_todo" not in by_agent["agent-event-only"], by_agent
 
 
-def assert_advancement_current_todo_beats_standing_monitor() -> None:
+def assert_launchable_advancement_beats_standing_monitor() -> None:
     payload = fixture_status_payload()
     payload["run_history"]["goals"][0]["coordination"]["registered_agents"].append("agent-side")
     payload["attention_queue"]["items"].append(
@@ -342,7 +342,7 @@ def assert_advancement_current_todo_beats_standing_monitor() -> None:
         if isinstance(row, dict)
     }
     side_row = by_agent["agent-side"]
-    assert side_row["state"] == "running", side_row
+    assert side_row["state"] == "launchable", side_row
     assert side_row["current_todo"]["todo_id"] == "todo_side_advancement", side_row
     assert side_row["next_action"] == "Continue projected todo todo_side_advancement.", side_row
 
@@ -369,7 +369,7 @@ def assert_advancement_current_todo_beats_standing_monitor() -> None:
         for row in stale_blocker.get("agents", [])
         if isinstance(row, dict) and row.get("agent_id") == "agent-side"
     )
-    assert stale_blocker_row["state"] == "running", stale_blocker_row
+    assert stale_blocker_row["state"] == "launchable", stale_blocker_row
     assert stale_blocker_row["current_todo"]["todo_id"] == "todo_side_advancement", stale_blocker_row
     assert stale_blocker_row["blocked_on"]["todo_id"] == "todo_stale_maintenance_blocker", stale_blocker_row
 
@@ -380,7 +380,7 @@ def assert_advancement_current_todo_beats_standing_monitor() -> None:
         for row in lane_only.get("agents", [])
         if isinstance(row, dict) and row.get("agent_id") == "agent-side"
     )
-    assert lane_only_row["state"] == "running", lane_only_row
+    assert lane_only_row["state"] == "launchable", lane_only_row
     assert lane_only_row["current_todo"]["todo_id"] == "todo_side_advancement", lane_only_row
 
     payload["attention_queue"]["items"][-1]["project_asset"]["agent_todos"][
@@ -508,7 +508,7 @@ def main() -> int:
     args = parse_args()
     assert_synthetic_projection()
     assert_event_only_todo_receipts_are_not_runtime_work()
-    assert_advancement_current_todo_beats_standing_monitor()
+    assert_launchable_advancement_beats_standing_monitor()
     result: dict[str, Any] = {
         "synthetic": "ok",
         "bundled_example": assert_bundled_public_example(),

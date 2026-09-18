@@ -110,9 +110,27 @@ FORMAL_DOMAIN_SELECTORS: dict[str, Callable[[dict[str, Any]], tuple[int, int]]] 
         sum(len(entry["contexts"]) for entry in registry["scope_declarations"].values()),
         sum(len(entry["contexts"]) for entry in registry["scope_declarations"].values()),
     ),
-    "projections[*]": lambda registry: (len(registry["projections"]), len(registry["projections"])),
+    # ``verified`` counts the projections ``check_projections`` actually imports
+    # and executes, not the registry's own row count. A registry entry is a
+    # declaration; counting it as its own evidence let a projection whose owner
+    # function does not exist report itself verified. An unexecuted entry now
+    # raises ``registered`` without raising ``verified``, the same way F1
+    # reports 6 of 26.
+    "projections[*]": lambda registry: (
+        sum(1 for name in registry["projections"] if name in EXECUTED_PROJECTIONS),
+        len(registry["projections"]),
+    ),
     # No site declares a persists edge, so F6 has an empty domain, not a small one.
     "persists_edges[*]": lambda registry: (0, 0),
+}
+# The projections F5 executes, and the owner each one must name. Pinned in code
+# for the same reason as COVERAGE_ANCHOR and FORMAL_DOMAIN_ANCHOR: a data-only
+# edit to the registry must not be able to widen what the invariant claims to
+# have verified, and the owner string has to stay tied to the function the check
+# below imports rather than being prose the registry can restate.
+EXECUTED_PROJECTIONS = {
+    "turn_route_to_loop_disposition":
+        "loopx/control_plane/turn_driver/turn_contract_generated.py::project_turn_route",
 }
 FORMAL_ENFORCED_STAGES = frozenset(FORMAL_ENFORCEMENT - {"advisory", "unproved"})
 # What a verified sub-domain rests on, and which stages may claim it. The first
@@ -708,6 +726,13 @@ def check_relations(registry: dict[str, Any]) -> None:
 
 
 def check_projections(registry: dict[str, Any]) -> None:
+    for name, owner in EXECUTED_PROJECTIONS.items():
+        require(name in registry["projections"],
+                f"projection {name} is executed by this check but is not registered")
+        declared = registry["projections"][name].get("owner")
+        require(declared == owner,
+                f"projection {name} names owner {declared}; this check executes {owner}, "
+                "so the registry would be crediting a function it does not run")
     projection = registry["projections"]["turn_route_to_loop_disposition"]
     from loopx.control_plane.turn_driver.driver import LoopXTurnRoute
     from loopx.control_plane.turn_driver.turn_contract_generated import LoopDisposition, project_turn_route

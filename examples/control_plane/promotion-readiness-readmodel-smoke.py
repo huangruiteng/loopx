@@ -180,6 +180,22 @@ def main() -> None:
         assert fallback["json_exists"] is True, fallback
         assert fallback["markdown_exists"] is True, fallback
 
+        write_indexed_readiness_run(
+            runtime_root,
+            goal_id=None,
+            generated_at=(now - timedelta(hours=1)).isoformat(),
+            classification="state_refreshed",
+        )
+        fallback_with_nonmatching_runtime = assert_parity(
+            {"runs": []},
+            runtime_root=runtime_root,
+            goal_id_filter="project-c",
+        )
+        assert (
+            fallback_with_nonmatching_runtime["source"]
+            == "goal_run_history_legacy"
+        ), fallback_with_nonmatching_runtime
+
         runtime_generated_at = (now - timedelta(minutes=5)).isoformat()
         write_indexed_readiness_run(
             runtime_root,
@@ -222,6 +238,24 @@ def main() -> None:
         assert runtime_authoritative["generated_at"] == runtime_generated_at, (
             runtime_authoritative
         )
+
+        legacy_index = (
+            runtime_root / "goals" / "project-a" / "runs" / "index.jsonl"
+        )
+        legacy_index.write_bytes(b"\xff")
+        runtime_authoritative_with_unreadable_legacy = assert_parity(
+            sampled_history,
+            runtime_root=runtime_root,
+            goal_id_filter="project-a",
+        )
+        assert (
+            runtime_authoritative_with_unreadable_legacy["source"]
+            == "runtime_release_ledger"
+        ), runtime_authoritative_with_unreadable_legacy
+        assert (
+            runtime_authoritative_with_unreadable_legacy["generated_at"]
+            == runtime_generated_at
+        ), runtime_authoritative_with_unreadable_legacy
 
         missing = assert_parity({"runs": []}, runtime_root=runtime_root / "empty", goal_id_filter="missing")
         assert missing["available"] is False, missing

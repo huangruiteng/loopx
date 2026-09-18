@@ -176,6 +176,46 @@ claim 与完成回执，以及"只有经过验证的回写才推进工作"这一
 对话文本作为回执；同一绑定上的第二个调度器；Goal 级默认绑定；以及从探测、传输或
 提示词推断出的模式变更。
 
+<a id="reusable-agent-operations-and-continuation-ownership"></a>
+
+### 可复用的 Agent 操作与续跑归属
+
+本提案细化 managed 团队的交付契约，不新增 CLI 参数、不晋升宿主，也不改变现有
+会话/profile 默认。区分三组身份：已注册 Agent、其当前宿主会话与执行代际、每次工作
+请求/尝试。创建 Agent 不等于启动进程，挂接会话不等于领取工作，返回产物不等于工作验收。
+
+| 操作族 | 复用的现有 owner | 必须读回的事实 |
+| --- | --- | --- |
+| 发现/创建/复用 Agent | Registry、directory、onboarding 和配置的 execution profile | 稳定 Agent 身份、生效范围和支持能力；重复创建不产生第二身份 |
+| 挂接/启动/恢复/停止 | 本 RFC 的 binding 与选定 host adapter | 精确会话/代际、实际执行或阻塞、取消和替换读回；attached host 不获得替身执行器 |
+| 发送/接收/返回 | Collaboration request owner 与[入口策略](desktop-execution-frontends-v0.zh-CN.md#agent-scoped-bot-ingress-modes) | 请求/实际 inbox、queue、steer 语义；投递、消费、工作采用仍是不同事实 |
+| 领取/验证/结算 | 既有 Todo、lease、acceptance、quota owner | 当前执行 proof 与独立验收；宿主不能自行证明工作完成 |
+
+这些是语义操作族，不是新增的万能 adapter API。主 Agent 和获授权的 managed worker
+都可调用；宿主生命周期差异保持显式，协调角色不增加权限。
+
+**续跑归属是独立于 session mode 和 provider 的轴。** 每个 binding 只有一个经过
+资格化的下一执行机会 owner：
+
+- **LoopX 受控 Turn：** 既有 runtime/scheduler 准入一次完整的有界工作；宿主运行
+  自己的模型/工具循环，返回 typed candidate，经独立验证后结算。本地和云端宿主可
+  实现同一合同。Turn 不是一次模型调用或脚本业务 phase；Agent 可在范围内调查、
+  委派和修订。
+- **原生 Goal runtime：** 一次提交 Goal/task body，由该 runtime 拥有续跑；必须
+  验证其处理 LoopX continue/defer/complete、取消、预算和结果读回。Prompt 本身
+  不是调度器，provider Goal 自评不替代 LoopX 工作验收。
+- **同会话 host driver：** 显式激活的宿主集成可取得新鲜 LoopX 准入，将下一任务排入
+  原会话。它与 provider 原生 Goal evaluator 分别资格化。
+
+禁止在同一 binding 上，一边重复外部受控 Turn，一边包裹会自行续跑的原生 Goal。
+更换续跑 owner 前，停止新增准入、对账未决工具和不确定副作用、fence 旧执行器，
+再读回新绑定后执行；断连不授权该切换。
+
+首个混合 managed cohort 优先让云端 adapter 与本地 worker 通过同一 governed Turn
+合同，再扩展 native Goal profile。这是交付优先级，不是默认迁移；provider 资格由
+[harness 选型 RFC](harness-selection-dsh-pi-v0.zh-CN.md)负责。复用现有 profile editor
+和会话投影，不新建管家专属创建服务、任务账本或调度循环。
+
 ### 状态模型与 schema
 
 绑定是模式归属的单元。其规范字段：
@@ -242,11 +282,12 @@ claim 与完成回执，以及"只有经过验证的回写才推进工作"这一
 
 ### 能力与投递模式的正交性
 
-经常被混淆的五个轴，每个轴有唯一属主：
+经常被混淆的六个轴，每个轴有唯一属主：
 
 | 轴 | 取值 | 属主 |
 |---|---|---|
 | 执行模式 | `managed_runtime`、`attached_host` | 本 RFC |
+| 续跑 owner（提案） | LoopX Turn driver、原生 Goal runtime、同会话 host driver | 本 RFC；按选定 profile 验证，不从 provider 或部署位置推断 |
 | 传输 | web chat、Lark、CLI | 桌面执行前端 RFC；传输绝不改变模式 |
 | 事件源 | 群消息、文档评论、monitor 观察、入站文件 | 连接器与协作契约 |
 | 入口/投递模式 | `live_steering`、`session_queue`、`async_inbox` | 桌面执行前端 RFC，按绑定门控 |
@@ -348,6 +389,11 @@ claim 与完成回执，以及"只有经过验证的回写才推进工作"这一
 
 确定性的包测试不足以支撑接入。新宿主至少需要一条真实宿主行：一个真实进程、一次真实
 绑定、一次真实重启。
+
+续跑扩展还要求：已安装的本地/云端组合使用同一准入/结果/独立验证合同；普通 managed
+worker 请求并采用另一 worker 的产物；driver 切换竞态拒绝旧执行器。普通等待、未决
+工具、预算耗尽、native Goal defer/终态处理分别验证。注册、HTTP ACK 或固定 phase
+脚本都不能满足这些尚未资格化的项目；每个现有 profile 和入口保持 feature-off 行为。
 
 ## 11. 运维契约
 

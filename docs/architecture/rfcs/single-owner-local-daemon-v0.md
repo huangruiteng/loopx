@@ -112,6 +112,17 @@ LaunchAgent and cannot detach or self-relaunch. The platform adapter must prove
 child containment after supervisor death before promotion; a process group alone
 is not sufficient proof on every platform.
 
+Managed team supervision must also respect the
+[session continuation owner](agent-session-execution-modes-v0.md#reusable-agent-operations-and-continuation-ownership).
+One service-profile process owner does not prove one executor per Agent binding;
+the session/work owners still enforce their own identity, admission and fences.
+A daemon may deliver admitted work, wake an eligible session, drain queues and
+recover receipts. It must not encode a team's business phases or compete with
+an active native Goal/same-session driver for the next execution opportunity.
+Local and cloud host adapters reuse this composition rather than installing a
+manager-specific daemon. Readiness must distinguish service health from a
+worker's launchability, pending tool, deferred work and terminal result.
+
 ### Read contract
 
 The proposed control routes are served on the configured status origin, initially

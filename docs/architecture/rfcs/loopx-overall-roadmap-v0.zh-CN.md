@@ -171,6 +171,18 @@ flowchart TD
 
 “管家协调”允许逻辑上的目标分解、优先级建议、委托和综合；`peer_v1` 不禁止这种产品角色，但禁止因角色获得单方写入、抢占或提权。跨多个 Goal 的宏观目标应通过已有 Goal 关系和有范围请求关联；跨 Goal 依赖或汇总验收若缺少 owner，先交付一个有真实 caller 的有界合同，不能先造全局调度 DSL。
 
+主 Agent 可以是已有 attached Agent 或 managed Agent；获授权的 worker 能用同样操作
+协调下一层。区分 Agent 创建/复用、会话挂接/启动、通信和工作验收。
+[会话 RFC](agent-session-execution-modes-v0.zh-CN.md#reusable-agent-operations-and-continuation-ownership)
+拥有通用生命周期与每 binding 唯一续跑 owner；
+[前端 RFC](desktop-execution-frontends-v0.zh-CN.md#agent-scoped-bot-ingress-modes)拥有
+inbox/queue/steer 投递语义；handoff RFC 拥有接收者采用和分层返回。这些是拟议集成
+要求，不是新 runtime、provider 保证或权限默认。
+
+Agent 决定并修订工作图；通用 host 服务负责准入、派送、预算和恢复，不编码业务
+phase。先让本地/云端 managed 工作通过同一 governed Turn 合同，同时保留分别
+资格化的 native Goal、同会话 driver 路径。整队资源额度不能复制给每个子协调者。
+
 ### 多个 LoopX Agent 的协作与 handoff 验收
 
 协调对象是各自持有目标、承诺、frontier 与执行绑定的长程 LoopX Agent，不只是管家进程中的临时子任务。管家→worker 与 worker→worker 使用同一协作合同；worker 可以主动求助、提供结果、质疑依赖和提出重规划，无需每次让管家转发。管家负责整体推进与综合，不能成为每条消息或每次状态提交的串行中转站。
@@ -215,7 +227,7 @@ R2 的一条依赖必须通过真实 LoopX Agent 间的请求/产物交接完成
 - **入口与 owner：** 现有 session binding、Turn driver、quota/scheduler、manager runtime 配置；复用已有设置 editor，不新建 profile。
 - **交付：** 区分 registered、可接收请求、已绑定、可启动、正在执行和阻塞；计划 ready 不能暗示正在工作。对已授权且具备资格的 managed binding，沿现有 launch/supervision 路径启动下一有界 Turn。attached host 继续由其原 host 驱动。
 - **资格：** 用真实选定 runtime 执行至少两轮“取工作→产物→独立验证→settle→下一工作”，中断并重启一个 worker，另一个保持推进；验证旧执行器返回时的 fence、取消及停止后不再启动。DSH 单段 read-only Chat 与 Codex `trusted_owner` 分别验收，不互借资格。
-- **退出：** 2–3 worker、一个依赖、一个故障、一个方向补充，经 packaged frontend 查看，同一状态能从 CLI 读回；Lark 的授权入口能读到对应受众可见反馈。无 Lark 实测则该入口标为未验收。
+- **退出：** 2–3 worker、一个依赖、一个故障、一个方向补充；Agent 自主选择和修订委派，无人工 phase 输入或结果转发。经 packaged frontend 查看，同一状态能从 CLI 读回；Lark 的授权入口能读到对应受众可见反馈。无 Lark 实测则该入口标为未验收。
 - **回滚：** 停止新增 admission，drain 已接受工作并保留绑定/receipt；不能借 attached fallback 保持“在线”。
 
 ### R3：语义请求与自动回报
@@ -224,6 +236,11 @@ R2 的一条依赖必须通过真实 LoopX Agent 间的请求/产物交接完成
 - **交付：** 交接保存目的、决策、约束、证据引用和期望回报；receiver 读取后自行 adopt/defer/reject/replan。用独立事实表示 accepted work、result committed、answer delivered；从已有 outbox 自动回传。
 - **退出：** manager→worker 和 worker→worker 两个真实 caller，补充消息、来源会话消失、超长答案、重复回调、发送成功但 ACK 丢失及传输重启；同一结果在 CLI、packaged frontend、Lark 回读一致且受众隔离。普通已授权工作不增加第二次人工确认。
 - **迁移/回滚：** characterization 先行，记录旧 writer/reader 映射与删除收益；关新 producer 后可 drain 旧请求。不要同时保留两份可写生命周期。
+
+R3 还需验证 handoff RFC 的分层 A6/A8/A13 扩展：普通 managed worker 请求、验证并
+综合另一 peer 的产物后再返回主 Agent；各层复用相同 request/work owner。入口
+fixture 在未决工具、取消、迟到结果下区分 inbox 收件、后续 queue 工作和已采用
+steer；传输成功不关闭请求。复用现有 R2/R3 后继，不另开平行团队编排项目。
 
 ### R4：共享目标对齐与演化
 
@@ -249,6 +266,12 @@ L3 检查点：独立领取/接管、原子 claim 准入与维护共用 typed le
 - **交付：** 真正的认证传输、tenant/Goal/actor 权限、host identity 和 capability admission；跨主机 request/receipt/wake 只通过各 owner。处理断网、租约过期、旧 worker 回归、service restart/restore incarnation、ambiguous commit。
 - **退出：** 至少两个真实 host（含一个云端 worker）在隔离 tenant 上协作；错 tenant/actor、撤销与 split-brain 负例通过；共享预算与 admission 有明确 owner，不能声称本地 quota 就是分布式资源预留。
 - **回滚：** 停远端 admission，保留已提交事实并 drain；不导入或重绑另一 host 的原始 session 数据。
+
+有用的前置切片可以保留已支持的单一本地 authority，经有范围 host facade 执行云端
+工作，不部署共享数据库服务也能推进 R2/R3 并验证 provider adapter。应标为
+**单一权威、混合执行**，不因此通过 G3/R6 的独立 host 恢复、共享预留或 service
+资格。禁止向云端复制可独立写入的 Goal 状态；完整 R6 保留认证服务和 D1–D3 要求。
+各续跑 profile 分别验证，同一 binding 不并行运行外层 Turn 与 native Goal driver。
 
 ### R7：百 Agent 资格化
 
@@ -297,6 +320,7 @@ L3 检查点：独立领取/接管、原子 claim 准入与维护共用 typed le
 | shared authority | `AuthorityStore`、File/SQLite 候选与 PostgreSQL store/service admission 接缝、恢复及 conformance 基础 | 已部署 authenticated 跨主机服务；已晋升任一默认 provider；分布式 quota 已成立 |
 | alignment | Stage 1/2 source-basis reader 与 amendment admission/retention | `source_basis_digest` 是完整 Goal intent revision；Stage 3 自动 commit 已成立 |
 | managed | `turn run-once`、managed step、attached broker 及单执行器围栏已有实现 | 有界片段等于无人值守长程监督；每个注册 Agent 都有健康执行器 |
+| 语义同伴协作 | 既有 Inbox/reply owner 承载不可变交办、同 Goal 同伴请求、结果消费及原对话读回；[真实 managed demo](../../../examples/collaboration-delivery/README.md#中文操作说明) | 控制器驱动阶段不证明自主调度、跨主机/Lark 同伴或完整 G1/M2–M4 |
 
 ### 已复核的问题
 

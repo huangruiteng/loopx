@@ -25,6 +25,7 @@ MAX_AGENT_TODOS = 8
 MAX_REFS = 1
 MAX_WORKSPACE_SCOPES = 4
 STALE_CLAIM_THRESHOLD_HOURS = 36
+EXECUTING_ACTIVITY_THRESHOLD_HOURS = 8
 MATERIAL_LIFECYCLE_CAPABILITY = "material_lifecycle"
 
 _TODO_GROUP_LIST_KEYS = tuple(
@@ -474,21 +475,79 @@ def _refs_from_todo(todo: dict[str, Any]) -> tuple[list[str], list[str]]:
     return evidence_refs[:MAX_REFS], handoff_refs[:MAX_REFS]
 
 
-def _agent_state(todos: list[dict[str, Any]], *, current: dict[str, Any] | None = None) -> str:
+def _agent_state(
+    todos: list[dict[str, Any]],
+    *,
+    current: dict[str, Any] | None = None,
+    has_session_binding: bool = False,
+    last_activity_at: str | None = None,
+) -> str:
+    """Derive the worker lifecycle state from existing facts only.
+
+    The state is a projection over registry membership, todo claims,
+    session bindings, and activity timestamps.  It does not introduce a
+    second source of truth: every input is already owned by another
+    contract (registry, todo, session binding, or run history).
+
+    State priority (highest first):
+    1. blocked      — current todo is blocked or a blocker
+    2. monitoring / waiting — monitor-only or non-open current work
+    3. executing    — current open work updated within the activity threshold
+    4. bound        — has session binding and active todo
+    5. launchable   — has active todo, no session binding
+    6. addressable  — has session binding but no active todo
+    7. registered   — registered in registry, no binding or todo
+    """
     open_todos = [todo for todo in todos if not _is_done(todo)]
-    if not open_todos:
-        return "waiting" if todos else "unknown"
+
+    # Blocked takes priority: a blocked worker cannot launch or execute.
+    # This only applies to the current todo, not all open todos, per the
+    # protocol contract: "blocker remains visible without making the whole
+    # peer appear blocked."
     if current and not _is_done(current):
         if _todo_status(current) == "blocked" or current.get("task_class") == "blocker":
-            return "blocked"
+            return WORKER_LIFECYCLE_STATE_BLOCKED
+
+    if current and not _is_done(current):
         if _is_monitor_todo(current):
             return "monitoring"
-        return "running"
-    if any(_todo_status(todo) == "blocked" or todo.get("task_class") == "blocker" for todo in open_todos):
-        return "blocked"
-    if all(_is_monitor_todo(todo) for todo in open_todos):
-        return "monitoring"
-    return "running"
+        if _todo_status(current) != "open":
+            return "waiting"
+
+    # Activity describes the selected work, not updates to unrelated todos.
+    if current and not _is_done(current) and last_activity_at:
+        parsed = parse_timestamp(last_activity_at)
+        if parsed:
+            age_hours = (now_utc() - parsed).total_seconds() / 3600
+            if 0 <= age_hours <= EXECUTING_ACTIVITY_THRESHOLD_HOURS:
+                return WORKER_LIFECYCLE_STATE_EXECUTING
+
+    # Bound: has session binding and active todo.
+    if current and not _is_done(current) and has_session_binding:
+        return WORKER_LIFECYCLE_STATE_BOUND
+
+    # Launchable: has active todo, no session binding.
+    if open_todos:
+        return WORKER_LIFECYCLE_STATE_LAUNCHABLE
+
+    # Addressable: has session binding but no active todo.
+    if has_session_binding:
+        return WORKER_LIFECYCLE_STATE_ADDRESSABLE
+
+    # Registered: in registry, no binding or todo.
+    return WORKER_LIFECYCLE_STATE_REGISTERED
+
+
+# Worker lifecycle state vocabulary for R2 small-team execution qualification.
+# These states are derived from existing facts only; they do not introduce a
+# second source of truth.  The projection reads registry membership, todo
+# claims, session bindings, and activity timestamps — nothing else.
+WORKER_LIFECYCLE_STATE_REGISTERED = "registered"
+WORKER_LIFECYCLE_STATE_ADDRESSABLE = "addressable"
+WORKER_LIFECYCLE_STATE_BOUND = "bound"
+WORKER_LIFECYCLE_STATE_LAUNCHABLE = "launchable"
+WORKER_LIFECYCLE_STATE_EXECUTING = "executing"
+WORKER_LIFECYCLE_STATE_BLOCKED = "blocked"
 
 
 def _last_activity(todos: list[dict[str, Any]]) -> str | None:
@@ -530,6 +589,27 @@ def build_agent_management_projection(
         else {}
     )
     goal_filter = _compact(status_payload.get("goal_filter"), limit=180)
+
+    # Session bindings come from run_history.coordination.thread_agent_bindings.
+    # This is the only source for addressable/bound lifecycle states.
+    session_bindings: dict[str, dict[str, str]] = {}
+    run_history = _as_dict(status_payload.get("run_history"))
+    for raw_goal in _as_list(run_history.get("goals")):
+        if not isinstance(raw_goal, dict):
+            continue
+        coordination = _as_dict(raw_goal.get("coordination"))
+        for raw_binding in _as_list(coordination.get("thread_agent_bindings")):
+            if not isinstance(raw_binding, dict):
+                continue
+            agent_id = _compact(raw_binding.get("agent_id"), limit=120)
+            thread_id = _compact(raw_binding.get("thread_id"), limit=120)
+            host_surface = _compact(raw_binding.get("host_surface"), limit=60)
+            if agent_id and thread_id:
+                session_bindings[agent_id] = {
+                    "thread_id": thread_id,
+                    "host_surface": host_surface or "unknown",
+                }
+
     seen_todos: set[tuple[str, str, str, str]] = set()
     for todo in _iter_status_todos(status_payload):
         agent_id = _todo_agent_id(todo)
@@ -576,17 +656,26 @@ def build_agent_management_projection(
             for ref in todo_handoffs:
                 if ref not in handoff_refs:
                     handoff_refs.append(ref)
+        last_activity = _last_activity(todos)
+        agent_state = _agent_state(
+            all_todos,
+            current=current,
+            has_session_binding=agent_id in session_bindings,
+            last_activity_at=_last_activity([current]) if current else None,
+        )
         agent_row: dict[str, Any] = {
             "agent_id": agent_id,
             "agent_model": raw_row.get("agent_model") or "unregistered",
-            "state": _agent_state(all_todos, current=current),
+            "state": agent_state,
             "current_todo": _todo_row(current) if current else None,
             "next_action": _safe_next_action(current),
-            "last_activity_at": _last_activity(todos),
+            "last_activity_at": last_activity,
             "evidence_refs": evidence_refs[:MAX_REFS],
             "handoff_refs": handoff_refs[:MAX_REFS],
             "goal_ids": _as_list(raw_row.get("_goal_ids"))[:MAX_REFS],
         }
+        if agent_id in session_bindings:
+            agent_row["session_binding"] = session_bindings[agent_id]
         material_frontier_key = _agent_material_frontier_key(
             raw_row=raw_row,
             current=current,

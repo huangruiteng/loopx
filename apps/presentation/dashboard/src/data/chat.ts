@@ -622,7 +622,25 @@ export type ManagerRuntimeSessionReadback = {
   tool_classes: string[];
 };
 
+export type CollaborationReadback = {
+  schema_version: "collaboration_request_readback_v0";
+  request_id: string;
+  agent_id: string;
+  brief: {
+    purpose: string;
+    context: string;
+    constraints: string[];
+    inputs: { ref: string; description: string; sha256?: string }[];
+    acceptance: string[];
+    return_requirement: string;
+  };
+  read_status: string;
+  decision: string;
+  returns: { phase: string; status: string }[];
+};
+
 export type ChatVisibleMessage = {
+  collaboration?: CollaborationReadback;
   origin?: string;
   attachments?: ChatImageAttachment[];
   message_id: string;

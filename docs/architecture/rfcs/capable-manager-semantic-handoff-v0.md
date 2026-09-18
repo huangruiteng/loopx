@@ -67,6 +67,20 @@ At `43d362532`, the private `manager_runtime` profile, steward executor configur
 
 The [overall roadmap](loopx-overall-roadmap-v0.md) records verified F1–F7 and R1–R7. Repair R1 commitment preservation, stale basis and recovery first, then qualify R2 small teams; M2/M3 converge through R3, and M4 requires real user journeys. Section 4 retains its older baseline as migration input, not an override of this checkpoint. Partial merges do not complete M1–M4. Parallel joins, pipeline dependencies, peer help/review, execution responsibility continuation and cross-host collaboration between long-running LoopX Agents follow the roadmap Section 5 matrix. R2 requires real inter-Agent handoff; M2/M3 cannot reduce to steward broadcasts or one-turn forwarding.
 
+The local semantic exchange now extends the existing `manager-context` owner:
+`collaboration_brief_v0` preserves corrections, constraints, relative artifact
+versions, acceptance and return requirements alongside the unchanged owner
+message. Same-Goal peers independently assess requests and return conclusions;
+the requester receives results again until explicit consumption. Owner-local Chat
+shows the brief and live read/decision/return facts in the original conversation.
+The optional identity-scoped stdio tools support sandboxed managed dsh workers.
+See the [three-Agent allocation demo](../../../examples/collaboration-delivery/README.md)
+for dependent artifacts, two review rounds and owner correction. The controller
+selects phases and transfers files; request transport adds no scheduling, lease
+transfer or shared-intent mutation. This is a bounded R3 slice, not M2–M4/G1
+completion; external-audience peer forwarding and cross-host continuation remain
+with their existing roadmap owners.
+
 ## 4. Current-system contract: audited facts
 
 The baseline already has substantial reusable machinery:
@@ -152,6 +166,14 @@ The durable semantic context consists of a small typed identity/control header p
 
 Prefer one cohesive replacement to compatibility wrappers that preserve duplicate decisions. Inventory every existing producer/reader, migrate with lossless mappings, switch one writer and delete the replaced rules. Reusing contracts and data is required; reusing every current class, JSON directory and prompt is not.
 
+The lead Agent owns task decomposition, investigation, delegation, revision and
+synthesis. Host services execute admitted operations and recover their receipts;
+they do not encode the scenario's next business phase. A managed worker may
+coordinate other Agents through the same scoped creation, session and request
+operations defined by the [session execution RFC](agent-session-execution-modes-v0.md#reusable-agent-operations-and-continuation-ownership).
+Keep the manager application thin and shared state transitions in their typed
+owners. Do not build a second scheduler in the manager or provider adapter.
+
 ### 5.3 Authority that enables work
 
 Resolve a request from authenticated principal, origin/audience, resource scope and requested effect, then match the existing persistent grant. A grant is reused across turns and restarts until revoked, expired or outside scope. Authorized delegation may carry an attenuated reference to a real standing grant; handoff is not inherently powerless. The receiver verifies the grant chain, target/action scope and its own host authority. It neither trusts a model-written permission string nor requires the user to approve the same in-scope work again. Read-only discovery, direct reversible effects and protected operations keep their actual permission semantics; none is forced through a second confirmation merely because the entrypoint is chat.
@@ -211,6 +233,32 @@ Migrate current inbox/tracking/roundtrip records into the single collaboration o
 At-least-once delivery with idempotent Core effects is the target. Do not promise exactly-once external effects: uncertain sends are reconciled using provider receipts before retry. Concurrent workers use existing claims/leases; delegation does not claim the worker's Todo. Cross-host operation uses configured transport and authority, not a bare local path copied to another machine.
 
 The receiver commits result/evidence links and audience-ready text. The manager may synthesize multiple worker outcomes into one answer, maintaining request-level coverage. A deterministic outbox delivers an already committed result even if the manager model is unavailable. If synthesis is required, persist that duty; do not let an optional synthesis step erase the worker's result. Model retries never replay an already accepted action.
+
+#### Hierarchical delegation and autonomous progress
+
+An Agent may delegate a bounded subproblem and remain responsible for integrating
+its result. Record parent/request lineage without treating it as a grant. At
+each hop, scope, allowed effects, depth, total fanout and shared budget remain
+within effective authorization; child creation does not multiply the team's
+resource allowance. Reuse an existing peer when appropriate. Cancelling one
+request affects only its owned descendant executions, not a shared Agent's
+unrelated work. Detect wait cycles and release unnecessary execution slots
+while awaiting children, so parents cannot consume all child capacity.
+
+Return follows the real dependency: child artifact -> receiver validation and
+adoption/rejection -> parent integration -> original requester. Directly
+forwarding a grandchild's output to the lead does not prove the intermediate
+Agent coordinated or accepted it. Messages use the shared inbox/queue/steer
+policies; receiving a message cannot grant a claim, alter intent or accept work.
+
+Extend A6/A8/A13 with a three-level synthetic journey and two input revisions.
+The lead retains substantive work of its own; an intermediate worker decides
+whether another peer is needed. Freeze the objective, constraints and injected
+failure, not the team roster or phase sequence. At least one revised delegation
+must originate from an Agent's response to contradictory evidence. Record
+request/decision references and adoption facts, not private reasoning traces.
+The harness may inject faults and check invariants; it must not supply every
+next phase, manually forward results or certify success from message counts.
 
 ### 5.7 Session and product continuity
 

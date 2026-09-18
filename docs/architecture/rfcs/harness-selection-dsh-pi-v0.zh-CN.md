@@ -149,6 +149,33 @@ LoopX **选择**托管有界 Turn 的默认宿主，而从不由启动时的意�
   `--host-identity` 列表仍只覆盖可见宿主，因为像 `dsh` 这种仅 headless 的宿主无法
   拥有可见会话。
 
+### 混合本地/云端 managed 资格化（提案）
+
+[会话执行 RFC](agent-session-execution-modes-v0.zh-CN.md#reusable-agent-operations-and-continuation-ownership)
+区分 provider、会话归属和续跑 owner。把同一 managed 工作合同扩展到合格云端宿主，
+不能编码成本地=Turn、云端=原生 Goal；上文现有 managed-host 与管家默认保持不变。
+
+LoopX 公开的 [Ark Managed Agent host contract](../../../loopx/ark_managed_agent_host.py)
+当前规定一次 Goal 激活、原生续跑、无外层 Turn driver。云端 governed-Turn adapter
+是**独立、尚未资格化、需显式选择的候选**，不能重新解释该 profile。DSH 的
+[有界 Turn adapter](../../../loopx/dsh_goal_mode/README.md)与
+[同会话 plugin](../../../packages/dsh-loopx-plugin/README.md)也有不同续跑合同，资格
+不能互借。
+
+先验收一次完整的本地/云端工作单元：真实工具/产物传递、typed result、独立拒绝错误
+产物、验收后写回、usage 读回、取消与恢复；再验两轮依赖工作及 worker 主动委派，
+复用统一协作合同。Host adapter 传输 Agent 的决定，不包含场景业务 phase 顺序。
+等待中的父任务不能占满子任务需要的全部执行槽。
+
+原生 Goal 还需公开文档支持的激活与身份、重复激活行为、评估/终态读回、有界资源使用、
+defer/wake 和重启验证。消息成功或 session idle 都不足以证明。Provider API 或 slash
+包装只放在其 adapter，不成为 LoopX 通用命令。Provider 能力声明必须有公开版本化
+来源及可复现资格证据；本提案仅引用 LoopX 自身合同，不新增对 Ark 部署或 API 保证的声明。
+
+实际 provider 用量与 LoopX 已验收工作 quota 分开报告：被拒绝的工作仍可能产生推理
+费用，unknown 不能记零。只晋升已测试 profile，明确不可用能力；回滚到原选定 profile
+时不能产生并行 driver。
+
 ## 证据基线
 
 LoopX 检查基线为 `bf217e1e01bec79f357c9ecbd580cf2dfa73db8b`：

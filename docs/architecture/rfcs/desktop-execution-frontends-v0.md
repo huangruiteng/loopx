@@ -299,9 +299,12 @@ inbound working conversation is Agent-scoped.
 
 ## Agent-scoped Bot ingress modes
 
-An Agent-to-Bot connection needs three explicit ingress semantics. They are
-delivery policies for one bound Agent, not three Agents and not a
-natural-language classifier:
+Agent-to-Bot connections and peer collaboration need the same three explicit
+ingress semantics. User-facing names are **inbox**, **queue** and **steer**;
+the existing vocabulary below remains. They express delivery intent for one
+bound Agent, not three Agents or a natural-language classifier. This proposal
+extends the common policy to peer ingress; it does not ship a new API or change
+existing adapters merely by renaming their input:
 
 ```text
 agent_bot_ingress_mode_v0 =
@@ -314,9 +317,22 @@ The three policies solve different availability conditions:
 
 | Mode | Delivery target | Availability model | Durable boundary |
 |---|---|---|---|
-| `live_steering` | The currently attached or managed working session | Session is live and accepts ordered ingress | Existing session/event store; no second Agent session |
-| `session_queue` | The same Agent working session when it next accepts input | Runtime exists but is busy, reconnecting, or temporarily offline | Owner-local ordered ingress queue keyed by Agent and session |
+| `live_steering` | The specified active execution in the bound working session | Host can apply input at a declared safe point | Existing session/event store and consumption receipt; no second executor |
+| `session_queue` | A subsequent work input in the same bound session | Current work finishes or explicitly yields its execution before delivery | Owner-local durable ordered ingress queue keyed by Agent and session |
 | `async_inbox` | The next eligible LoopX Agent turn after an explicit drain | No Agent process needs to remain alive | Existing provider-owned event inbox plus content-free quota urgency |
+
+This refines the earlier queue phrase "when it next accepts input": a host that
+merges pending input into the active work has not thereby implemented the
+proposed queue semantics. Qualify the change explicitly, preserving old profile
+behavior until its opt-in implementation and compatibility tests pass.
+
+Persist the requested mode, permitted fallback and actual delivery disposition
+with existing ingress identity and recipient scope. Readback distinguishes
+durable receipt, queued dispatch, host consumption and steering application;
+work adoption/acceptance remains with collaboration/work owners. Model prose or
+HTTP success is not a consumption receipt. Unknown capabilities fail explicitly.
+Frontend, CLI and Lark show the effective mode, waiting reason and result on the
+original work/conversation surface, rather than creating a separate team board.
 
 ### Capture, ingress, and reply are orthogonal
 
@@ -361,10 +377,19 @@ shares the Web ingress serializer, upstream resume identity, interrupt policy,
 workspace, runtime, trust, and capability boundary. If that binding is stale,
 ambiguous, terminal, or owned by another Agent, delivery fails closed.
 
-Steering is transport, not task authority. A read-only exchange may remain a
-normal session turn. A material effect still requires the fresh LoopX
-decision, validation, writeback, and settlement appropriate to the attached or
+Steering is transport, not task authority. Read-only input can be consumed by
+the active session without claiming new work. A material effect still requires
+the fresh LoopX decision, validation, writeback, and settlement appropriate to the attached or
 managed execution mode.
+
+Steer targets the current execution generation and its next supported safe input
+point; it is not interrupt/restart. While an external tool is outstanding, the
+host may durably accept a pending correction without claiming it was applied.
+If safe injection is unavailable, report that fact and use only the request's
+explicit fallback. Never fabricate a tool result to deliver the correction.
+An invalidated tool call needs an explicit cancellation disposition; reconcile
+its late result against the current input version and execution fence. The
+message itself neither cancels all peers nor revokes their authority.
 
 ### Session queue
 
@@ -373,8 +398,9 @@ preserves stable event dedupe, per-session order, bounded size, expiry,
 backpressure, cancellation, and crash-safe dispatch. It is not the LoopX Todo
 queue and may not mutate Goal priority, claim work, or grant capabilities.
 
-When the same session becomes ready, the broker submits the oldest eligible
-entry through the normal serialized ingress. A missing or replaced session
+After the current work ends or explicitly yields execution, the broker submits
+the oldest eligible entry through normal serialized ingress. A pending-tool
+idle observation alone is not that boundary. A missing or replaced session
 requires an explicit rebind or dead-letter decision; it does not silently
 route the entry to a fresh Agent history.
 
@@ -387,7 +413,8 @@ mention/reply counts, oldest age, and `reply_due`, never message bodies,
 senders, provider ids, private paths, or chat ids.
 
 When `reply_due=true`, the inbox lane preempts ordinary advancement and monitor
-work. The selected Agent drains bounded content, interprets it against fresh
+work at the next eligible admission; this does not interrupt an active execution.
+The selected Agent drains bounded content, interprets it against fresh
 Goal state, writes any durable effect first, sends at most one idempotent
 source-thread reply with provider readback, and only then ACKs. Drain alone is
 read-only; collection or ACK is never semantic authority.
@@ -399,6 +426,14 @@ session or fails to register inbox urgency on the bound Goal. The implementation
 must split provider collection from ingress policy, require the registered
 Agent id, and either submit through a verified working-session binding or
 publish the inbox pointer to the canonical quota path.
+
+Qualify the three modes with one corrected-input fixture: pending tool, busy and
+offline recipient, expired message, full queue, duplicate/conflicting identity,
+session replacement, sender revocation and late tool result. Assert the actual
+consumption boundary and fallback, not just message existence. Inbox drain must
+not claim work acceptance; queue must not alter active work; steer must not claim
+application before the host receipt. These are proposed acceptance requirements,
+not evidence that every host currently supports all modes.
 
 ### Initial product ordering
 

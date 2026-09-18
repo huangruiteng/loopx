@@ -171,6 +171,22 @@ This change adds no capability/provider. R1/R3 should extend existing work-items
 
 Steward coordination permits logical goal decomposition, priority suggestions, delegation and synthesis. `peer_v1` does not prohibit that product role; it prohibits the role conferring unilateral writes, preemption or elevated authority. Macro-goals spanning Goals use existing Goal relationships and scoped requests. Where cross-Goal dependencies or aggregate acceptance lack an owner, deliver a bounded contract with a real caller first, not a global scheduling DSL.
 
+The lead may be an existing attached Agent or a managed Agent; an authorized
+worker can coordinate another level through the same operations. Separate Agent
+creation/reuse, session attach/start, communication and work acceptance. The
+[session RFC](agent-session-execution-modes-v0.md#reusable-agent-operations-and-continuation-ownership)
+owns this common lifecycle and the single continuation owner per binding;
+the [frontend RFC](desktop-execution-frontends-v0.md#agent-scoped-bot-ingress-modes)
+owns inbox/queue/steer delivery, and the handoff RFC owns receiver adoption and
+hierarchical return. These are proposed integration requirements, not a new
+runtime, provider guarantee or permission default.
+
+Agents choose and revise the work graph. Generic host services enforce admission,
+dispatch, budget and recovery without encoding business phases. Qualify local and
+cloud managed work against one governed Turn contract first, while retaining
+native Goal and same-session driver profiles as distinct qualified paths. A
+team's total resource allowance is not copied to each child coordinator.
+
 ### Collaboration and Handoff Between LoopX Agents
 
 Participants are long-running LoopX Agents with their own goals, commitments, frontiers and execution bindings, not merely temporary subtasks inside the steward process. Manager→worker and worker→worker share one collaboration contract. Workers can request help, provide results, challenge dependencies and propose replanning without asking the steward to relay every message. The steward owns overall progress and synthesis, not a serial transit point for every message or commit.
@@ -215,7 +231,7 @@ These priorities do not change live Goal quota or authorize experiments/cloud re
 - **Entrypoint/owner:** existing session binding, Turn driver, quota/scheduler and manager runtime configuration; reuse the current settings editor/profile owner.
 - **Delivery:** distinguish registered, addressable, bound, launchable, executing and blocked. Plan readiness cannot imply running work. For authorized, qualified managed bindings, launch the next bounded Turn through existing launch/supervision. Attached hosts retain their original execution driver.
 - **Qualification:** use the actual selected runtime for at least two work→artifact→independent validation→settlement→successor cycles; interrupt/restart one worker while another progresses. Verify returning stale-executor fences, cancellation and no new launches after stop. Qualify DSH single-segment read-only Chat separately from Codex `trusted_owner`.
-- **Exit:** 2–3 workers, one dependency, one failure and one direction correction; inspect through packaged frontend and independent CLI readback. An authorized Lark entry reads the corresponding audience-visible feedback. Untested Lark remains explicitly unqualified.
+- **Exit:** 2–3 workers, one dependency, one failure and one direction correction; Agents select and revise delegation without manual phase input or result forwarding. Inspect through packaged frontend and independent CLI readback. An authorized Lark entry reads the corresponding audience-visible feedback. Untested Lark remains explicitly unqualified.
 - **Rollback:** stop new admission, drain accepted work and retain bindings/receipts; attached fallback cannot be used to simulate availability.
 
 ### R3: Semantic Requests and Automatic Return
@@ -224,6 +240,14 @@ These priorities do not change live Goal quota or authorize experiments/cloud re
 - **Delivery:** preserve purpose, decisions, constraints, evidence references and expected return. Receivers independently adopt/defer/reject/replan. Accepted work, committed result and delivered answer are separate facts; existing outbox provides automatic return.
 - **Exit:** actual manager→worker and worker→worker callers; follow-up messages, lost source session, oversized answer, duplicate callback, successful send with lost ACK and transport restart. CLI, packaged frontend and Lark read back the same result with audience isolation. Ordinary already-authorized work gains no second confirmation.
 - **Migration/rollback:** characterize first, record old writer/reader mappings and deletion payoff; disabling new production must leave old requests drainable. Do not retain two writable lifecycles.
+
+R3 also qualifies the handoff RFC's hierarchical A6/A8/A13 extension: a managed
+worker requests, validates and integrates another peer's artifact before returning
+to the lead. Reuse the same request and work owners at each level. The ingress
+fixture distinguishes inbox receipt, subsequent queue work and applied steer
+under a pending tool, cancellation and a late result; transport success alone
+does not close the request. Keep existing R2/R3 successors rather than opening
+a parallel team-orchestration program.
 
 ### R4: Shared Goal Alignment and Evolution
 
@@ -249,6 +273,15 @@ L3 checkpoint: standalone acquisition/takeover, atomic claim admission and maint
 - **Delivery:** authenticated transport, tenant/Goal/actor authorization, host identity and capability admission. Cross-host request/receipt/wake flows use their owners. Handle disconnection, lease expiry, stale workers, service restart/restore incarnation and ambiguous commit.
 - **Exit:** at least two real hosts, including one cloud worker, collaborate in an isolated tenant; wrong-tenant/actor, revocation and split-brain negatives pass. Shared budgets/admission have explicit ownership; local quota is not a distributed resource reservation.
 - **Rollback:** stop remote admission, retain committed facts and drain; do not import or rebind another host's raw session data.
+
+A useful precursor may keep one already-supported local authority and execute
+cloud work through a scoped host facade. It can advance R2/R3 and qualify a
+provider adapter without deploying a shared database service. Label it **single
+authority, mixed execution**: it does not pass G3/R6's independent-host recovery,
+shared reservation or service qualification. Never clone independently writable
+Goal state into the cloud; full R6 retains its authenticated-service and D1–D3
+requirements. Evaluate each continuation profile separately, with no concurrent
+outer Turn and native Goal driver on one binding.
 
 ### R7: Hundred-Agent Qualification
 
@@ -297,6 +330,7 @@ Progress means another independently reproducible user journey, not more fields 
 | Shared authority | `AuthorityStore`, File/SQLite candidates, PostgreSQL store/service admission seam, recovery and conformance foundations | A deployed authenticated cross-host service, a promoted default provider or distributed quota |
 | Alignment | Stage 1/2 source-basis reader and amendment admission/retention | A full Goal-intent revision in `source_basis_digest`, or Stage 3 automatic commit |
 | Managed execution | `turn run-once`, managed step, attached broker and executor fences | Unattended long-horizon supervision from one bounded segment, or a healthy executor for every registered Agent |
+| Semantic peer delivery | Existing Inbox/reply owners now carry immutable briefs, same-Goal peer requests, explicit result consumption and original-conversation readback; [real managed demo](../../../examples/collaboration-delivery/README.md) | Controller-driven phases do not qualify autonomous scheduling, cross-host/Lark peers or full G1/M2–M4 |
 
 ### Verified Findings
 

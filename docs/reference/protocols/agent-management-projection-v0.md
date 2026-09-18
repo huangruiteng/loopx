@@ -91,7 +91,8 @@ Required fields:
 - `agent_id`;
 - `agent_model`: `peer_v1`;
 - `state`: one of `running`, `waiting`, `blocked`, `monitoring`,
-  `scope_wait`, `stale`, or `unknown`;
+  `scope_wait`, `stale`, `unknown`, `registered`, `addressable`, `bound`,
+  `launchable`, `executing`;
 - `current_todo`: a `todo_row_v0` object or `null`;
 - `next_action`: compact local-control next action text. Private project refs
   are allowed; inline credentials are not. Shareable sinks must redact private
@@ -111,6 +112,9 @@ Optional fields:
 - `handoff_refs`;
 - `handoff_note`;
 - `material_frontier`;
+- `session_binding`: optional `{thread_id, host_surface}` from existing
+  `run_history.goals[].coordination.thread_agent_bindings`; absence is not
+  evidence of a stopped host, and a binding does not prove executable capacity;
 - `stale_claim_hint`;
 - `blocked_on`;
 - `recent_events`;
@@ -121,6 +125,42 @@ projection keeps the runnable todo in `current_todo` and may expose the
 highest-priority blocked maintenance todo as a separate `blocked_on`
 `todo_row_v0`. The blocker remains visible without changing todo ownership or
 making the whole peer appear blocked.
+
+### Worker state refinement and compatibility
+
+The current producer emits `registered`, `addressable`, `bound`, `launchable`,
+`executing`, `blocked`, `monitoring`, and `waiting`.
+`running`, `unknown`, `scope_wait`, and `stale` remain
+accepted legacy vocabulary; this producer does not emit them. There is no
+parallel `lifecycle_state` field.
+
+This changes the default read projection: registered idle rows previously
+reported `unknown` or `waiting`, and open advancement work reported `running`.
+The new states refine those observations without adding dispatch authority:
+
+| State | Observed facts |
+| --- | --- |
+| `registered` | Registered row without current work or session binding |
+| `addressable` | Session binding exists, with no current work |
+| `bound` | Current open work and a session binding; no recent work update |
+| `launchable` | Current open work without a binding or recent work update |
+| `executing` | Current open work updated between zero and eight hours ago |
+| `blocked` | Current work is blocked or has the blocker task class |
+| `monitoring` | Current work is a monitor, regardless of activity age |
+| `waiting` | Other non-open current work, such as deferred work |
+
+Blocked, monitor and waiting classification precedes activity/binding refinement.
+The eight-hour activity window is inclusive, rejects future timestamps, and
+uses the current Todo only; it is independent of the 36-hour stale-claim
+warning. `last_activity_at` still summarizes the displayed Todos. Neither an
+`executing` observation nor `launchable` proves a live process, configured
+runtime, available capacity, lease, or permission to start a worker.
+
+Registered-peer orchestration accepts `executing`, `bound`, and `launchable`
+where it accepted legacy `running`, and continues to accept `monitoring` and
+cached `running` rows. Its existing stale-claim, observed activation-capability,
+and dependency-readiness gates still apply. Idle, blocked, waiting and unknown
+rows do not gain admission. Other consumers must tolerate the added strings.
 
 ## Todo Row
 

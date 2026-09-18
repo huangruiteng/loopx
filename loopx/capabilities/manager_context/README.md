@@ -119,7 +119,7 @@ paths and external links are not fetched. Non-Codex adapters receive the same
 windowed projection without the interactive inspection tools until they
 implement an equivalent tool contract.
 
-Manager context version 10 starts a fresh upstream session for older manager
+Manager context version 12 starts a fresh upstream session for older manager
 contexts. The logical Chat session and its receipts remain intact. Runtime support
 uses the Codex app-server dynamic tool protocol; explicit upstream terminal
 errors remain errors and are not retried as part of inspection. The version
@@ -237,3 +237,143 @@ Chat receipt uniquely recovers the route. Historical timestamps stay unknown.
 Replies are immutable and additive, separate from private decision reasons and
 Core progress. Query `manager-inbox status` or `loopx_manager_read view=handoffs`
 for delivery diagnostics. These queries are not required from the user.
+
+## Semantic delegation and peer review
+
+Shared request/decision/result storage now lives in the
+[Agent-neutral collaboration boundary](../../control_plane/collaboration/README.md).
+The manager is one ingress/egress adapter; managed workers use the same request
+contract and may themselves coordinate peers or another coordinator. Registration,
+execution binding and admission retain their existing owners. Historical CLI and
+record addresses remain compatible.
+
+Run the [three-Agent allocation demo](../../../examples/collaboration-delivery/README.md)
+for real managed workers, two independent review rounds and owner correction.
+The guide includes Chinese operating instructions.
+
+A manager may attach a `collaboration_brief_v0` to its existing
+`context_handoff={goal_id,agent_id,brief}` response. The host keeps the original
+owner message unchanged alongside the brief. The brief carries the purpose,
+relevant conversation and corrections, constraints, input references, acceptance
+criteria and expected return. It is model-authored context, not a confirmed
+Goal amendment or additional authority. The owner-local conversation displays
+this brief and live receiver/return facts in place. Compatible requests without
+a brief retain their existing shape and identity. A changed brief under the same
+ingress identity is a conflict, not a second delegation.
+
+Registered workers can ask another worker of the **same Goal on the same host**
+for help or independent review:
+
+```sh
+loopx manager-inbox request --goal-id allocation --agent-id builder \
+  --peer-agent-id reviewer --operation-id review-round-1 \
+  --brief-file review.json --parent-request-id <received-request-id>
+```
+
+An example `review.json`:
+
+```json
+{
+  "schema_version": "collaboration_brief_v0",
+  "purpose": "Independently review the allocation plan",
+  "context": "The owner rejected proportional rounding and requires an exact optimum.",
+  "constraints": ["Do not place orders", "Use integer cents"],
+  "inputs": [{"ref": "outputs/plan.json", "description": "Candidate allocation"}],
+  "acceptance": ["Check budget, shared stock, region capacity and zero demand"],
+  "return_requirement": "Return concrete findings and the checks actually performed"
+}
+```
+
+The brief is bounded to 16,000 UTF-8 bytes. Input references are relative
+workspace files, with an optional exact `sha256` digest. Deliver artifacts into
+the receiver's worktree through the project's existing Git/artifact workflow;
+the request itself does not transfer files. `read` reports `available`,
+`changed`, `unavailable`, `outside_workspace` or `too_large` for each input,
+with the actual digest when readable. It uses the receiver's current worktree
+only when the existing Git common-directory resolver proves that it belongs to
+the registered Goal; otherwise it uses the Goal workspace. A digest/readiness
+check is not proof that the Agent understood the material. Files above 4 MiB
+remain explicitly unchecked.
+
+The peer independently `acknowledge`s and `report`s a conclusion through the
+same commands as a manager request. The original requester receives it in
+`manager-inbox read` under `peer_returns`; its Turn-start hook keeps requiring
+a read until the requester explicitly consumes the result:
+
+```sh
+loopx manager-inbox read --goal-id allocation --agent-id builder
+loopx manager-inbox acknowledge-return --goal-id allocation --agent-id builder \
+  --request-id <peer-request-id>
+```
+
+Consumption does not mark a Todo done or certify peer acceptance. The requester
+checks the actual artifact, incorporates or rejects the findings, and reports
+the original owner conclusion through its original request. A second review
+round uses a new operation id. Repeating an operation recovers the same request;
+changing its content or recipient is rejected. Peer replies currently support
+one conclusion (including an explicit blocker/defer result), not interim replies.
+
+Parent lineage preserves the original owner context through peer requests.
+External-audience parent requests cannot be forwarded through this owner-local
+peer route. Lark's existing direct manager delegation and original-audience
+return remain available; the peer workspace and its full context are not
+projected into an external conversation. Cross-host file transfer, automatic
+worker launch, cancellation/amendment transactions and lease transfer are not
+provided by this path.
+
+### Sandboxed managed dsh workers
+
+A dsh `workspace-write` sandbox may read the Goal context but cannot write a
+shared Inbox outside its worktree. Keep that sandbox enabled and explicitly
+configure the built-in, identity-scoped stdio tools for each worker. The host
+starts this command with trusted configuration:
+
+```sh
+python -m loopx.collaboration_mcp \
+  --registry <registry.json> --runtime-root <runtime-root> \
+  --goal-id allocation --agent-id builder --workspace <builder-worktree>
+```
+
+For dsh SDK/runtime **0.1.5rc1 / 0.1.5-rc.1**, add this per-worker Cordis patch
+and pass it to `loopx turn run-once --host dsh --dsh-cordis <patch.yml>` alongside
+the normal governed Turn arguments:
+
+```yaml
+- insert:
+    - id: loopx-collaboration
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: stdio
+        serverName: loopx_collaboration
+        command: python
+        args:
+          - -m
+          - loopx.collaboration_mcp
+          - --registry
+          - <registry.json>
+          - --runtime-root
+          - <runtime-root>
+          - --goal-id
+          - allocation
+          - --agent-id
+          - builder
+          - --workspace
+          - <builder-worktree>
+        failOnStartupError: true
+```
+
+Use the Python interpreter with this LoopX checkout/release installed and
+absolute configuration paths. Each server exposes only `read_context`,
+`assess_request`, `request_peer`, `return_result` and `consume_peer_result`.
+Identity and filesystem roots are host-bound, absent from model tool arguments;
+every call rechecks the registered actor. The server has no shell, Todo/lease
+writer, credential tools or network listener. Installing/configuring it does not
+launch another worker or grant access to another Goal. Removing the patch and
+restarting the worker disables these tools without deleting pending requests or
+replies. The trusted local CLI remains available under its existing host rights.
+
+Minimum readback: call `read_context` from the configured worker and compare its
+request id with `manager-inbox status --goal-id allocation --agent-id builder`.
+Retain the returned model/runtime version and actual artifact checks when
+qualifying a managed journey; successful tool registration is not collaboration
+acceptance.

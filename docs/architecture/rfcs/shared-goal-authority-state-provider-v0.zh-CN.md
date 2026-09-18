@@ -303,6 +303,17 @@ canonical amendment。管家与 provider 都不成为该 authority。M1–M3 管
 T1–T3/D1/D2 并行；改变存储/profile/source 或退役完整 legacy Goal writer，仍遵守
 适用的 D3/T4 边界。新 handoff 不构成 provider 晋级请求。
 
+分层协调的每一跳都使用相同边界。Parent/request lineage 不是权限令牌，子协调者
+也不会获得整队 quota 的新副本。准入、资源预留、claim/lease 和已验收效果仍由
+既有 typed owner 负责；provider 会话状态、inbox/queue/steer 回执只是执行或传输
+观察。原生 Goal evaluator 不能替这些 owner 宣布 canonical 工作完成。
+
+总纲首个混合执行切片可以由已支持的本地 authority 经 host facade 接收有范围命令，
+云端 Agent 负责执行。这不创建新的 authority provider 或独立云端 writer。故障时
+保持选定来源和 stale-fence 规则，不能触发本地/云端 authority fallback。需要独立
+调度的多 host 仍须认证 service transport 与适用 D1–D3 资格；进程内 admission 代码
+不能证明该部署存在。
+
 ## 2. 要做的，以及不要做的
 
 **这版要做的**

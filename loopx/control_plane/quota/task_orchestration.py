@@ -372,7 +372,12 @@ def _registered_peer_task_orchestration_contract(
             reason_codes.append("peer_liveness_unavailable")
         elif peer_state.get("stale_claim_hint"):
             reason_codes.append("peer_runtime_stale")
-        elif peer_state.get("state") not in {"running", "monitoring"}:
+        # New work-state refinements retain the old running admission policy.
+        # Activity/claim freshness, activation capability and dependency readiness
+        # remain independent gates; a binding alone never grants activation.
+        elif peer_state.get("state") not in {
+            "running", "monitoring", "executing", "bound", "launchable",
+        }:
             reason_codes.append("peer_runtime_not_active")
         if lane.get("resume_when") and lane.get("resume_ready") is not True:
             reason_codes.append("peer_lane_not_resume_ready")

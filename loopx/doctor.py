@@ -662,6 +662,8 @@ def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = N
                     "markdown_exists": markdown_path.exists() if str(markdown_path) else False,
                 }
             )
+        if runtime_matches:
+            break
 
     matches = runtime_matches or legacy_matches
     if not matches:

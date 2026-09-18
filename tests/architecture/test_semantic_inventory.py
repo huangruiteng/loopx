@@ -17,6 +17,7 @@ import sys
 import pytest
 
 from loopx.semantics.inventory import (
+    multi_value_name_collisions,
     INVENTORY_SCHEMA_VERSION,
     SourceFile,
     build_inventory,
@@ -387,3 +388,86 @@ def test_typescript_single_quoted_carriers_are_visible(repo: Path) -> None:
     inventory = build_inventory(repo)
     assert inventory["typescript_const_arrays"][0]["values"] == ["one", "two"]
     assert any(item["name"] == "SHARED" for item in inventory["duplicate_definitions"]["same_runtime_forks"])
+
+
+def _carrier(module: str, values: list[str], container: str = "set") -> dict:
+    return {
+        "kind": "python_closed_set", "name": "STATES", "module": module,
+        "values": values, "container": container,
+    }
+
+
+def test_reordering_an_unordered_carrier_is_not_a_fork() -> None:
+    """A ``set`` has no element order, so listing the same members differently
+    is the same closed set. Before this rule, re-indenting a set literal
+    manufactured a semantic fork and blocked the gate, while the divergence
+    report computed from the same inventory correctly saw no divergence -- two
+    outputs of one scan disagreeing, with the wrong one holding the gate.
+    """
+    twins, forks = multi_value_name_collisions([
+        _carrier("loopx/a.py", ["open", "closed"]),
+        _carrier("loopx/b.py", ["closed", "open"]),
+    ])
+    assert [row["name"] for row in twins] == ["STATES"]
+    assert forks == []
+    # Diagnostics keep source order; only the identity key is normalized.
+    assert [item["values"] for item in twins[0]["definitions"]] == [
+        ["open", "closed"], ["closed", "open"],
+    ]
+
+
+def test_changing_membership_of_an_unordered_carrier_is_still_a_fork() -> None:
+    twins, forks = multi_value_name_collisions([
+        _carrier("loopx/a.py", ["open", "closed"]),
+        _carrier("loopx/b.py", ["open", "shut"]),
+    ])
+    assert twins == []
+    assert [row["name"] for row in forks] == ["STATES"]
+
+
+def test_reordering_an_ordered_carrier_is_still_a_fork() -> None:
+    """``tuple`` and ``list`` carriers spend their order as meaning.
+
+    ``LIFECYCLE_PRIORITY`` is a tuple defined in two modules: the order *is* the
+    priority. Normalizing every carrier to sorted membership would trade a false
+    positive for a false negative and hide that divergence, so orderedness is
+    read from the container the source actually used.
+    """
+    for container in ("tuple", "list"):
+        twins, forks = multi_value_name_collisions([
+            _carrier("loopx/a.py", ["first", "second"], container),
+            _carrier("loopx/b.py", ["second", "first"], container),
+        ])
+        assert twins == [], container
+        assert [row["name"] for row in forks] == ["STATES"], container
+
+
+def test_a_name_carried_by_mixed_containers_keeps_order_sensitive_identity() -> None:
+    """Membership decides identity only when every definition is unordered.
+
+    This keeps the rule a pure relaxation: it can only merge definitions the old
+    rule split, never split a pair it merged, so no untouched tree starts
+    failing because one side of a name is a tuple.
+    """
+    twins, forks = multi_value_name_collisions([
+        _carrier("loopx/a.py", ["open", "closed"], "set"),
+        _carrier("loopx/b.py", ["open", "closed"], "tuple"),
+    ])
+    assert [row["name"] for row in twins] == ["STATES"]
+    assert forks == []
+
+
+def test_a_carrier_without_a_container_stays_order_sensitive() -> None:
+    """Enums, ``Literal`` aliases and ``as const`` arrays carry no ``container``.
+
+    Their ordering semantics are not established here, so they keep the
+    reporting behaviour rather than being silently normalized.
+    """
+    twins, forks = multi_value_name_collisions([
+        {"kind": "python_enum", "name": "STATES", "module": "loopx/a.py",
+         "values": ["open", "closed"]},
+        {"kind": "python_enum", "name": "STATES", "module": "loopx/b.py",
+         "values": ["closed", "open"]},
+    ])
+    assert twins == []
+    assert [row["name"] for row in forks] == ["STATES"]

@@ -604,7 +604,11 @@ whole population of the same unit. An advisory or unproved stage walks nothing,
 so its `verified` count must be zero, and an enforced stage may not declare an
 empty domain. The selector and the evidence bound of each obligation are pinned
 by `FORMAL_DOMAIN_ANCHOR` in the smoke on the `COVERAGE_ANCHOR` pattern (I5), so
-an invariant cannot widen the set it claims through a registry edit alone. The
+an invariant cannot widen the set it claims through a registry edit alone. F5's
+`verified` count is the number of projections the smoke actually imports and
+executes, taken from `EXECUTED_PROJECTIONS` in code, not the registry's own row
+count; a registered projection with no executed check raises `registered`
+without raising `verified`, the way F1 reports 6 of 26. The
 producer scan reach is measured on every run instead of pinned, because its
 denominator moves with any new module; the smoke prints the current ratio, the
 unresolved-site total, and the share of that total no wider scan could ever
@@ -1180,6 +1184,42 @@ future edit to pass the gate, not a current violation.
   flow, and file-granular shadow detection will withhold the builtin reading
   from a file that shadows `String` in an unrelated function. Both are
   conservative failures, and both stay measured rather than assumed.
+
+### 2026-09-17 — Two measurements that contradicted themselves, corrected
+
+Normative for what F5's `verified` count means and for closed-set collision
+identity. No budget, floor or anchor was relaxed; both changes were reproduced
+against `d8e7af141` before being written.
+
+- **A declaration was counting as its own evidence (F5).** The
+  `projections[*]` selector returned `len(registry["projections"])` for *both*
+  `verified` and `registered`, while `check_projections` imported exactly one
+  hardcoded projection. Adding a projection whose owner module and function do
+  not exist anywhere in the tree, and declaring the domain as 2/2, passed the
+  whole smoke and printed `F5:2/2` under the evidence bound
+  `executable_owner_function`. `verified` now counts only the projections named
+  in `EXECUTED_PROJECTIONS`, which is code, and each one's registry `owner` must
+  equal the function the check imports. The same injection now either fails
+  (`claims 2 verified members ... the m0 check walks 1`) or is declared honestly
+  and prints `F5:1/2`.
+- **Reordering a `set` counted as a semantic fork.** Collision identity used
+  `tuple(item["values"])`, which is source order. Swapping three lines inside a
+  `set` literal — membership unchanged — turned a twin into a fork and failed
+  the gate on three budgets at once, while `divergent_value_sets`, computed from
+  the same inventory, correctly reported no divergence: one scan, two outputs,
+  and the wrong one held the gate. Identity is now membership when *every*
+  definition of a name is a `set`/`frozenset`, and source order otherwise.
+- **The normalization is deliberately narrow.** `tuple`, `list` and `as const`
+  carriers keep order-sensitive identity, because `LIFECYCLE_PRIORITY` is a
+  tuple defined in two modules whose order *is* the priority; normalizing every
+  carrier would have replaced a false positive with a false negative. A name
+  carried by mixed containers also stays order-sensitive, which makes the rule a
+  pure relaxation: it can only merge definitions the old rule split, so no
+  untouched tree starts failing.
+- **What this does not do.** It does not establish the ordering semantics of
+  enums or `Literal` aliases, which carry no container and are left
+  order-sensitive; and it does not add a second executed projection. F5 still
+  walks one.
 
 ### 2026-09-17 — B2: three bounded binding forms, and the residue that stays unresolved
 

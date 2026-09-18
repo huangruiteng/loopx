@@ -1,0 +1,541 @@
+"""Semantic delegation, two review rounds and recovery over the real CLI/store."""
+
+import hashlib
+import json
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+
+from loopx.capabilities.manager_context import (
+    deliver,
+    pending,
+    normalize_request,
+    turn_start_hook,
+)
+from loopx.control_plane.collaboration.peers import (
+    request,
+    returns,
+    consume_return,
+    input_readiness,
+)
+from loopx.capabilities.manager_context.roundtrip import (
+    drain,
+    project_chat_session_snapshot,
+)
+from loopx.capabilities.manager_context.tracking import query
+from loopx.chat_store import ChatSessionStore
+
+
+@pytest.fixture
+def scenario(tmp_path):
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "goals": [
+                    {
+                        "id": "delivery",
+                        "repo": str(tmp_path),
+                        "coordination": {
+                            "registered_agents": ["builder", "reviewer", "analyst"]
+                        },
+                    }
+                ]
+            }
+        )
+    )
+    (tmp_path / "inputs").mkdir()
+    artifact = tmp_path / "inputs" / "demand.csv"
+    artifact.write_text("sku,demand\na,15\nb,0\n")
+    brief = {
+        "schema_version": "collaboration_brief_v0",
+        "purpose": "Produce a stock plan",
+        "context": "The owner rejected using an average. Latest correction: reserve two units.",
+        "constraints": ["No external orders", "Never allocate negative quantities"],
+        "inputs": [
+            {
+                "ref": "inputs/demand.csv",
+                "description": "Demand fixture",
+                "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            }
+        ],
+        "acceptance": [
+            "Total allocation is within available stock",
+            "Zero-demand items receive zero",
+        ],
+        "return_requirement": "Return the plan and independent review findings, including unresolved gaps.",
+    }
+    store = ChatSessionStore(tmp_path)
+    session = store.create_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="fixture",
+        channel_id="manager",
+    )
+    turn, _ = store.create_turn(
+        session["session_id"],
+        client_turn_id="owner-correction",
+        message="Use the correction above and have a peer check it.",
+        origin="web",
+    )
+    receipt = deliver(
+        tmp_path,
+        registry,
+        session=session,
+        turn=turn,
+        request={"goal_id": "delivery", "agent_id": "builder", "brief": brief},
+    )
+    store.update_turn(
+        session["session_id"],
+        turn["turn_id"],
+        status="completing",
+        response={"message": "Delegated", "context_handoff_receipt": receipt},
+    )
+    store.finalize_managed_turn_completion(session["session_id"], turn["turn_id"])
+    return tmp_path, registry, brief, store, session, turn, receipt["request_id"]
+
+
+def cli(root, registry, agent, action, *args, ok=True):
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--runtime-root",
+            str(root),
+            "--registry",
+            str(registry),
+            "manager-inbox",
+            action,
+            "--goal-id",
+            "delivery",
+            "--agent-id",
+            agent,
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    result = json.loads(proc.stdout)
+    assert proc.returncode == (0 if ok else 1), (proc.stdout, proc.stderr)
+    return result
+
+
+def test_two_peer_review_rounds_return_to_original_conversation_after_restart(scenario):
+    root, registry, brief, store, session, turn, parent = scenario
+    builder = cli(root, registry, "builder", "read")["items"][0]
+    assert builder["message"] == turn["message"]
+    assert builder["brief"] == brief
+    assert builder["input_readiness"][0]["status"] == "available"
+    cli(
+        root,
+        registry,
+        "builder",
+        "acknowledge",
+        "--request-id",
+        parent,
+        "--decision",
+        "adopt",
+        "--reason",
+        "Will use the corrected reserve rule.",
+    )
+    ids = []
+    for number in (1, 2):
+        review = {**brief, "purpose": f"Independently review stock plan round {number}"}
+        path = root / "review.json"
+        path.write_text(json.dumps(review))
+        args = (
+            "--peer-agent-id",
+            "reviewer",
+            "--operation-id",
+            f"review-{number}",
+            "--brief-file",
+            str(path),
+            "--parent-request-id",
+            parent,
+        )
+        rid = cli(root, registry, "builder", "request", *args)["request_id"]
+        ids.append(rid)
+        assert cli(root, registry, "builder", "request", *args)["replayed"]
+        received = cli(root, registry, "reviewer", "read")["items"][0]
+        assert received["inherited_context"]["brief"] == brief
+        assert received["source_agent_id"] == "builder"
+        cli(
+            root,
+            registry,
+            "reviewer",
+            "acknowledge",
+            "--request-id",
+            rid,
+            "--decision",
+            "adopt",
+            "--reason",
+            "Independent artifact check.",
+        )
+        result_text = (
+            "Reserve missing; revise."
+            if number == 1
+            else "Reserve and zero-demand checks passed."
+        )
+        cli(
+            root,
+            registry,
+            "reviewer",
+            "report",
+            "--request-id",
+            rid,
+            "--reply-text",
+            result_text,
+        )
+        # The Chat pump cannot send a peer reply to any conversation.
+        assert drain(root, registry, store, None) == 0
+        assert turn_start_hook(root, registry, "delivery", "builder").producer()[
+            "agent_read_required"
+        ]
+        # New CLI processes reconstruct the work context with no source session.
+        returned = cli(root, registry, "builder", "read")["peer_returns"]["items"][0]
+        assert (
+            returned["text"] == result_text and returned["parent_request_id"] == parent
+        )
+        assert (
+            cli(root, registry, "builder", "read")["peer_returns"]["items"][0]
+            == returned
+        )
+        cli(root, registry, "builder", "acknowledge-return", "--request-id", rid)
+        cli(root, registry, "builder", "acknowledge-return", "--request-id", rid)
+        assert not returns(root, "delivery", "builder")["items"]
+    assert ids[0] != ids[1]
+    cli(
+        root,
+        registry,
+        "builder",
+        "report",
+        "--request-id",
+        parent,
+        "--reply-text",
+        "Revised the reserve after peer review; the second check passed.",
+    )
+    assert drain(root, registry, ChatSessionStore(root), None) == 1
+    assert drain(root, registry, ChatSessionStore(root), None) == 0
+    snapshot = project_chat_session_snapshot(root, store, session["session_id"])
+    assert sum(m.get("origin") == "manager_followup" for m in snapshot["messages"]) == 1
+    card = next(
+        m["collaboration"] for m in snapshot["messages"] if m.get("collaboration")
+    )
+    assert (
+        card["brief"] == brief
+        and card["decision"] == "adopt"
+        and card["read_status"] == "supplied"
+    )
+    assert card["returns"][-1]["status"] == "delivered"
+    assert not pending(root, "delivery", "builder")["items"]
+
+
+def test_operation_replay_conflicts_and_independent_requests(scenario):
+    root, registry, brief, _, _, _, parent = scenario
+
+    def send():
+        return request(
+            root, registry, "delivery", "builder", "reviewer", "review-1", brief, parent
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        receipts = list(pool.map(lambda _: send(), range(4)))
+    assert sum(not row["replayed"] for row in receipts) == 1
+    with pytest.raises(ValueError, match="identity conflict"):
+        request(
+            root, registry, "delivery", "builder", "analyst", "review-1", brief, parent
+        )
+    with pytest.raises(ValueError, match="identity conflict"):
+        request(
+            root,
+            registry,
+            "delivery",
+            "builder",
+            "reviewer",
+            "review-1",
+            {**brief, "purpose": "Changed"},
+            parent,
+        )
+    rid = receipts[0]["request_id"]
+    with pytest.raises(ValueError, match="scope mismatch"):
+        consume_return(root, "delivery", "analyst", rid)
+    with pytest.raises(ValueError, match="read the peer conclusion"):
+        consume_return(root, "delivery", "builder", rid)
+    with pytest.raises(ValueError, match="different"):
+        request(root, registry, "delivery", "builder", "builder", "self", brief)
+    with pytest.raises(ValueError, match="registered"):
+        request(root, registry, "delivery", "builder", "unknown", "other", brief)
+    with pytest.raises((ValueError, OSError)):
+        request(
+            root,
+            registry,
+            "delivery",
+            "analyst",
+            "reviewer",
+            "stolen-parent",
+            brief,
+            parent,
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"priority": "P0"},
+        {"acceptance": []},
+        {"constraints": "No orders"},
+        {"inputs": [{"ref": "../private.txt", "description": "Invalid"}]},
+        {"inputs": [{"ref": "/etc/passwd", "description": "Invalid"}]},
+        {
+            "inputs": [
+                {"ref": "inputs/x", "description": "Invalid", "sha256": "guessed"}
+            ]
+        },
+        {"context": "字" * 6000},
+    ],
+)
+def test_semantic_contract_rejects_operational_keys_and_invalid_inputs(
+    scenario, change
+):
+    _, _, brief, *_ = scenario
+    with pytest.raises(ValueError):
+        normalize_request(
+            {"goal_id": "delivery", "agent_id": "builder", "brief": {**brief, **change}}
+        )
+
+
+def test_changed_missing_and_escaping_artifacts_are_explicit(scenario, tmp_path):
+    root, registry, brief, *_ = scenario
+    (root / "inputs/demand.csv").write_text("changed")
+    assert input_readiness(registry, "delivery", brief)[0]["status"] == "changed"
+    (root / "inputs/demand.csv").unlink()
+    assert input_readiness(registry, "delivery", brief)[0]["status"] == "unavailable"
+    (root / "inputs/demand.csv").symlink_to(root.parent / "outside.csv")
+    assert (
+        input_readiness(registry, "delivery", brief)[0]["status"] == "outside_workspace"
+    )
+
+
+def test_peer_route_never_enters_external_audience_projection(scenario):
+    root, registry, brief, store, session, turn, parent = scenario
+    request(root, registry, "delivery", "builder", "reviewer", "review", brief, parent)
+    result = query(
+        root,
+        registry,
+        goal_ids=["delivery"],
+        owner_scope=False,
+        channel_id="manager.external.other",
+    )
+    assert result["rows"] == []
+    external = store.create_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="external",
+        channel_id="manager.external.other",
+    )
+    assert not any(
+        m.get("collaboration")
+        for m in project_chat_session_snapshot(root, store, external["session_id"])[
+            "messages"
+        ]
+    )
+    assert not returns(root, "delivery", "analyst")["items"]
+
+
+def test_invalid_brief_retry_does_not_create_another_manager_request(scenario):
+    root, registry, brief, _, session, turn, _ = scenario
+    with pytest.raises(ValueError, match="identity conflict"):
+        deliver(
+            root,
+            registry,
+            session=session,
+            turn=turn,
+            request={
+                "goal_id": "delivery",
+                "agent_id": "builder",
+                "brief": {**brief, "purpose": "Different"},
+            },
+        )
+    assert len(pending(root, "delivery", "builder")["items"]) == 1
+
+
+def test_input_versions_follow_receiver_worktree_and_reject_unrelated_workspace(
+    scenario, tmp_path
+):
+    root, registry, brief, *_ = scenario
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+    git("init", "-b", "main")
+    git("add", "inputs/demand.csv")
+    git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "fixture",
+    )
+    receiver = root.parent / (root.name + "-receiver")
+    git("worktree", "add", "-b", "receiver", str(receiver))
+    (receiver / "inputs/demand.csv").write_text("receiver has a different version")
+    result = input_readiness(registry, "delivery", brief, workspace=receiver)[0]
+    assert result["status"] == "changed" and result["basis"] == "receiver_worktree"
+    unrelated = root / "unrelated"
+    unrelated.mkdir()
+    # A non-repository directory cannot replace the registered source root.
+    outside = root.parent / (root.name + "-outside")
+    outside.mkdir()
+    result = input_readiness(registry, "delivery", brief, workspace=outside)[0]
+    assert result["status"] == "available" and result["basis"] == "goal_workspace"
+
+
+def test_unrelated_damaged_return_route_does_not_break_legacy_inbox(scenario):
+    root, _, _, _, _, _, parent = scenario
+    damaged = root / ".local/manager-context/roundtrips/unrelated.json"
+    damaged.write_text("{broken")
+    assert pending(root, "delivery", "builder")["items"][0]["request_id"] == parent
+
+
+def test_consumption_rejects_corrupt_reply_and_receipt(scenario):
+    from loopx.capabilities.manager_context import _root
+
+    root, registry, brief, _, _, _, parent = scenario
+    rid = request(
+        root, registry, "delivery", "builder", "reviewer", "review", brief, parent
+    )["request_id"]
+    cli(root, registry, "reviewer", "read")
+    cli(
+        root,
+        registry,
+        "reviewer",
+        "acknowledge",
+        "--request-id",
+        rid,
+        "--decision",
+        "adopt",
+        "--reason",
+        "Review",
+    )
+    cli(
+        root,
+        registry,
+        "reviewer",
+        "report",
+        "--request-id",
+        rid,
+        "--reply-text",
+        "Checked",
+    )
+    cli(root, registry, "builder", "read")
+    folder = _root(root) / "replies" / rid
+    reply = folder / "conclusion.json"
+    original = reply.read_text()
+    reply.write_text(json.dumps({**json.loads(original), "source_id": "other"}))
+    with pytest.raises(ValueError, match="identity conflict"):
+        consume_return(root, "delivery", "builder", rid)
+    reply.write_text(original)
+    consume_return(root, "delivery", "builder", rid)
+    consumed = folder / "conclusion.consumed.json"
+    consumed.write_text(
+        json.dumps({**json.loads(consumed.read_text()), "agent_id": "other"})
+    )
+    with pytest.raises(ValueError, match="scope mismatch"):
+        consume_return(root, "delivery", "builder", rid)
+
+
+def test_special_file_read_is_bounded_and_stopped_goal_remains_readable(scenario):
+    import os
+    from loopx.control_plane.collaboration.peers import read_inbox
+
+    root, registry, brief, *_ = scenario
+    (root / "inputs/demand.csv").unlink()
+    os.mkfifo(root / "inputs/demand.csv")
+    assert input_readiness(registry, "delivery", brief)[0]["status"] == "unavailable"
+    config = json.loads(registry.read_text())
+    config["goals"][0]["status"] = "stopped"
+    registry.write_text(json.dumps(config))
+    assert read_inbox(root, registry, "delivery", "builder")["items"]
+    with pytest.raises(ValueError, match="stopped"):
+        request(root, registry, "delivery", "builder", "reviewer", "stopped", brief)
+
+
+def test_nested_coordinators_return_to_each_immediate_requester(scenario):
+    """Worker -> coordinator -> specialist works without a manager root request."""
+    root, registry, brief, *_ = scenario
+    outer = request(
+        root, registry, "delivery", "builder", "reviewer", "delegate", brief
+    )["request_id"]
+    cli(root, registry, "reviewer", "read")
+    cli(
+        root,
+        registry,
+        "reviewer",
+        "acknowledge",
+        "--request-id",
+        outer,
+        "--decision",
+        "adopt",
+        "--reason",
+        "Coordinate the specialist audit",
+    )
+    inner = request(
+        root, registry, "delivery", "reviewer", "analyst", "specialist", brief, outer
+    )["request_id"]
+    received = cli(root, registry, "analyst", "read")["items"][0]
+    assert received["inherited_context"]["request_id"] == outer
+    assert received["source_agent_id"] == "reviewer"
+    cli(
+        root,
+        registry,
+        "analyst",
+        "acknowledge",
+        "--request-id",
+        inner,
+        "--decision",
+        "adopt",
+        "--reason",
+        "Check specialty",
+    )
+    cli(
+        root,
+        registry,
+        "analyst",
+        "report",
+        "--request-id",
+        inner,
+        "--reply-text",
+        "Specialist findings",
+    )
+    assert not returns(root, "delivery", "builder")["items"]
+    assert (
+        cli(root, registry, "reviewer", "read")["peer_returns"]["items"][0][
+            "request_id"
+        ]
+        == inner
+    )
+    consume_return(root, "delivery", "reviewer", inner)
+    cli(
+        root,
+        registry,
+        "reviewer",
+        "report",
+        "--request-id",
+        outer,
+        "--reply-text",
+        "Specialist findings independently assessed",
+    )
+    assert (
+        cli(root, registry, "builder", "read")["peer_returns"]["items"][0]["request_id"]
+        == outer
+    )
+    consume_return(root, "delivery", "builder", outer)
+    assert not returns(root, "delivery", "builder")["items"]

@@ -503,6 +503,7 @@ type PersonalHomeModel = {
 };
 type PersonalManagerMessage = {
   sourceMessageId?: string;
+  sourceTurnId?: string;
   activity?: string[];
   agentLabel?: string;
   attachments?: WorkspaceImageAttachment[];
@@ -510,6 +511,7 @@ type PersonalManagerMessage = {
   lines: string[];
   pending?: boolean;
   returnDelivery?: ChatVisibleMessage["return_delivery"];
+  collaboration?: ChatVisibleMessage["collaboration"];
   reconnect?: boolean;
   role: "assistant" | "user";
   sourceLabel?: string;
@@ -1616,14 +1618,18 @@ function PersonalGoalHome({
           const deliveryByMessage = new Map(
             replies.map((row) => [row.message_id, row.return_delivery]),
           );
+          const byTurn = new Map(snapshot.messages.filter((row) => row.role !== "user" && row.origin !== "manager_followup").map((row) => [row.turn_id, row]));
+          const collaborationByMessage = new Map(snapshot.messages.map((row) => [row.message_id, row.collaboration]));
           let deliveryChanged = false;
           const updated = previous.map((row) => {
             const delivery = row.sourceMessageId
               ? deliveryByMessage.get(row.sourceMessageId)
               : undefined;
-            if (JSON.stringify(delivery) === JSON.stringify(row.returnDelivery)) return row;
+            const source = row.sourceTurnId ? byTurn.get(row.sourceTurnId) : undefined;
+            const collaboration = row.sourceMessageId ? collaborationByMessage.get(row.sourceMessageId) : source?.collaboration;
+            if (JSON.stringify(delivery) === JSON.stringify(row.returnDelivery) && JSON.stringify(collaboration) === JSON.stringify(row.collaboration)) return row;
             deliveryChanged = true;
-            return { ...row, returnDelivery: delivery };
+            return { ...row, sourceMessageId: row.sourceMessageId ?? source?.message_id, returnDelivery: delivery, collaboration };
           });
           if (!fresh.length && !deliveryChanged) return current;
           return { ...current, [contextId]: [...updated, ...fresh.map((row) => ({
@@ -1733,6 +1739,7 @@ function PersonalGoalHome({
               lines: [],
               role: message.role === "user" ? "user" : "assistant",
               returnDelivery: message.return_delivery,
+              collaboration: message.collaboration,
               sourceLabel: message.role === "user"
                 ? undefined
                 : message.role === "error"
@@ -2211,6 +2218,7 @@ function PersonalGoalHome({
           }));
         },
         onPhase: (_phase, turnId) => {
+          if (streamingMessageId !== null) updateManagerAssistantMessage(targetContextId, streamingMessageId, { sourceTurnId: turnId });
           activeTurnIds.current.set(targetContextId, turnId);
           recordRuntimeBinding(targetContextId, {
             agentId: selectedRoute.agentId,
@@ -2626,6 +2634,7 @@ function PersonalGoalHome({
         id: String(message.id),
         pending: message.pending,
         returnDelivery: message.returnDelivery,
+        collaboration: message.collaboration,
         role: message.role,
         text: message.text || (message.pending ? "Agent 正在处理…" : message.lines.join("\n")),
       },

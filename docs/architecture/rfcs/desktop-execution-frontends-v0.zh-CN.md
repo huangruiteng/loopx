@@ -253,10 +253,14 @@ owner-local inbox 存储中；状态和 quota 只看到无内容的紧迫性。
 绑定”的交互式聊天约束。Goal 级 Kanban、生命周期通知和共享协作工件可以保持
 Goal 级；入站工作对话是 Agent 级的。
 
+<a id="agent-scoped-bot-ingress-modes"></a>
+
 ## Agent 级 Bot 入口模式
 
-Agent 到 Bot 的连接需要三种显式的入口语义。它们是同一个已绑定 Agent 的
-投递策略，不是三个 Agent，也不是自然语言分类器：
+Agent 到 Bot 的连接与 peer 协作需要同样的三种显式入口语义。用户侧简称
+**inbox**、**queue**、**steer**，保留下述现有词汇。它们表达同一已绑定 Agent 的
+投递意图，不是三个 Agent 或自然语言分类器。本提案将共同策略扩展到 peer 入口，
+不因重命名输入就声称新增 API 或改变已有 adapter：
 
 ```text
 agent_bot_ingress_mode_v0 =
@@ -269,9 +273,18 @@ agent_bot_ingress_mode_v0 =
 
 | 模式 | 投递目标 | 可用性模型 | 持久边界 |
 |---|---|---|---|
-| `live_steering` | 当前挂接或托管的工作会话 | 会话在线并接受有序入口 | 现有会话/事件存储；无第二个 Agent 会话 |
-| `session_queue` | 同一 Agent 工作会话在下次接受输入时 | 运行时存在但忙碌、重连中或暂时离线 | 按 Agent 与会话键控的 owner-local 有序入口队列 |
+| `live_steering` | 已绑定工作会话中指定的当前执行 | 宿主能在声明的安全点采用输入 | 现有会话/事件存储及消费回执；无第二执行器 |
+| `session_queue` | 同一已绑定会话中的后续工作输入 | 当前工作结束或明确交还执行权后再投递 | 按 Agent 与会话键控的 owner-local 持久有序入口队列 |
 | `async_inbox` | 显式排空后的下一个合格 LoopX Agent Turn | 无需 Agent 进程保持存活 | 现有 provider 拥有的事件 inbox 加无内容 quota 紧迫性 |
+
+这细化了此前 queue 的“下次接受输入”表述：把 pending 输入合入当前工作的宿主，
+并不因此实现拟议 queue 语义。变更必须显式资格化，在 opt-in 实现和兼容测试通过前
+保持旧 profile 行为。
+
+沿现有入口身份和接收者范围持久化请求模式、允许的 fallback 和实际投递处置。读回
+区分耐久收件、排队派发、宿主消费和 steer 采用；工作采用/验收仍属于 collaboration/work
+owner。模型正文或 HTTP 成功不是消费回执；未知能力明确失败。前端、CLI、Lark 在
+原工作/对话面展示实际模式、等待原因及结果，不另造一块团队看板。
 
 ### 捕获、入口与回复正交
 
@@ -307,8 +320,14 @@ mention 准入同时绑定已验证 provider profile 返回的 App id 与 Bot op
 上游恢复身份、中断策略、工作区、运行时、信任和能力边界。如果该绑定陈旧、
 模糊、终态或属于另一个 Agent，投递失败关闭。
 
-操控是传输，不是任务权威。只读交流可以是普通会话 Turn。实质效果仍然需要与
+操控是传输，不是任务权威。当前会话可以消费只读输入而不领取新工作。实质效果仍然需要与
 所采用执行模式相称的最新 LoopX 决策、验证、回写和结算。
+
+Steer 面向当前执行代际及其下一个支持的安全输入点，不等于 interrupt/restart。
+外部工具未返回时，宿主可以耐久接收 pending correction，但不能声称已经采用。
+无法安全注入时明确报告，仅按请求显式 fallback 处理；绝不伪造工具结果来投递纠正。
+失效工具调用需要明确取消处置，其迟到结果对照当前输入版本和执行 fence 对账。
+消息本身不取消所有 peer，也不撤销其权限。
 
 ### 会话队列
 
@@ -316,7 +335,8 @@ mention 准入同时绑定已验证 provider profile 返回的 App id 与 Bot op
 去重、按会话排序、有界大小、过期、背压、取消和崩溃安全派发。它不是 LoopX
 Todo 队列，不得改变 Goal 优先级、认领工作或授予能力。
 
-当同一会话恢复就绪时，broker 通过正常的串行化入口提交最旧的合格条目。缺失
+当前工作结束或明确交还执行权后，broker 通过正常串行化入口提交最旧的合格条目；
+仅有 pending-tool idle 观察不能证明这个边界。缺失
 或被替换的会话需要显式重新绑定或死信决策；它不会把条目静默路由到全新 Agent
 历史。
 
@@ -327,8 +347,9 @@ Todo 队列，不得改变 Goal 优先级、认领工作或授予能力。
 `operator_inbox_urgency_v0`：pending/question/mention/reply 计数、最旧年龄和
 `reply_due`，绝不投影消息正文、发送者、provider id、私有路径或 chat id。
 
-当 `reply_due=true` 时，inbox 通道抢占普通推进和 monitor 工作。被选中的 Agent
-排空有界内容，对照最新 Goal 状态解释它，先写入任何持久效果，然后发送至多
+当 `reply_due=true` 时，inbox 通道在下次合格准入时抢占普通推进和 monitor 工作，
+不打断当前执行。被选中的 Agent 排空有界内容，对照最新 Goal 状态解释它，先写入
+任何持久效果，然后发送至多
 一条带 provider readback 的幂等 source-thread 回复，最后才 ACK。仅排空是
 只读的；采集或 ACK 永远不是语义权威。
 
@@ -337,6 +358,11 @@ Goal Topic 兼容运行时目前把 provider 采集、Inbox 文件、Goal Chat �
 在绑定 Goal 上登记 inbox 紧迫性时，它不是 Agent 级收敛。实现必须把 provider
 采集与入口策略分开、要求已登记的 Agent id，并且要么通过已验证的工作会话
 绑定提交，要么把 inbox 指针发布到规范 quota 路径。
+
+用同一修订输入 fixture 验证三模式：未决工具、接收方忙碌/离线、消息过期、满队列、
+重复/冲突身份、会话替换、发送方撤权及迟到工具结果。断言实际消费边界和 fallback，
+不能只看消息存在。Inbox drain 不证明工作验收；queue 不改当前工作；steer 不能先于
+宿主回执声称已采用。这些是拟议验收要求，不是所有宿主已支持三模式的证据。
 
 ### 初始产品排序
 

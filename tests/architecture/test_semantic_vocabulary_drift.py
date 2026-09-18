@@ -718,3 +718,63 @@ def test_inventory_report_discloses_budget_slack(monkeypatch):
     )
     _, line = smoke["check_inventory"](widened, sources)
     assert "slack=conflicting_values=2" in line, line
+
+
+def _with_unexecuted_projection(registry: dict) -> dict:
+    registry = copy.deepcopy(registry)
+    registry["projections"]["unexecuted_probe"] = {
+        "meaning": "A projection whose owner module and function do not exist.",
+        "owner": "loopx/semantics/does_not_exist.py::no_such_function",
+        "mapping": {"a": "b"},
+    }
+    return registry
+
+
+def test_an_unexecuted_projection_cannot_count_itself_as_verified() -> None:
+    """F5 claims the evidence bound ``executable_owner_function``.
+
+    Before this, ``verified`` was ``len(registry["projections"])`` -- the
+    registry's own row count standing in for evidence -- while
+    ``check_projections`` only ever imported one hardcoded projection. Adding a
+    projection whose owner function does not exist anywhere in the tree passed
+    the full smoke and reported ``F5:2/2``. A declaration was counting as its
+    own proof.
+    """
+    smoke = runpy.run_path(str(SMOKE))
+    registry = _with_unexecuted_projection(smoke["load_registry"]())
+    walked, population = smoke["FORMAL_DOMAIN_SELECTORS"]["projections[*]"](registry)
+    assert (walked, population) == (1, 2)
+
+
+def test_declaring_an_unexecuted_projection_as_verified_fails() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    registry = _with_unexecuted_projection(smoke["load_registry"]())
+    for invariant in registry["formal_model"]["invariants"]:
+        if invariant["id"] == "F5_projection_totality":
+            invariant["domain"]["registered"] = 2
+            invariant["domain"]["verified"] = 2
+    with pytest.raises(smoke["Drift"], match="claims 2 verified members"):
+        smoke["check_formal_model"](registry["formal_model"], registry)
+
+
+def test_a_projection_owner_the_check_does_not_run_is_rejected() -> None:
+    """The owner string must name the function ``check_projections`` imports.
+
+    Otherwise the registry can point at any module while the check keeps
+    exercising the real one, and the invariant credits a function it never ran.
+    """
+    smoke = runpy.run_path(str(SMOKE))
+    registry = copy.deepcopy(smoke["load_registry"]())
+    registry["projections"]["turn_route_to_loop_disposition"]["owner"] = (
+        "loopx/semantics/elsewhere.py::some_other_function"
+    )
+    with pytest.raises(smoke["Drift"], match="crediting a function it does not run"):
+        smoke["check_projections"](registry)
+
+
+def test_every_executed_projection_must_be_registered() -> None:
+    smoke = runpy.run_path(str(SMOKE))
+    registry = copy.deepcopy(smoke["load_registry"]())
+    del registry["projections"]["turn_route_to_loop_disposition"]
+    with pytest.raises(smoke["Drift"], match="is not registered"):
+        smoke["check_projections"](registry)

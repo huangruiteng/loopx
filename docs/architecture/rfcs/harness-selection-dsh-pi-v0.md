@@ -192,6 +192,41 @@ Open gaps before this binding is a promoted production default:
   still covers visible hosts only, because a headless-only host such as `dsh`
   cannot own a visible session.
 
+### Mixed local/cloud managed qualification (proposal)
+
+The [session execution RFC](agent-session-execution-modes-v0.md#reusable-agent-operations-and-continuation-ownership)
+separates provider, session ownership and continuation owner. Extend the same
+managed work contract to a qualified cloud host; do not encode local = Turn and
+cloud = native Goal. Keep the current managed-host and steward defaults above.
+
+LoopX's public [Ark Managed Agent host contract](../../../loopx/ark_managed_agent_host.py)
+currently specifies one-shot Goal activation, native continuation and no outer
+Turn driver. A cloud governed-Turn adapter is a **separate, unqualified opt-in
+candidate**, not a reinterpretation of that profile. DSH's
+[bounded Turn adapter](../../../loopx/dsh_goal_mode/README.md) and
+[same-session plugin](../../../packages/dsh-loopx-plugin/README.md) likewise have
+different continuation contracts; qualification cannot be borrowed between them.
+
+First qualify a complete local/cloud work unit: actual tools/artifact transfer,
+typed result, independent rejection of a wrong artifact, accepted writeback,
+usage readback, cancellation and recovery. Then qualify two dependent work cycles
+and worker-initiated delegation using the shared collaboration contract. A host
+adapter transports Agent decisions; it must not contain the scenario's business
+phase sequence. Waiting parents must not occupy every slot needed by children.
+
+Native Goal qualification additionally needs publicly documented activation and
+identity, duplicate-activation behavior, evaluation/terminal readback, bounded
+resource use, defer/wake and restart handling. A successful message or an idle
+session is insufficient. A provider API or slash wrapper stays in its adapter;
+it is not a generic LoopX command. Provider claims require public versioned
+sources and reproducible qualification; this proposal cites only LoopX-side
+contracts and makes no new claim about an Ark deployment or API guarantee.
+
+Report actual provider usage separately from LoopX's validated-work quota:
+rejected work can still incur inference cost. Unknown usage is not zero. Promote
+only the tested profile; keep unavailable capabilities explicit and preserve
+rollback to the prior selected profile without creating a concurrent driver.
+
 ## Evidence Baseline
 
 LoopX was inspected at `bf217e1e01bec79f357c9ecbd580cf2dfa73db8b`.

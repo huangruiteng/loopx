@@ -221,6 +221,34 @@ def multi_value_carriers(
     return carriers
 
 
+# Containers whose element order the language does not preserve. Two definitions
+# of the same ``set``/``frozenset`` that list the same members in a different
+# order are the same closed set, so reordering one must not invent a fork.
+# ``tuple``, ``list`` and ``as const`` arrays are deliberately excluded: a
+# carrier like ``LIFECYCLE_PRIORITY`` spends its order as its meaning, and
+# normalizing it would hide a real divergence instead of a fake one.
+UNORDERED_CONTAINERS = frozenset({"set", "frozenset"})
+
+
+def _collision_keys(carriers_for_name: list[dict[str, Any]]) -> set[tuple[str, ...]]:
+    """The distinct value sets one name carries; one key means the name agrees.
+
+    Membership decides identity only when *every* definition of the name is an
+    unordered container. A name carried by a ``tuple`` in one module and a
+    ``set`` in another keeps order-sensitive identity, so this can only ever
+    merge definitions that the old rule split -- it never splits a pair the old
+    rule merged, and cannot make an untouched tree start failing.
+
+    Carriers with no ``container`` (enums, ``Literal`` aliases, TypeScript
+    ``as const`` arrays) are ordered by this rule, which reports a reordering
+    rather than hiding it -- the safe direction while their own ordering
+    semantics are unestablished here.
+    """
+    if all(item.get("container") in UNORDERED_CONTAINERS for item in carriers_for_name):
+        return {tuple(sorted(set(item["values"]))) for item in carriers_for_name}
+    return {tuple(item["values"]) for item in carriers_for_name}
+
+
 def multi_value_name_collisions(
     carriers: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -249,7 +277,9 @@ def multi_value_name_collisions(
             key=lambda item: item["module"],
         )
         entry: dict[str, Any] = {"name": name, "definitions": definitions}
-        if len({tuple(item["values"]) for item in definitions}) == 1:
+        # Keyed off the raw carriers, which still carry ``container``; the
+        # ``definitions`` entries keep their source order for review.
+        if len(_collision_keys(carriers_for_name)) == 1:
             entry["values"] = definitions[0]["values"]
             entry["modules"] = [item["module"] for item in definitions]
             twins.append(entry)
