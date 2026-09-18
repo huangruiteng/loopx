@@ -35,6 +35,28 @@ for (const source of request.sources) {
       ts.isTemplateExpression(node)) return 'other';
     return 'typescript_dynamic';
   };
+  // The scanner has no scope model, so it cannot tell the builtin `String`
+  // from a parameter that shadows it, nor the `undefined` literal from a
+  // local of that name. A caller-supplied `String` can return anything, so
+  // trusting the builtin reading would report a produced value the code never
+  // produces. Shadowing is therefore detected per file -- coarser than per
+  // scope, which can only withhold a builtin reading, never invent one.
+  const shadowedGlobals = new Set();
+  {
+    const noteName = name => {
+      if (!name) return;
+      if (ts.isIdentifier(name)) shadowedGlobals.add(name.text);
+      else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name))
+        for (const element of name.elements) if (ts.isBindingElement(element)) noteName(element.name);
+    };
+    const collect = node => {
+      if (ts.isParameter(node) || ts.isVariableDeclaration(node) || ts.isBindingElement(node)) noteName(node.name);
+      else if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) noteName(node.name);
+      else if (ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node)) noteName(node.name);
+      ts.forEachChild(node, collect);
+    };
+    collect(tree);
+  }
   const merge = parts => ({
     values: [...new Set(parts.flatMap(part => part.values))].sort(),
     unresolved: parts.some(part => part.unresolved),
@@ -47,7 +69,7 @@ for (const source of request.sources) {
     if (node.kind === ts.SyntaxKind.NullKeyword) return {values: [], unresolved: false};
     // ``undefined`` carries no value and is not an unknown, matching the way
     // the Python scanner treats an explicit ``None``.
-    if (ts.isIdentifier(node) && node.text === 'undefined') return {values: [], unresolved: false};
+    if (ts.isIdentifier(node) && node.text === 'undefined' && !shadowedGlobals.has('undefined')) return {values: [], unresolved: false};
     if (ts.isConditionalExpression(node)) return merge([values(node.whenTrue), values(node.whenFalse)]);
     // ``a || b`` and ``a ?? b`` are a finite selection, exactly like the
     // Python scanner's BoolOp arms; ``String(x)`` is a transparent wrapper.
@@ -56,7 +78,8 @@ for (const source of request.sources) {
       return merge([values(node.left), values(node.right)]);
     }
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
-      node.expression.text === 'String' && node.arguments.length === 1) return values(node.arguments[0]);
+      node.expression.text === 'String' && node.arguments.length === 1 &&
+      !shadowedGlobals.has('String')) return values(node.arguments[0]);
     return {values: [], unresolved: true, blocker: blockerFor(node)};
   };
   const staticName = expression => {
@@ -76,7 +99,8 @@ for (const source of request.sources) {
     if (!node) return false;
     if (target(node)) return true;
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
-        node.expression.text === 'String' && node.arguments.length === 1) return reads(node.arguments[0]);
+        node.expression.text === 'String' && node.arguments.length === 1 &&
+        !shadowedGlobals.has('String')) return reads(node.arguments[0]);
     return ts.isBinaryExpression(node) &&
       [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind) &&
       reads(node.left) && (staticName(node.right) === "" || unwrap(node.right).kind === ts.SyntaxKind.NullKeyword);

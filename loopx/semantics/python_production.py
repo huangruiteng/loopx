@@ -260,6 +260,24 @@ def _is_generator(node: ast.FunctionDef) -> bool:
 _MODULE_FUNCTIONS: dict[tuple[str, int], dict[str, ast.FunctionDef]] = {}
 
 
+def _enclosing_scope(tree: ast.Module, target: ast.Global) -> ast.AST:
+    """The function body that owns this ``global`` statement, else the module."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            for child in ast.walk(node):
+                if child is target:
+                    return node
+    return tree
+
+
+def _stores_name(scope: ast.AST, name: str) -> bool:
+    """True when ``scope`` assigns, augments or deletes ``name``."""
+    for child in ast.walk(scope):
+        if isinstance(child, ast.Name) and child.id == name and isinstance(child.ctx, (ast.Store, ast.Del)):
+            return True
+    return False
+
+
 def _module_functions(source: SourceFile, tree: ast.Module) -> dict[str, ast.FunctionDef]:
     """Top-level plain ``def``s a same-module call may be bound to.
 
@@ -289,6 +307,18 @@ def _module_functions(source: SourceFile, tree: ast.Module) -> dict[str, ast.Fun
                     bound[alias.asname or alias.name.split('.')[0]] += 1
             elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 bound[child.name] += 1
+    # A ``global`` rebinding lives inside a function body, which the loop above
+    # never enters, so the module-level name it replaces looked untouched. Any
+    # name some scope declares ``global`` and then stores is no longer reliably
+    # the ``def`` above; binding a call to that ``def`` would report the original
+    # body's returns for a function the module can swap at runtime.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Global):
+            continue
+        scope = _enclosing_scope(tree, node)
+        for name in node.names:
+            if name in defined and _stores_name(scope, name):
+                bound[name] += 1
     functions = {name: node for name, node in defined.items()
                  if bound[name] == 1 and not node.decorator_list and not _is_generator(node)}
     _MODULE_FUNCTIONS[key] = functions
@@ -563,7 +593,17 @@ def scan_python_production(
                 spread = True
                 arms = [value]
                 while arms:
-                    arm, visited = bound(arms.pop(), seen)
+                    candidate = arms.pop()
+                    # ``bound`` follows plain ``name = expression`` writes only,
+                    # so a container mutated afterwards through a subscript still
+                    # resolves to its initializer. Spreading it would replay the
+                    # stale literal and report a key's original value as the one
+                    # produced. The per-key union that ``lookup`` applies is not
+                    # reachable here, because a spread contributes every key at
+                    # once, so the honest answer is the unknown-key fallback.
+                    if isinstance(candidate, ast.Name) and candidate.id in written:
+                        return None
+                    arm, visited = bound(candidate, seen)
                     if isinstance(arm, ast.IfExp):
                         arms.extend((arm.body, arm.orelse))
                         continue

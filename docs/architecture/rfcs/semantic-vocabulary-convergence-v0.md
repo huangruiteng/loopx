@@ -1142,6 +1142,45 @@ introduce a competing target state.
 
 ## Appendix A: Execution ledger (non-normative)
 
+### 2026-09-18 — Three producer-scan answers that were confidently wrong
+
+Normative for what the producer scan may report as complete. No budget, floor or
+anchor moved: `unresolved_producer_sites` is 40 before and after, because no
+site in the tree exercises these shapes today. The fixes remove a way for a
+future edit to pass the gate, not a current violation.
+
+- **Why the direction matters.** F1 proves `Produced_scan(v) ⊆ S(v)`, so the
+  dangerous error is a value the scan does not see: an unregistered value then
+  passes. Over-reporting can only raise a false alarm. Each case below was a
+  *missing* value reported inside a complete-looking set.
+- **A `global` rebinding was invisible.** `_module_functions` walks `tree.body`
+  and skips into no function, so `global pick; pick = other` inside another
+  function never counted as a second binding of `pick`, and a same-module call
+  still resolved to the original `def`'s returns for a name the module swaps at
+  runtime. A name some scope declares `global` and then stores is now
+  disqualified, and the call keeps `call_result`.
+- **A `**` spread replayed a stale initializer.** `bound` follows plain
+  `name = expression` writes, so a dict mutated afterwards through a subscript
+  still resolved to its initializer. `{**overrides}` therefore reported the
+  key's original value as the produced one. The per-key union that `lookup`
+  applies is unreachable through a spread, which contributes every key at once,
+  so a spread of a mutated container now takes the unknown-key answer.
+- **The TypeScript scanner had no scope model.** Any identifier spelled `String`
+  was read as the builtin conversion and any `undefined` as the literal, so
+  `function emit(String)` — a caller-supplied function that can return anything
+  — produced a confident value. Shadowing is now detected per file, which is
+  coarser than per scope and deliberately so: file granularity can only withhold
+  a builtin reading, never invent one.
+- **One counterexample was relaxed, not removed.** A literal non-negative
+  subscript write *is* modelled, and the read resolves to the union of the
+  initializer and the write. Demanding `unresolved` there pinned a weaker scan
+  in place, so the assertion now states the property that matters: the reported
+  set may over-approximate but must never omit the written value.
+- **What this does not establish.** The scan still models no cross-module data
+  flow, and file-granular shadow detection will withhold the builtin reading
+  from a file that shadows `String` in an unrelated function. Both are
+  conservative failures, and both stay measured rather than assumed.
+
 ### 2026-09-17 — B2: three bounded binding forms, and the residue that stays unresolved
 
 - **Trigger:** [#4447](https://github.com/huangruiteng/loopx/issues/4447) recorded
