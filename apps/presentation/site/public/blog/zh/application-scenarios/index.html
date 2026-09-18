@@ -94,7 +94,9 @@
             <tr><th scope="row">LoopX Heartbeat（1.0.3）</th><td>0.4948</td><td>7</td></tr>
           </tbody></table></div>
           <p><strong>观察：</strong>相对 Plain，LoopX 均分增加 0.0731（17.3%），逐题为 17 胜、13 平、16 负，通过数相同；相对原生 Goal，均分增加 0.0473（10.6%），为 23 胜、13 平、10 负，通过数从 4 到 7。胜负按公开原始分数严格比较；均分提升不代表每题都更强。</p>
-          <p><strong>Insight：</strong>Plain 在会话内推进，原生 Goal 保留目标，LoopX 进一步用 Registry 与 Todo 组织后续工作。Tabular 与 Sokoban 相对两种基线均有收益；PoC 与原生 Goal 持平；DuckDB 却低于原生 Goal。值得验证的是，持久工作状态能否稳定增加有效进展，以及验收和回滚能否把进展变成保得住的结果。</p>
+          <p><strong>哪些题更受益：</strong>按任务要求做事后分组，研究复现/建模（4 题）相对 Plain / Goal 的平均差为 +0.2802 / +0.2179；逻辑谜题（4 题）为 +0.2739 / +0.1374。去掉 Tabular，研究组仍正向。Sokoban 能保留已解关卡，Rush Hour 要记录并复查长路线，Tabular 要反复实验与验证——这是值得检验的适用条件。</p>
+          <p><strong>哪里没有清晰优势：</strong>多模态（6 题）为 −0.0034 / +0.0058，科学计算与仿真（7 题）为 +0.0161 / +0.0099。游戏组不能一概而论：2048 提升，Snake 却低于 Plain；APEX 法律事项低于 Goal，DuckDB 更是 0 对约 0.770。持续推进不能替代感知、领域判断与正确性验收。</p>
+          <p><strong>Insight：</strong>优先关注“能验证下一步，也能保留有效进展”的任务。全体逐题差值中位数，对 Plain 为 0、对 Goal 约 0.0003，均分收益集中。分组每类仅 4–7 题，且不是官方逐题分类；题目结构只提供解释假设，尚不能确认实际收益来自哪种机制。<a href="../../../benchmarks/lhtb/?lang=zh#task-types">九组的样本量、胜平负、敏感性与题目原文 →</a></p>
           <p class="signal-boundary"><strong>范围：</strong>这里的 LoopX 是实验中的 1.0.3 fresh-exec Heartbeat。运行设置不同，且包含更长时限的替代 trial，没有重复 seed。LoopX 记录成本 $551.73，高于 Plain / Goal 的估算 $212.97 / $344.25；计费口径也不一致，尚不能宣称同预算效率优势。</p>
           <p class="study-link"><a href="../../../benchmarks/lhtb/?lang=zh">研究全文：两种基线、正反案例、46 题矩阵与历史参照 →</a></p>
         </div>

@@ -11,25 +11,39 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { usePublicPageNavigation } from "./usePublicPageNavigation";
 import study from "../../../../benchmark/LHTB/studies/five-arm-gpt56sol-max/data.json";
+import taskGroups from "../../../../benchmark/LHTB/studies/five-arm-gpt56sol-max/task-groups.json";
 import copy from "./lhtb-copy.json";
 
 type ArmKey = keyof typeof study.arms;
 type Baseline = "plain" | "native_goal";
 type TableMode = "all" | Baseline;
+type GroupKey = keyof typeof taskGroups.groups;
+const groupKeys = Object.keys(taskGroups.groups) as GroupKey[];
+const taskGroup = new Map(groupKeys.flatMap((key) => taskGroups.groups[key].map((task) => [task, key] as const)));
+
+function promptUrl(task: string) {
+  const aliases: Record<string, string> = taskGroups.prompt_aliases;
+  return `${taskGroups.prompt_base_url}${aliases[task] ?? task}/instruction.md`;
+}
 
 const primaryArms: ArmKey[] = ["plain", "native_goal", "new_heartbeat"];
 const historicalArms: ArmKey[] = ["ssh_goal", "legacy_heartbeat"];
 const baselines: Baseline[] = ["plain", "native_goal"];
-const comparisons = baselines.map((baseline) => {
-  const deltas = study.tasks.map((row) => row.new_heartbeat - row[baseline]);
+function compareTasks(tasks: typeof study.tasks, baseline: Baseline) {
+  const deltas = tasks.map((row) => row.new_heartbeat - row[baseline]);
   const meanDelta = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
-  const baselineMean = study.tasks.reduce((sum, row) => sum + row[baseline], 0) / deltas.length;
+  const baselineMean = tasks.reduce((sum, row) => sum + row[baseline], 0) / deltas.length;
   return {
     baseline, meanDelta, relativeGain: meanDelta / baselineMean,
     wins: deltas.filter((delta) => delta > 0).length,
     ties: deltas.filter((delta) => delta === 0).length,
     losses: deltas.filter((delta) => delta < 0).length,
   };
+}
+const comparisons = baselines.map((baseline) => compareTasks(study.tasks, baseline));
+const groupComparisons = groupKeys.map((key) => {
+  const tasks = study.tasks.filter((row) => taskGroup.get(row.task) === key);
+  return { key, count: tasks.length, comparisons: baselines.map((baseline) => compareTasks(tasks, baseline)) };
 });
 
 const contributorLinks = [
@@ -53,6 +67,7 @@ export function LhtbBrief() {
   const [language, setLanguage] = usePublicPageNavigation();
   const [query, setQuery] = useState("");
   const [tableMode, setTableMode] = useState<TableMode>("all");
+  const [group, setGroup] = useState<GroupKey | "all">("all");
   const [showHistory, setShowHistory] = useState(false);
   const c = copy[language];
   const visibleArms = showHistory ? [...primaryArms, ...historicalArms] : primaryArms;
@@ -67,11 +82,14 @@ export function LhtbBrief() {
   const visibleTasks = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return study.tasks.filter((row) => {
+      if (group !== "all" && taskGroup.get(row.task) !== group) return false;
       if (normalized && !row.task.toLowerCase().includes(normalized)) return false;
       if (tableMode !== "all") return Math.abs(row.new_heartbeat - row[tableMode]) >= 0.05;
       return true;
     });
-  }, [query, tableMode]);
+  }, [query, tableMode, group]);
+
+  const resetFilters = () => { setQuery(""); setTableMode("all"); setGroup("all"); };
 
   const summaryTable = (arms: ArmKey[]) => (
     <div className="bm-table-wrap lhtb-summary-table">
@@ -104,6 +122,7 @@ export function LhtbBrief() {
           <div key={arm}><dt>{c.armLabels[arm]}</dt><dd>{formatReward(row[arm])}</dd></div>
         ))}</dl>
         <p>{note}</p>
+        <a href={promptUrl(task)} target="_blank" rel="noreferrer">{c.promptLink} <ExternalLink size={11} /></a>
       </article>
     );
   });
@@ -226,27 +245,54 @@ export function LhtbBrief() {
           </div>
         </section>
 
-        <section className="bm-section bm-shell lhtb-insight-section" id="insights">
-          <div className="bm-section-lead bm-section-lead-wide">
+        <section className="bm-section bm-shell lhtb-insight-section" id="task-types">
+          <div className="bm-section-lead bm-section-lead-wide" id="insights">
             <p className="bm-kicker">{c.insightEyebrow}</p>
             <h2>{c.insightTitle}</h2>
             <p>{c.insightBody}</p>
+          </div>
+          <div className="lhtb-group-analysis">
+            <p>{c.groupMethod}</p>
+            <div className="bm-table-wrap lhtb-group-table">
+              <table>
+                <caption>{c.groupCountLabel} · Δ Reward</caption>
+                <thead><tr>{c.groupColumns.map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+                <tbody>{groupComparisons.map((row) => (
+                  <tr key={row.key} data-group={row.key}>
+                    <th scope="row"><a href="#scores" onClick={() => { resetFilters(); setGroup(row.key); }}>{c.groupLabels[row.key]}</a></th>
+                    <td>{row.count}</td>
+                    {row.comparisons.map((comparison) => (
+                      <td key={comparison.baseline}>
+                        <strong>{comparison.meanDelta > 0 ? "+" : ""}{comparison.meanDelta.toFixed(4)}</strong>
+                        <small>{comparison.wins} / {comparison.ties} / {comparison.losses}</small>
+                      </td>
+                    ))}
+                    <td>{c.groupNotes[row.key]}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <details className="lhtb-history"><summary>{c.sensitivityTitle}</summary><p>{c.sensitivityBody}</p></details>
+            <p className="bm-runner-note">{c.promptBoundary}</p>
           </div>
           <div className="bm-insight-grid lhtb-insight-grid">
             {c.insights.map(([title, body], index) => (
               <article key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>
             ))}
           </div>
-          <div className="lhtb-cases">
-            <div>
-              <p className="bm-kicker">{c.gainTitle}</p>
-              {caseCards(c.gainCases)}
+          <details className="lhtb-history lhtb-case-details">
+            <summary>{c.caseDetails}</summary>
+            <div className="lhtb-cases">
+              <div>
+                <p className="bm-kicker">{c.gainTitle}</p>
+                {caseCards(c.gainCases)}
+              </div>
+              <div>
+                <p className="bm-kicker lhtb-caution">{c.lossTitle}</p>
+                {caseCards(c.lossCases)}
+              </div>
             </div>
-            <div>
-              <p className="bm-kicker lhtb-caution">{c.lossTitle}</p>
-              {caseCards(c.lossCases)}
-            </div>
-          </div>
+          </details>
         </section>
 
         <section className="bm-section bm-shell" id="scores">
@@ -256,7 +302,7 @@ export function LhtbBrief() {
             <p>{c.scoresBody}</p>
           </div>
           <div className="lhtb-table-tools">
-            <label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={c.searchPlaceholder} /></label>
+            <label><Search size={15} /><input aria-label={c.searchPlaceholder} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={c.searchPlaceholder} /></label>
             <div className="lhtb-segments" aria-label={c.filterLabel}>
               {(["all", ...baselines] as TableMode[]).map((mode) => (
                 <button aria-pressed={tableMode === mode} className={tableMode === mode ? "is-active" : undefined} onClick={() => setTableMode(mode)} type="button" key={mode}>
@@ -264,6 +310,14 @@ export function LhtbBrief() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="lhtb-group-tools">
+            <label htmlFor="lhtb-group">{c.groupFilterLabel}</label>
+            <select id="lhtb-group" value={group} onChange={(event) => setGroup(event.target.value as GroupKey | "all")}>
+              <option value="all">{c.allGroups}</option>
+              {groupKeys.map((key) => <option value={key} key={key}>{c.groupLabels[key]}</option>)}
+            </select>
+            <button type="button" onClick={resetFilters}>{c.resetFilters}</button>
           </div>
           <button className="lhtb-history-toggle" type="button" aria-pressed={showHistory} onClick={() => setShowHistory(!showHistory)}>{showHistory ? c.hideHistory : c.showHistory}</button>
           <div className="bm-table-wrap lhtb-task-table">
@@ -274,17 +328,18 @@ export function LhtbBrief() {
                   const best = Math.max(...visibleArms.map((arm) => row[arm]));
                   return (
                     <tr key={row.task}>
-                      <th scope="row"><code>{row.task}</code></th>
+                      <th scope="row"><a href={promptUrl(row.task)} target="_blank" rel="noreferrer"><code>{row.task}</code></a><span>{c.groupLabels[taskGroup.get(row.task)!]}</span></th>
                       {visibleArms.map((arm) => (
                         <td className={row[arm] === best ? "is-best" : undefined} key={arm}>{formatReward(row[arm])}</td>
                       ))}
                     </tr>
                   );
                 })}
+                {visibleTasks.length === 0 && <tr><td colSpan={visibleArms.length + 1}>{c.emptyTasks}</td></tr>}
               </tbody>
             </table>
           </div>
-          <p className="lhtb-visible-count">{c.visibleCount.replace("{count}", String(visibleTasks.length))}</p>
+          <p className="lhtb-visible-count" role="status">{c.visibleCount.replace("{count}", String(visibleTasks.length))}</p>
         </section>
 
         <section className="bm-section bm-shell lhtb-program" id="program">

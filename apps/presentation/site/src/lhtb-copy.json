@@ -11,7 +11,7 @@
     "readingPath": [
       ["01", "Comparison", "#result"],
       ["02", "Execution", "#mechanisms"],
-      ["03", "Gains and losses", "#insights"],
+      ["03", "Task-type signals", "#task-types"],
       ["04", "Task evidence", "#scores"]
     ],
     "resultEyebrow": "00 / Core result",
@@ -75,27 +75,27 @@
       ["new_heartbeat", "LoopX Heartbeat", "Work state persists across executors", "Workspace, registry, and Todos persist across fresh codex exec wakes. Three qualifying advancement Todos trigger a review that can retain or revise the plan."]
     ],
     "insightEyebrow": "03 / LoopX insight",
-    "insightTitle": "Average progress increased. Task-level evidence explains where.",
-    "insightBody": "Against Plain, LoopX scores higher on 17 tasks and lower on 16: larger gains outweigh losses, rather than most tasks improving. Against native Goal, it scores higher on 23 and lower on 10. Each case below shows all three scores so that the choice of baseline stays visible.",
+    "insightTitle": "Which task types benefit, and where is the signal weak?",
+    "insightBody": "Research and puzzles have higher group means against both baselines. Multimodal analysis and specialist simulations show little separation; other groups need task-level inspection. Across all 46 tasks, the median paired delta is 0 against Plain and about 0.0003 against Goal: mean gains are concentrated, not universal.",
     "insights": [
-      ["More partial progress; full acceptance remains hard", "LoopX’s 0.4948 exceeds both baselines, yet it matches Plain at 7/46 solves. Large gains on Tabular and Sokoban still fall below 0.95. Advancing further and finishing remain distinct."],
-      ["Native Goal is a substantive control", "On the PoC task, Goal and LoopX both reach 0.892 while Plain scores zero. On DuckDB, Goal reaches 0.770 and LoopX zero. A LoopX-specific claim must account for what native continuation already achieves."],
-      ["Recovery is a mechanism clue, not attribution", "The original brief reports a consulting task resuming at S27 after interruption. Workspace and Todos provide a place to recover progress; matched-budget ablations are needed to separate recovery, fresh execution, and replanning."],
-      ["Continuation must preserve results and justify cost", "The reported DuckDB case suggests later optimization can break correctness. Checkpointing, acceptance, and rollback merit separate tests. LoopX’s recorded cost exceeds both baseline estimates; an efficiency gain is not established."]
+      ["Retained progress and repeated checks are promising conditions", "Sokoban retains solved levels; Tabular requires experiments and an auditable model; Rush Hour asks for a route ledger and replay checks. These structures suit durable work state. Scores alone cannot attribute gains to Todos, fresh exec, or replanning."],
+      ["Long workflows need feedback about correctness", "APEX consulting beats both baselines, but law trails Goal. The law task requires late corrections and exact cross-document references; validate checks only the schema. Advancing the workflow does not ensure correct content. Persistent state still needs reliable acceptance."],
+      ["Continuation has not shown a general capability lift", "Multimodal tasks require segmentation, geometry/OCR and generalization; simulation tasks require correct solver use and physical constraints. Small differences do not establish that continuation resolves those bottlenecks. Perfect ties on LangChain and RISC-V also differ from the all-zero OpenRoad floor."],
+      ["Test both progress and preservation", "2048 retains peak score and improves, yet Snake also retains peaks and still trails Plain. DuckDB requires every query to be correct; optimization errors can zero the reward. Matched-budget repeats should isolate feedback quality, retained progress and best-version rollback."]
     ],
-    "gainTitle": "Gain cases: keep both baselines in view",
+    "gainTitle": "Gains and possible explanations",
     "gainCases": [
-      ["tabular-data-feature-covshift", "A substantial gain over both baselines, but 0.743 still falls short of strict acceptance."],
-      ["sokoban", "Higher than both baselines; the final 0.890 still does not count as a strict solve."],
-      ["poc-exploit-craft", "A large gain over Plain, but a tie with native Goal. This result is not unique to LoopX."],
-      ["apex-management-consulting-matter", "Higher than both baselines. The original brief separately reports recovery at S27; that association does not establish causality."]
+      ["tabular-data-feature-covshift", "Sparse inverse recovery under covariate shift: recover a 200-dimensional signal from 50 observations, using experiments, validation history and an auditable model. Gains against both, but 0.743 is still below the solve threshold."],
+      ["sokoban", "155 sequential puzzles; reset the current puzzle while retaining solved levels. Ahead of both baselines, still below 0.95."],
+      ["rush-hour-campaign", "Four long spatial-route puzzles with a ledger and replay checks. Programmatic search solvers are explicitly forbidden; the gain is not evidence of automated search-code generation."],
+      ["unison-paper-reproduction", "Implement parallel simulation, partitioning and adaptive scheduling, with multiple artifacts and held-out seeds. Ahead of both baselines, but only 0.5."]
     ],
-    "lossTitle": "Counterexamples: the task and baseline change the conclusion",
+    "lossTitle": "Counterexamples and limits",
     "lossCases": [
-      ["duckdb-optimizer-closure", "Native Goal retains a substantial score; LoopX and Plain score zero. The original brief reports a correctness regression after optimization, motivating best-version retention and final rollback."],
-      ["snake-obstacle-campaign", "Higher than native Goal, lower than Plain. Choosing a different baseline changes the apparent result."],
-      ["great-expectations-audit", "Lower than both baselines. Adding persistent scheduling does not guarantee a better final artifact."],
-      ["apex-openroad-ibex-signoff", "All three score zero. The control plane did not solve this task; continued execution alone is not evidence of useful progress."]
+      ["apex-law433-matter", "70 stages with cross-document references and late corrections. Validate checks schema, not content correctness. Above Plain, below Goal: length alone does not guarantee gains."],
+      ["snake-obstacle-campaign", "Reset and peak-score retention are available, yet LoopX trails Plain while beating Goal. Retaining progress is a candidate condition, not a sufficient one."],
+      ["duckdb-optimizer-closure", "All 22 TPC-H queries must be correct; a wrong query can zero reward. LoopX and Plain score 0, Goal about 0.770. Terminal scores alone cannot locate the failure."],
+      ["scientific-figure-data-reconstruction", "Reconstruct curves and tables from images, including axis calibration, line separation and numeric accuracy. Scores are close; no clear control-plane benefit is visible."]
     ],
     "scoresEyebrow": "04 / Complete task matrix",
     "scoresTitle": "Inspect LoopX’s gains and losses against each baseline.",
@@ -103,7 +103,7 @@
     "searchPlaceholder": "Search task",
     "filterLabel": "Task filters",
     "filters": {
-      "all": "All 46",
+      "all": "Any delta",
       "plain": "vs Plain |Δ| ≥ 0.05",
       "native_goal": "vs Goal |Δ| ≥ 0.05"
     },
@@ -152,7 +152,47 @@
     "historyTitle": "Historical context: SSH-Goal and legacy Heartbeat",
     "historyBody": "The other two arms remain available for tracing implementation history. The primary comparison throughout this page is this study’s LoopX Heartbeat against Plain and native Goal.",
     "showHistory": "Show historical arms",
-    "hideHistory": "Hide historical arms"
+    "hideHistory": "Hide historical arms",
+    "groupMethod": "These are analyst-defined, post-hoc groups based on task demands, not an official task mapping. Each of the 46 tasks appears once; groups have only 4–7 tasks. Δ is mean LoopX reward minus the baseline. Wins/ties/losses use unrounded scores and do not imply statistical significance. Select a group to inspect every member.",
+    "groupColumns": [
+      "Analysis group",
+      "Tasks",
+      "Δ vs Plain",
+      "Δ vs native Goal",
+      "Current signal"
+    ],
+    "groupLabels": {
+      "research": "Research & modeling",
+      "puzzles": "Logic & spatial puzzles",
+      "professional": "APEX professional work",
+      "multimodal": "Multimodal analysis",
+      "science": "Science & simulation",
+      "earth": "Earth, climate & energy",
+      "software": "Software repair & toolchains",
+      "games": "Games & strategy",
+      "systems": "Systems, performance & security"
+    },
+    "groupNotes": {
+      "research": "All 4 beat Plain; ALP and Foldseek tie Goal.",
+      "puzzles": "3 wins, 1 loss on each side; Sudoku trails Goal, Chess trails Plain.",
+      "professional": "Positive means; law trails Goal, IB244 ties Plain.",
+      "multimodal": "All 6 have absolute task deltas < 0.05 against both baselines.",
+      "science": "Similar means; median paired deltas are 0 against both.",
+      "earth": "No mean advantage over Plain; slightly ahead of Goal.",
+      "software": "No wins over Plain: 4 ties, 2 losses; some gains are Goal-only.",
+      "games": "2048 improves; Snake, Mario and Generals all trail Plain.",
+      "systems": "PoC drives the gain over Plain; DuckDB drives the loss against Goal."
+    },
+    "groupCountLabel": "W / T / L",
+    "groupFilterLabel": "Filter by analysis group",
+    "allGroups": "All groups",
+    "resetFilters": "Reset filters",
+    "emptyTasks": "No matching tasks. Reset filters to try again.",
+    "promptLink": "Task instructions",
+    "promptBoundary": "Task structure is read from pinned upstream revision d78f5eb (accessed 2026-09-19). The study specifies only a July 2026 snapshot, without per-task source digests. Byte identity with evaluated prompts is unverified; these instructions explain task demands, not what happened in a trial.",
+    "sensitivityTitle": "Does one task drive the group mean?",
+    "sensitivityBody": "Without Tabular, research still gains +0.1259 / +0.1111 over Plain / Goal. Removing any one puzzle leaves positive means against both. Systems is different: removing PoC changes its Plain delta from +0.1732 to −0.0065; removing DuckDB changes its Goal delta from −0.1450 to +0.0111. These exclusions are sensitivity checks, not an alternative leaderboard or confidence intervals.",
+    "caseDetails": "Expand task structure and counterexamples (scores from the same data)"
   },
   "zh": {
     "meta": "LHTB / LOOPX 与两种基线",
@@ -166,7 +206,7 @@
     "readingPath": [
       ["01", "结果对比", "#result"],
       ["02", "工作机制", "#mechanisms"],
-      ["03", "得失与启示", "#insights"],
+      ["03", "题型信号", "#task-types"],
       ["04", "逐题核对", "#scores"]
     ],
     "resultEyebrow": "00 / 核心结果",
@@ -230,27 +270,27 @@
       ["new_heartbeat", "LoopX Heartbeat", "工作状态跨执行器保留", "工作区、Registry 与 Todo 持久化，每次唤醒启动新的 codex exec；三个有效推进 Todo 后触发复核，可以维持或调整计划。"]
     ],
     "insightEyebrow": "03 / LoopX Insight",
-    "insightTitle": "均分增加了；优势出现在哪里，还需要逐题解释。",
-    "insightBody": "对 Plain，17 题更高、16 题更低，均分提升来自收益幅度大于损失，而非多数任务都更强。对原生 Goal，23 题更高、10 题更低。下列案例同时列出三者分数，避免把选择基线造成的差异误读为普遍收益。",
+    "insightTitle": "哪些任务更受益，哪些还看不出优势？",
+    "insightBody": "研究复现与逻辑谜题的组均值领先两种基线；多模态和专业仿真差异小，其余组需逐题看。46 题的配对差值中位数，对 Plain 为 0、对 Goal 约 0.0003：均分收益集中，并非普遍提升。",
     "insights": [
-      ["部分进展增加，完整验收仍是难点", "LoopX 的 0.4948 高于两种基线，但与 Plain 同为 7/46。Tabular、Sokoban 等收益明显的任务仍未达到 0.95，说明更多进展与做完之间还有距离。"],
-      ["原生 Goal 已经是有力的对照", "PoC 任务中，Goal 与 LoopX 都是 0.892，Plain 为 0；DuckDB 则是 Goal 0.770、LoopX 0。需要解释 LoopX 在原生续跑之上多带来了什么，也保留它做得更差的任务。"],
-      ["恢复是机制线索，尚不是增益归因", "研究简报记录咨询任务中断后从 S27 接续。工作区与 Todo 提供了恢复位置的载体；要证明它提升了分数，还需在相同预算下隔离状态恢复、fresh exec 与 replan。"],
-      ["续跑要保住结果，也要算成本", "DuckDB 的报告案例提示后续优化可能破坏正确性。检查点、验收与回滚值得单独验证；本轮 LoopX 记录成本高于两种基线的估算成本，尚未证明更经济。"]
+      ["可保留进度、反复验证：值得优先验证的适用条件", "Sokoban 解出的关卡可以保留；Tabular 要反复实验并提交可审计模型；Rush Hour 要维护路线记录并复查。这些结构适合让工作状态跨轮延续。但仅凭分数，不能证明收益来自 Todo、fresh exec 或重规划中的哪一项。"],
+      ["长流程本身不够，反馈必须接近正确性", "APEX 咨询高于两侧基线，法律事项却低于 Goal。法律题有晚到修订、跨文档精确引用，validate 只检查格式。流程继续向前，并不等于内容得到纠正；状态管理还需要可靠验收。"],
+      ["续跑没有显示出普遍的能力补足", "多模态题涉及图像分割、几何/OCR 和跨输入泛化；仿真题还要求正确使用求解器与物理约束。当前差异小，尚无证据说明增加续跑能解决这些瓶颈。也要区分 LangChain、RISC-V 的满分平局与 OpenRoad 的零分平局。"],
+      ["下一步要验证“能前进，也能保住成果”", "2048 保留峰值并有收益，但同样保留峰值的 Snake 仍低于 Plain。DuckDB 则要求所有查询正确，优化失误可能让分数归零。应在相同预算、重复运行中，单独检验反馈质量、进度保留与最佳版本回滚。"]
     ],
-    "gainTitle": "收益案例：看三者，而非只看一个增量",
+    "gainTitle": "收益与可能解释",
     "gainCases": [
-      ["tabular-data-feature-covshift", "相对两种基线均有明显增益，但 0.743 仍未达到严格通过阈值。"],
-      ["sokoban", "高于两种基线；最终 0.890，更多进展仍未转化为完整通过。"],
-      ["poc-exploit-craft", "相对 Plain 提升明显，却与原生 Goal 持平。这项收益不能直接归为 LoopX 特有。"],
-      ["apex-management-consulting-matter", "分数高于两种基线；原简报另记录了从 S27 恢复的轨迹案例。两者相关，尚不足以证明因果。"]
+      ["tabular-data-feature-covshift", "稀疏逆问题与分布偏移：50 个观测恢复 200 维信号，需要实验、验证历史与可审计模型。两侧均有增益，但 0.743 仍未通过。"],
+      ["sokoban", "155 个顺序关卡；可重置当前题而保留已解关卡。两侧均领先，仍未达到 0.95。"],
+      ["rush-hour-campaign", "4 道长程空间路线题，要求记账与路线复查，明确禁止程序化搜索求解。收益不能解释为自动写搜索算法。"],
+      ["unison-paper-reproduction", "实现并行仿真、分区与自适应调度，交付多个产物并检查隐藏 seed。两侧均领先，最终仅 0.5。"]
     ],
-    "lossTitle": "反例：续跑收益随任务和基线变化",
+    "lossTitle": "反例与能力边界",
     "lossCases": [
-      ["duckdb-optimizer-closure", "原生 Goal 保住了较高得分，LoopX 与 Plain 为零。原简报报告后续优化破坏正确性，值得验证最佳版本保留与最终回滚。"],
-      ["snake-obstacle-campaign", "高于原生 Goal，却低于 Plain。换一个基线，结论就会变化。"],
-      ["great-expectations-audit", "同时低于两种基线，说明引入持续调度并不保证更好的最终产物。"],
-      ["apex-openroad-ibex-signoff", "三者均为零。控制面未解决这道任务，不能将继续执行本身当成有效进展。"]
+      ["apex-law433-matter", "70 个阶段含跨文档引用与晚到修订；validate 只查 schema，不查内容正确性。LoopX 高于 Plain、低于 Goal，长流程不保证收益。"],
+      ["snake-obstacle-campaign", "可重置且保留峰值，但 LoopX 仍低于 Plain、高于 Goal。保留进度只是候选条件，并不充分。"],
+      ["duckdb-optimizer-closure", "22 个 TPC-H 查询要求全正确，错误可使 Reward 归零。LoopX 与 Plain 为 0、Goal 约 0.770；仅凭终值不能定位失败环节。"],
+      ["scientific-figure-data-reconstruction", "从图像重建曲线与表格，要处理坐标标定、线条分离与数值误差。三者接近，尚看不到控制面带来的明确收益。"]
     ],
     "scoresEyebrow": "04 / 46 题完整矩阵",
     "scoresTitle": "逐题看 LoopX 相对两种基线的得失。",
@@ -258,7 +298,7 @@
     "searchPlaceholder": "搜索任务",
     "filterLabel": "任务筛选",
     "filters": {
-      "all": "全部 46 题",
+      "all": "不限差值",
       "plain": "对 Plain |Δ| ≥ 0.05",
       "native_goal": "对 Goal |Δ| ≥ 0.05"
     },
@@ -307,6 +347,46 @@
     "historyTitle": "历史参照：SSH-Goal 与旧版 Heartbeat",
     "historyBody": "另外两臂保留在这里，便于回溯实现演进。全文的主比较是本研究的 LoopX Heartbeat 与 Plain、原生 Goal。",
     "showHistory": "显示历史两臂",
-    "hideHistory": "收起历史两臂"
+    "hideHistory": "收起历史两臂",
+    "groupMethod": "以下是按任务要求做的事后分析分组，非官方逐题分类。46 题各归一组；每组仅 4–7 题。Δ 是 LoopX 减基线的平均 Reward，胜/平/负按未四舍五入的分数严格比较，不代表统计显著性。点击组名查看完整成员。",
+    "groupColumns": [
+      "分析分组",
+      "题数",
+      "Δ 对 Plain",
+      "Δ 对原生 Goal",
+      "当前信号"
+    ],
+    "groupLabels": {
+      "research": "研究复现与建模",
+      "puzzles": "逻辑与空间谜题",
+      "professional": "APEX 专业工作流",
+      "multimodal": "多模态分析",
+      "science": "科学计算与仿真",
+      "earth": "地球、气候与能源",
+      "software": "软件修复与工具链",
+      "games": "游戏与策略",
+      "systems": "系统、性能与安全"
+    },
+    "groupNotes": {
+      "research": "4 题均高于 Plain；ALP、Foldseek 与 Goal 持平。",
+      "puzzles": "两侧均 3 胜 1 负；Sudoku 低于 Goal，Chess 低于 Plain。",
+      "professional": "组均值正向；法律事项低于 Goal，IB244 与 Plain 持平。",
+      "multimodal": "6 题对两种基线的单题绝对差均 < 0.05。",
+      "science": "均值接近；两侧配对差值中位数均为 0。",
+      "earth": "相对 Plain 没有组均值优势，对 Goal 略高。",
+      "software": "对 Plain 无胜出题：4 平 2 负；部分收益只对 Goal 成立。",
+      "games": "2048 提升；Snake、Mario、Generals 均低于 Plain。",
+      "systems": "对 Plain 的组收益由 PoC 拉动；对 Goal 的损失由 DuckDB 主导。"
+    },
+    "groupCountLabel": "胜 / 平 / 负",
+    "groupFilterLabel": "按分析分组查看",
+    "allGroups": "全部分组",
+    "resetFilters": "重置筛选",
+    "emptyTasks": "没有匹配任务。可重置筛选后重试。",
+    "promptLink": "题目原文",
+    "promptBoundary": "题目结构参考上游固定版本 d78f5eb（2026-09-19 读取）。实验仅注明 July 2026 snapshot，未公开逐题源文件摘要，不能确认这里的题目与当时运行版本逐字一致；原文用于理解任务要求，不能据此还原运行轨迹。",
+    "sensitivityTitle": "组均值是否被一道题左右？",
+    "sensitivityBody": "去掉 Tabular，研究组仍对 Plain / Goal 为 +0.1259 / +0.1111；谜题组任去一道题，两侧均值仍正向。系统组则不同：去掉 PoC，对 Plain 从 +0.1732 变为 −0.0065；去掉 DuckDB，对 Goal 从 −0.1450 变为 +0.0111。删题只是敏感性检查，不是另一份榜单，也不是置信区间。",
+    "caseDetails": "展开题目结构与正反案例（分数来自同一份数据）"
   }
 }

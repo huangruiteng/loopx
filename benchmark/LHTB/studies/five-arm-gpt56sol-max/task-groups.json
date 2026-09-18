@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "classification": "analyst-defined post-hoc task-demand groups; not an official task mapping",
+  "prompt_revision": "d78f5eb52ad754c5ee9154741af73130a85a65b8",
+  "prompt_base_url": "https://github.com/zli12321/LHTB/blob/d78f5eb52ad754c5ee9154741af73130a85a65b8/tasks/",
+  "prompt_aliases": {
+    "rush-hour-campaign": "rush_hour_campaign",
+    "snake-obstacle-campaign": "snake_maze_campaign"
+  },
+  "groups": {
+    "research": [
+      "alp-paper-reproduction",
+      "foldseek-paper-reproduction",
+      "tabular-data-feature-covshift",
+      "unison-paper-reproduction"
+    ],
+    "puzzles": [
+      "chess-mate",
+      "rush-hour-campaign",
+      "sokoban",
+      "sudoku-recovery"
+    ],
+    "professional": [
+      "apex-ib244-matter",
+      "apex-investment-banking-matter",
+      "apex-law433-matter",
+      "apex-management-consulting-matter"
+    ],
+    "multimodal": [
+      "audio-visual-event-alignment",
+      "dicom-radiology-audit",
+      "document-table-layout-reconstruction",
+      "microscopy-cell-count-qc-audit",
+      "satellite-flood-change-detection-audit",
+      "scientific-figure-data-reconstruction"
+    ],
+    "science": [
+      "epidemic-inverse-control-audit",
+      "materials-phase-diagram-audit",
+      "nbody-accel-iterative",
+      "opensees-seismic-structural-regression-audit",
+      "robotics-slam-benchmark-repair",
+      "spice-ephemeris-regression",
+      "su2-airfoil-regression"
+    ],
+    "earth": [
+      "climate-netcdf-extreme-event-audit",
+      "epa-swmm-stormwater-regression-audit",
+      "gdal-proj-raster-regression",
+      "matpower-opf-regression",
+      "modflow6-groundwater-regression-audit",
+      "nrel-pysam-hybrid-renewables-audit"
+    ],
+    "software": [
+      "apex-openroad-ibex-signoff",
+      "commit0-multilib-tdd",
+      "great-expectations-audit",
+      "langchain-version-migration",
+      "riscv-core-debug",
+      "unknown-config-semantics"
+    ],
+    "games": [
+      "2048",
+      "generals-bot-arena",
+      "snake-obstacle-campaign",
+      "super-mario"
+    ],
+    "systems": [
+      "duckdb-optimizer-closure",
+      "grammar-fuzz-coverage-hunt",
+      "poc-exploit-craft",
+      "spot-scheduler-traces",
+      "vector-db-iterative-build"
+    ]
+  }
+}
