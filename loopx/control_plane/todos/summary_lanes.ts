@@ -64,7 +64,7 @@ export function countTodoWork(rows: readonly WorkCountRow[], sourceOpenCount: nu
   return {schema_version: "todo_work_counts_v0", open: sourceOpenCount,
     advancement: rows.filter(row => row.actionable && row.taskClass === "advancement_task").length,
     monitor: rows.filter(row => row.actionable && row.taskClass === "continuous_monitor").length,
-    observed_open_count: rows.length, hidden: sourceOpenCount - rows.length,
+    hidden: sourceOpenCount - rows.length,
     complete: complete && sourceOpenCount === rows.length, agent_id: agentId};
 }
 

@@ -23,10 +23,12 @@ service deployment and whole-Goal promotion remain separately qualified.
 | `open` | Nonterminal source rows, including blocked work; it is not executable work |
 | `advancement` | Observed actionable advancement rows; acceptance-denied and unsatisfied resume rows do not qualify |
 | `monitor` | Observed actionable Monitor rows, including future/expired observation context; due/schedule-gap fields retain their existing separate meanings |
-| `observed_open_count` | Unique nonterminal rows actually classified |
 | `hidden` | Declared source rows not available for classification, not rows hidden by UI pagination |
 | `complete` | Whether the available source covers the declared scope; false counts are lower bounds for classified task kinds |
 | `agent_id` | Agent execution scope, or null for an unscoped/role summary |
+
+The observed row count is derived as `open - hidden`; the payload does not
+repeat it as a second value that could drift.
 
 `complete=false` survives repeated quota projection, even when the surviving
 subset fits on one screen. It cannot certify “Monitor-only work remains.”

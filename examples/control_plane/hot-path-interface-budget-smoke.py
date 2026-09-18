@@ -70,8 +70,10 @@ SURFACE_BUDGETS = {
         "cold_path": "status, history, or active state",
         # Codex keeps a lossless codex_app compatibility alias while the
         # provider-neutral app_automation packet becomes canonical.
-        "max_json_chars": 14_000,
-        "max_nested_keys": 350,
+        # Pre-limit work counts add useful scope/completeness evidence; allow
+        # modest headroom after removing the redundant observed-row count.
+        "max_json_chars": 14_500,
+        "max_nested_keys": 360,
         "max_top_level_keys": 52,
     },
     "dashboard_status_json": {

@@ -793,11 +793,11 @@ def todo_summary_open_task_counts(summary: dict[str, Any] | None) -> dict[str, A
     if (not isinstance(counts, dict) or counts.get("schema_version") != "todo_work_counts_v0"
         or not isinstance(counts.get("complete"), bool)
         or any(type(counts.get(key)) is not int or counts[key] < 0
-               for key in ("open", "advancement", "monitor", "observed_open_count", "hidden"))
+               for key in ("open", "advancement", "monitor", "hidden"))
         or counts.get("agent_id") != todo_summary_claim_scope_agent_id(summary)):
         raise ValueError("invalid or differently scoped Todo work counts")
-    if (counts["open"] != counts["observed_open_count"] + counts["hidden"]
-        or counts["advancement"] + counts["monitor"] > counts["observed_open_count"]
+    if (counts["hidden"] > counts["open"]
+        or counts["advancement"] + counts["monitor"] > counts["open"] - counts["hidden"]
         or (counts["complete"] and counts["hidden"] != 0)):
         raise ValueError("inconsistent Todo work count envelope")
     return {key: counts[key] for key in ("open", "advancement", "monitor", "hidden", "complete")} | {

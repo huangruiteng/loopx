@@ -66,7 +66,7 @@ from .succession_warning import (
     TODO_SUCCESSION_WARNING_SCHEMA_VERSION,
 )
 from .resume_condition import evaluate_todo_resume_conditions
-from ..runtime.time import now_utc_iso
+from ..runtime.time import now_utc, now_utc_iso
 from ..work_items.project_asset import build_project_asset_todo_summary
 from .user_gate import open_user_gate_todo_items
 from ..coordination.coordination_state_contract import (
@@ -960,6 +960,47 @@ def _structured_resume_source_items(
     ]
 
 
+def _project_summary_lanes(items: list[dict[str, Any]], preferred_todo_ids: set[str] | None) -> dict[str, Any]:
+    """Adapt legacy facts and read batch ordinals from the typed lane owner."""
+    from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
+
+    rows = []
+    for item in items:
+        resume = normalize_todo_resume_when(item.get("resume_when"))
+        condition = item.get("resume_condition")
+        evaluated = (isinstance(condition, dict)
+            and condition.get("schema_version") == "todo_resume_condition_v0"
+            and condition.get("resume_when") == resume
+            and isinstance(condition.get("satisfied"), bool)
+            and item.get("resume_ready") is condition.get("satisfied"))
+        due = projection_todo_item_next_due_at(item)
+        expires = projection_todo_item_expires_at(item)
+        guard = item.get("goal_acceptance_guard")
+        rows.append({"status": item.get("status") or ("done" if item.get("done") else "open"),
+            "done": bool(item.get("done")), "task_class": projection_todo_item_task_class(item),
+            "has_resume": bool(resume), "resume_ready": item.get("resume_ready"),
+            "resume_evaluated": evaluated, "acceptance_blocked": isinstance(guard, dict) and guard.get("allowed") is False,
+            "claimed": bool(item.get("claimed_by")), "preferred": item.get("todo_id") in (preferred_todo_ids or set()),
+            "watch_only": projection_todo_item_is_watch_only_monitor(item),
+            "due_at": due.timestamp() if due else None, "expires_at": expires.timestamp() if expires else None,
+            "sort": list(projection_todo_presentation_sort_key(item))})
+    try:
+        result = effect_runtime_result("todo.summary_lanes.project", {
+            "schema_version": "todo_summary_lanes_request_v0", "rows": rows, "observed_at": now_utc().timestamp(),
+        })
+    except EffectRuntimeRejected as error:
+        raise ValueError(str(error)) from error
+    if not isinstance(result, dict) or result.get("schema_version") != "todo_summary_lanes_v0":
+        raise ValueError("invalid typed Todo summary lanes")
+    lanes = result["lanes"]
+    if not isinstance(lanes, dict) or any(
+        not isinstance(indices, list) or any(type(index) is not int or not 0 <= index < len(items) for index in indices)
+        for indices in lanes.values()
+    ):
+        raise ValueError("invalid Todo summary source ordinal")
+    return {"lanes": {key: [items[index] for index in indices] for key, indices in lanes.items()},
+            "work_counts": result["work_counts"]}
+
 
 def compact_todo_group(
     items: list[dict[str, Any]],
@@ -1021,9 +1062,7 @@ def compact_evaluated_todo_group(
     """
     if not items and not include_empty_source:
         return None
-    from .summary_lanes import project_summary_lanes
-
-    projected = project_summary_lanes(items, preferred_todo_ids)
+    projected = _project_summary_lanes(items, preferred_todo_ids)
     lanes = _TodoGroupLanes(**projected["lanes"])
     source_valid = role in {"user", "agent"} and bool(str(source_section or "").strip())
     no_followup_items = [
