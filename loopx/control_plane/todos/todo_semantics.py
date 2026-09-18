@@ -816,6 +816,9 @@ def todo_summary_has_only_future_scoped_monitor_work(
         return False
     if not todo_summary_monitor_items(summary):
         return False
+    counts = todo_summary_open_task_counts(summary)
+    if counts["complete"] is not True or counts["advancement"] > 0:
+        return False
     if todo_summary_monitor_due_count(summary) > 0:
         return False
     if todo_summary_monitor_schedule_gap_count(summary) > 0:

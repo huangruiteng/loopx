@@ -54,14 +54,20 @@ def test_list_and_status_compactors_preserve_semantic_counts():
 
 def test_incomplete_scoped_snapshot_does_not_certify_monitor_only():
     from loopx.control_plane.scheduler.external_evidence_observation import scoped_monitor_watch_without_advancement
+    from loopx.control_plane.todos.todo_semantics import todo_summary_has_only_future_scoped_monitor_work
 
     monitor = work(0, task_class="continuous_monitor", claimed_by="agent-a", next_due_at="2099-01-01T00:00:00Z")
     scoped = summarize_user_todos_for_quota({"schema_version": "todo_summary_v0", "open_count": 12,
         "items": [monitor]}, agent_identity={"agent_id": "agent-a"})
     assert scoped["work_counts"]["complete"] is False
     assert scoped_monitor_watch_without_advancement(scoped) is False
+    assert todo_summary_has_only_future_scoped_monitor_work(scoped) is False
     repeated = summarize_user_todos_for_quota(scoped, agent_identity={"agent_id": "agent-a"})
     assert repeated["work_counts"]["complete"] is False
+    assert todo_summary_has_only_future_scoped_monitor_work(repeated) is False
+    complete = summarize_user_todos_for_quota({"schema_version": "todo_summary_v0", "open_count": 1,
+        "items": [monitor]}, agent_identity={"agent_id": "agent-a"})
+    assert todo_summary_has_only_future_scoped_monitor_work(complete) is True
 
 
 def test_wrong_scope_count_envelope_is_not_reused():
