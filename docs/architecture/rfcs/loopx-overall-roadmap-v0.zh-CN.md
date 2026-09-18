@@ -263,6 +263,8 @@ Todo 完成入口分别执行当前 pinned 检查，accepted 返回读 canonical
 完成。长期 attached 会话、通用 Agent 创建、动态受治理工作派生、完整 inbox/queue/steer、
 认证远端权威与 packaged frontend/Lark 配套仍归 R2/R3/R4/R6；不晋升已有 Goal。
 
+有 shell 能力的原 coordinator 现在可通过 `delegation list/start/read/wait/resume` 调用已有执行 owner，无需替换会话或重新加载 MCP 工具。合成示例的 `prepare` 只准备隔离绑定，由原 Agent 自行选择并启动工作。这闭合原会话调用入口；动态身份/profile 创建、无人值守唤醒和完整 inbox/queue/steer 仍按 R2/R3 推进，固定绑定读回不等于团队全部就绪。
+
 ### R3：语义请求与自动回报
 
 - **Owner：** 管家 RFC M2/M3；从已有 `manager_context` request/tracking/return 迁移到单一 typed collaboration 事务，纳入 #4094 adapter。

@@ -112,7 +112,11 @@ def read_input() -> dict:
 
 @worker_server.tool()
 def write_output(output: dict) -> dict:
-    """Write only this assignment's output.json; return independent domain-check feedback."""
+    """Submit output.json, including adopted_dependencies for any read_input upstream.
+
+    That object maps upstream.identity to the full upstream.artifact_sha256.
+    Return the normal Turn JSON candidate only after artifact_checks_passed.
+    """
     workspace, revision = worker_workspace()
     if len(json.dumps(output)) > 16_000:
         raise ValueError("output_too_large")

@@ -75,6 +75,9 @@ def task(revision: str, question: str) -> str:
         "source_id values from issuer, prior and repost; cite the prior filing for the period-comparability check), "
         "reason (short). Count independent_source_families only for corroboration of CURRENT-period "
         "figures; prior-period comparison material is not current-period corroboration. "
+        "If read_input returns an upstream artifact, independently check it and include adopted_dependencies "
+        "in output.json: an object mapping upstream.identity to its full upstream.artifact_sha256. "
+        "Matching its numbers or mentioning a hash in prose does not record adoption. "
         "Do not use network, read another worker, modify Goal state, commit, or trade. "
         "Write only output.json. Return the normal Turn candidate after writing the artifact."
     )
