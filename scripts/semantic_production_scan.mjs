@@ -16,14 +16,22 @@ for (const source of request.sources) {
   const field = request.field;
   const returns = new Set((request.return_functions ?? []).filter(x => x.startsWith(`${source.path}::`)));
   const unwrap = node => {
-    while (node && (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) ||
-      ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node))) node = node.expression;
+    while (node && (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))) node = node.expression;
     return node;
   };
-  // Say why a write stayed unknown using the same labels as the Python scanner,
+  // Name why a write stayed unknown using the same labels as the Python scanner,
   // so one residue taxonomy covers both runtimes instead of a single catch-all.
+  // This only labels the residue; it never narrows it. Nothing here resolves a
+  // value, so a site the parser cannot enumerate stays unresolved as before.
   const blockerFor = node => {
     if (!node) return 'other';
+    // A ``??``/``||`` fallback is not itself the obstacle; the operand that
+    // could not be read is. Reporting that reason renames the residue only --
+    // the site stays unresolved with no value either way.
+    if (ts.isBinaryExpression(node) && [ts.SyntaxKind.BarBarToken,
+      ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind)) {
+      return blockerFor(unwrap(node.left));
+    }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) return 'attribute_read';
     if (ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isAwaitExpression(node)) return 'call_result';
     if (ts.isIdentifier(node)) return 'unstable_local';
@@ -31,28 +39,17 @@ for (const source of request.sources) {
       ts.isTemplateExpression(node)) return 'dynamic_key';
     return 'typescript_dynamic';
   };
-  const merge = parts => ({
-    values: [...new Set(parts.flatMap(part => part.values))].sort(),
-    unresolved: parts.some(part => part.unresolved),
-    blocker: parts.find(part => part.unresolved)?.blocker,
-  });
   const values = expression => {
     const node = unwrap(expression);
     if (!node) return {values: [], unresolved: true, blocker: 'other'};
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return {values: node.text ? [node.text] : [], unresolved: false};
     if (node.kind === ts.SyntaxKind.NullKeyword) return {values: [], unresolved: false};
-    // ``undefined`` carries no value and is not an unknown, matching the way
-    // the Python scanner treats an explicit ``None``.
-    if (ts.isIdentifier(node) && node.text === 'undefined') return {values: [], unresolved: false};
-    if (ts.isConditionalExpression(node)) return merge([values(node.whenTrue), values(node.whenFalse)]);
-    // ``a || b`` and ``a ?? b`` are a finite selection, exactly like the
-    // Python scanner's BoolOp arms; ``String(x)`` is a transparent wrapper.
-    if (ts.isBinaryExpression(node) && [ts.SyntaxKind.BarBarToken,
-      ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind)) {
-      return merge([values(node.left), values(node.right)]);
+    if (ts.isConditionalExpression(node)) {
+      const left = values(node.whenTrue), right = values(node.whenFalse);
+      return {values: [...new Set([...left.values, ...right.values])].sort(),
+        unresolved: left.unresolved || right.unresolved,
+        blocker: (left.unresolved ? left : right).blocker};
     }
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
-      node.expression.text === 'String' && node.arguments.length === 1) return values(node.arguments[0]);
     return {values: [], unresolved: true, blocker: blockerFor(node)};
   };
   const staticName = expression => {

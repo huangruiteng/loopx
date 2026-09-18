@@ -58,14 +58,7 @@ def test_single_local_variable_and_reassignment_boundary():
     rows = scan('def emit(flag):\n code = "run" if flag else "wait"\n return code\n', returns=['emit'])
     assert known(rows) == {'run', 'wait'}
     assert not any(r.unresolved for r in rows)
-    # An ordered rebinding is a finite selection, so the literal arm is real
-    # evidence; the unknown arm still keeps the row unresolved.
-    # tests/architecture/test_semantic_producer_binding.py covers the form.
     rows = scan('def emit(flag):\n code = "run"\n if flag:\n  code = dynamic()\n return code\n', returns=['emit'])
-    assert known(rows) == {'run'}
-    assert rows[0].unresolved
-    # A store this scan cannot order erases the local altogether.
-    rows = scan('def emit(codes):\n code = "run"\n for code in codes:\n  pass\n return code\n', returns=['emit'])
     assert known(rows) == set()
     assert rows[0].unresolved
 

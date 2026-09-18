@@ -9,7 +9,6 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Mapping, TypeVar
 
 from .inventory import SourceFile
@@ -26,15 +25,21 @@ class Production:
     """Why the unknown portion stayed unknown; ``None`` when fully resolved.
 
     ``argument_name_only`` a field-named keyword argument, which never proves an
-    output role. ``unstable_local`` a parameter, an unordered rebinding or a
-    shadowed name. ``call_result`` the value comes back from a call this scan
-    cannot bind. ``dynamic_key`` a computed or non-literal subscript.
-    ``serialized_value`` a string where an enum object was required.
-    ``annotation_only`` a bare annotation that declares the field without a
-    value. ``attribute_read`` an attribute of an unresolved object.
-    ``typescript_dynamic`` a TypeScript form the parser cannot classify further;
-    every other label is shared by both runtimes, so one residue taxonomy
-    covers them. ``other`` anything else; it keeps the site visible.
+    output role. ``unstable_local`` a parameter, reassignment or shadowed name.
+    ``call_result`` the value comes back from a call. ``dynamic_key`` a computed
+    or non-literal subscript. ``serialized_value`` a string where an enum object
+    was required. ``annotation_only`` a bare annotation that declares the field
+    without a value. ``attribute_read`` an attribute of an unresolved object.
+    ``other`` anything else; it keeps the site visible.
+
+    Every label above is shared by both runtimes, so one residue taxonomy covers
+    the Python and the TypeScript scanner. ``typescript_dynamic`` is the
+    TypeScript-only fallback for a write the parser cannot classify further.
+
+    A label is a reason, never a value: naming the obstacle does not narrow it.
+    When the scan cannot enumerate the complete set of possible outputs the site
+    stays unresolved with its reason; it is never reported as fully resolved and
+    never treated as dead.
     """
 
 
@@ -230,73 +235,6 @@ def _qualified_bindings(source: SourceFile, tree: ast.Module, owners: Mapping[st
     return bindings
 
 
-def _is_generator(node: ast.FunctionDef) -> bool:
-    return any(isinstance(child, (ast.Yield, ast.YieldFrom)) for child in ast.walk(node))
-
-
-# Keyed by tree identity, which is stable because ``_TREES`` retains every tree
-# it parses; the table is derived from the module body alone, so it is the same
-# for every vocabulary scanned over that file.
-_MODULE_FUNCTIONS: dict[int, dict[str, ast.FunctionDef]] = {}
-
-
-def _module_functions(tree: ast.Module) -> dict[str, ast.FunctionDef]:
-    """Top-level plain ``def``s a same-module call may be bound to.
-
-    A decorator can replace the returned object, ``async def`` hands back a
-    coroutine rather than the value, and a generator yields instead of
-    returning, so none of those is a recognized producer. Any second top-level
-    binding of the name -- a redefinition, class, import, assignment or
-    ``del`` -- leaves the name unproven and the call keeps ``call_result``.
-    """
-    known = _MODULE_FUNCTIONS.get(id(tree))
-    if known is not None:
-        return known
-    bound: Counter[str] = Counter()
-    defined: dict[str, ast.FunctionDef] = {}
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bound[node.name] += 1
-            if isinstance(node, ast.FunctionDef):
-                defined[node.name] = node
-            continue
-        for child in ast.walk(node):
-            if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del)):
-                bound[child.id] += 1
-            elif isinstance(child, (ast.Import, ast.ImportFrom)):
-                for alias in child.names:
-                    bound[alias.asname or alias.name.split('.')[0]] += 1
-            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                bound[child.name] += 1
-    functions = {name: node for name, node in defined.items()
-                 if bound[name] == 1 and not node.decorator_list and not _is_generator(node)}
-    _MODULE_FUNCTIONS[id(tree)] = functions
-    return functions
-
-
-def _index_value(node: ast.AST) -> str | int | None:
-    if isinstance(node, ast.Constant) and type(node.value) in (str, int):
-        return node.value
-    if (isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub)
-            and isinstance(node.operand, ast.Constant) and type(node.operand.value) is int):
-        return -node.operand.value
-    return None
-
-
-def _union(values: list[ast.AST]) -> ast.AST:
-    """Fold several definitions of one local into a finite selection node.
-
-    The scan reports syntactic result possibilities, so a name written more than
-    once carries the union of the writes that precede the read. The synthetic
-    test is never inspected; only the arms are resolved.
-    """
-    node = values[0]
-    for other in values[1:]:
-        test = ast.copy_location(ast.Constant(value=True), other)
-        node = ast.copy_location(ast.IfExp(test=test, body=node, orelse=other), other)
-    return node
-
-
 def scan_python_production(
     source: SourceFile,
     *,
@@ -314,36 +252,15 @@ def scan_python_production(
     ``modules`` additionally lets one unrenamed re-export hop through a tracked
     module bind the owner. Longer chains and renamed re-exports stay unknown.
     Local aliases and complete branch selections resolve only at output sites.
-    Explicit call metadata names only reviewed builder arguments; arbitrary calls
-    are consumers. Nested function returns belong to that function, not a
-    registered enclosure.
-
-    Three bounded local forms are recognized beyond a single straight-line
-    binding. A local written more than once resolves to the union of the writes
-    that textually precede the read, provided every store of that name is a
-    plain ``name = expression`` (loop, ``with``, ``except``, walrus, augmented,
-    unpacking, ``global`` and ``del`` rebindings are not ordered by this scan and
-    stay unknown). A local container mutated only through direct literal-key
-    subscript writes keeps its untouched keys, and a written key carries the
-    union of its initializer and every write; an alias, a method call, a deeper
-    or computed store, or passing the container to any call still discards it.
-    A call to an undecorated, non-generator, plainly-defined top-level function
-    of the same module resolves to the union of that function's own returns.
-    Arguments are never bound to parameters, so a returned parameter stays
-    unknown and the result is independent of the call site; recursion, imported
-    and attribute calls keep the ``call_result`` blocker.
+    General reassignment and parameter shadowing become unknown. Explicit call
+    metadata names only reviewed builder arguments; arbitrary calls are consumers.
+    Nested function returns belong to that function, not a registered enclosure.
     """
-    # The scan never mutates the tree, so one parse per file serves every
-    # vocabulary; synthetic selection nodes are built fresh, never spliced in.
-    tree = _parsed(source)
+    tree = ast.parse(source.text, filename=source.path)
     bindings = _qualified_bindings(source, tree, enums, modules)
     call_arguments = call_arguments or {}
     calls = _qualified_bindings(source, tree, call_arguments, modules)
     return_paths = return_paths or {}
-    module_functions = _module_functions(tree)
-    call_memo: dict[tuple[str, str], tuple[frozenset[str], tuple[str, ...]]] = {}
-    environments: dict[tuple[int, str], SimpleNamespace] = {}
-    resolving: set[str] = set()
 
     result: list[Production] = []
 
@@ -355,13 +272,7 @@ def scan_python_production(
         return (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
                 and node.slice.value == field)
 
-    def environment(body: list[ast.stmt], scope: str, parameters: set[str],
-                    call_shadows: frozenset[str] = frozenset(),
-                    own: frozenset[str] = frozenset()) -> SimpleNamespace:
-        """Build one scope's bounded local view and its resolvers, once."""
-        cached = environments.get((id(body), scope))
-        if cached is not None:
-            return cached
+    def scan_scope(body: list[ast.stmt], scope: str, parameters: set[str]) -> None:
         nodes: list[ast.AST] = []
         nested: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
 
@@ -390,56 +301,50 @@ def scan_python_production(
         exception_targets = {n.name for n in nodes if isinstance(n, ast.ExceptHandler) and n.name}
         deleted = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Del)}
         shadows = set(assigned) | parameters | nested_names | imported | exception_targets | deleted
-        # A same-module call binds to a top-level ``def``, so that definition is
-        # not itself a shadow; only a rebinding inside this scope or an
-        # enclosing one takes the name away from the module function.
-        # ``parameters`` also carries every enclosing owner shadow, including the
-        # module's own top-level definitions, so only this scope's real bindings
-        # may take a name away from the module function it would otherwise name.
-        rebinds = set(assigned) | set(own) | imported | exception_targets | deleted
-        if scope != '<module>':
-            rebinds |= nested_names
-        calls_shadowed = frozenset(call_shadows) | rebinds
         local_bindings = {k: v for k, v in bindings.items() if k not in shadows}
         local_calls = {k: v for k, v in calls.items() if k not in shadows}
-
-        plain: dict[str, list[ast.AST]] = {}
+        single_values = {}
         for node in nodes:
-            target = value = None
-            if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                    and isinstance(node.targets[0], ast.Name)):
-                target, value = node.targets[0].id, node.value
-            elif (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
-                    and node.value is not None):
-                target, value = node.target.id, node.value
-            if target is not None:
-                plain.setdefault(target, []).append(value)
-        declared = {name for node in nodes if isinstance(node, (ast.Global, ast.Nonlocal))
-                    for name in node.names}
-        # Every store of the name must be one of those plain writes, so a value
-        # this scan cannot order never masquerades as a finite selection.
-        definitions = {name: values for name, values in plain.items()
-                       if assigned[name] == len(values) and name not in parameters
-                       and name not in declared and name not in deleted}
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                target = node.targets[0].id
+                if assigned[target] == 1 and target not in parameters:
+                    single_values[target] = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                target = node.target.id
+                if assigned[target] == 1 and target not in parameters and node.value is not None:
+                    single_values[target] = node.value
 
-        # Resolve only local containers that have not been mutated through an
-        # unrecognized path or escaped. A direct literal-key subscript write is
-        # recorded against that key; anything else invalidates every alias,
-        # rather than turning a stale initializer into false scalar evidence.
-        written: dict[str, dict[str | int, list[ast.AST]]] = {}
-        recorded: set[int] = set()
+        def conditional_values(node: ast.If) -> dict[str, tuple[ast.AST, int]]:
+            # A complete if/elif/else defining a local in each arm is one finite
+            # selection. Partial branches, loops and general reassignments stay
+            # unknown; no assignment is itself an enum production site.
+            def arm(statements: list[ast.stmt]) -> dict[str, tuple[ast.AST, int]]:
+                if len(statements) == 1 and isinstance(statements[0], ast.If):
+                    return conditional_values(statements[0])
+                definitions = {}
+                for statement in statements:
+                    if (isinstance(statement, ast.Assign) and len(statement.targets) == 1
+                            and isinstance(statement.targets[0], ast.Name)):
+                        name = statement.targets[0].id
+                        definitions[name] = (statement.value, definitions.get(name, (None, 0))[1] + 1)
+                return {name: item for name, item in definitions.items() if item[1] == 1}
+            left, right = arm(node.body), arm(node.orelse)
+            return {name: (ast.copy_location(ast.IfExp(test=node.test, body=left[name][0],
+                        orelse=right[name][0]), node), left[name][1] + right[name][1])
+                    for name in left.keys() & right.keys()}
+
         for node in nodes:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                store = node.targets[0]
-                if (isinstance(store, ast.Subscript) and isinstance(store.value, ast.Name)
-                        and not isinstance(store.slice, ast.Slice)
-                        and (key := _index_value(store.slice)) is not None):
-                    recorded.add(id(store))
-                    written.setdefault(store.value.id, {}).setdefault(key, []).append(node.value)
-        containers = {name for name, values in definitions.items()
-                      if any(isinstance(value, (ast.List, ast.Dict, ast.Set)) for value in values)}
-        aliases = [(name, value.id) for name, values in definitions.items()
-                   for value in values if isinstance(value, ast.Name)]
+            if isinstance(node, ast.If):
+                for name, (value, count) in conditional_values(node).items():
+                    if assigned[name] == count and name not in parameters:
+                        single_values[name] = value
+
+        # Resolve only local containers that have not been mutated or escaped.
+        # A subscript write through an alias invalidates every alias, rather
+        # than turning a stale initializer into false scalar output evidence.
+        containers = {name for name, value in single_values.items()
+                      if isinstance(value, (ast.List, ast.Dict, ast.Set))}
+        aliases = [(name, value.id) for name, value in single_values.items() if isinstance(value, ast.Name)]
         unsafe: set[str] = set()
 
         def root_name(node: ast.AST) -> str | None:
@@ -449,8 +354,6 @@ def scan_python_production(
 
         for node in nodes:
             if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
-                if id(node) in recorded:
-                    continue
                 if name := root_name(node):
                     unsafe.add(name)
             elif isinstance(node, ast.Call):
@@ -459,9 +362,6 @@ def scan_python_production(
                 for argument in [*node.args, *(kw.value for kw in node.keywords)]:
                     if isinstance(argument, ast.Name):
                         unsafe.add(argument.id)
-        # A second name for the same container would let a write land outside
-        # this key map, so an aliased container keeps no key-precise evidence.
-        unsafe.update(name for name in written if name in {n for pair in aliases for n in pair})
         for group in (containers, unsafe):
             changed = True
             while changed:
@@ -471,94 +371,46 @@ def scan_python_production(
                         group.update((left, right))
                 changed = len(group) != before
         for name in containers & unsafe:
-            definitions.pop(name, None)
-        for name in unsafe:
-            written.pop(name, None)
+            single_values.pop(name, None)
+
+        def bound(node: ast.AST | None, seen: frozenset[str]) -> tuple[ast.AST | None, frozenset[str]]:
+            while isinstance(node, ast.Name) and node.id in single_values and node.id not in seen:
+                definition = single_values[node.id]
+                if (definition.lineno, definition.col_offset) >= (node.lineno, node.col_offset):
+                    break
+                seen = seen | {node.id}
+                node = definition
+            return node, seen
+
+        def index_value(node: ast.AST) -> str | int | None:
+            if isinstance(node, ast.Constant) and type(node.value) in (str, int):
+                return node.value
+            if (isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub)
+                    and isinstance(node.operand, ast.Constant) and type(node.operand.value) is int):
+                return -node.operand.value
+            return None
+
+        def lookup(container: ast.AST | None, key: str | int | None) -> tuple[list[ast.AST], bool]:
+            if isinstance(container, (ast.Tuple, ast.List)):
+                if type(key) is int:
+                    return ([container.elts[key]], False) if -len(container.elts) <= key < len(container.elts) else ([], blocked('dynamic_key'))
+                if key is not None:
+                    return [], blocked('dynamic_key')
+                return list(container.elts), blocked('dynamic_key')
+            if isinstance(container, ast.Dict):
+                keys = [index_value(k) if k is not None else None for k in container.keys]
+                if key is not None and all(k is not None for k in keys):
+                    # Python dict construction keeps the last duplicate key.
+                    found = [v for k, v in zip(keys, container.values, strict=True) if k == key]
+                    return ([found[-1]], False) if found else ([], blocked('dynamic_key'))
+                return list(container.values), blocked('dynamic_key')
+            return [], blocked('unstable_local' if isinstance(container, ast.Name) else 'other')
 
         blockers: list[str] = []
 
         def blocked(label: str) -> bool:
             blockers.append(label)
             return True
-
-        def bound(node: ast.AST | None, seen: frozenset[str]) -> tuple[ast.AST | None, frozenset[str]]:
-            while isinstance(node, ast.Name) and node.id in definitions and node.id not in seen:
-                values = [value for value in definitions[node.id]
-                          if (value.lineno, value.col_offset) < (node.lineno, node.col_offset)]
-                if not values:
-                    break
-                seen = seen | {node.id}
-                node = values[0] if len(values) == 1 else _union(values)
-            return node, seen
-
-        def flatten(container: ast.Dict, seen: frozenset[str],
-                    depth: int = 0) -> tuple[list[tuple[str | int, ast.AST]], bool] | None:
-            """Expand ``**`` spreads of statically known dict literals, in write order.
-
-            A spread whose operand is not a finite selection of dict literals
-            with literal keys could overwrite any key, so the whole lookup falls
-            back to the unknown-key answer instead of trusting a literal entry.
-            """
-            if depth > 4:
-                return None
-            pairs: list[tuple[str | int, ast.AST]] = []
-            spread = False
-            for key, value in zip(container.keys, container.values, strict=True):
-                if key is not None:
-                    index = _index_value(key)
-                    if index is None:
-                        return None
-                    pairs.append((index, value))
-                    continue
-                spread = True
-                arms = [value]
-                while arms:
-                    arm, visited = bound(arms.pop(), seen)
-                    if isinstance(arm, ast.IfExp):
-                        arms.extend((arm.body, arm.orelse))
-                        continue
-                    if not isinstance(arm, ast.Dict):
-                        return None
-                    inner = flatten(arm, visited, depth + 1)
-                    if inner is None:
-                        return None
-                    pairs.extend(inner[0])
-            return pairs, spread
-
-        def lookup(container: ast.AST | None, key: str | int | None,
-                   seen: frozenset[str] = frozenset(), absent_ok: bool = False) -> tuple[list[ast.AST], bool]:
-            # ``absent_ok`` says a recorded write already supplies this key, so an
-            # initializer that does not carry it is not an unknown boundary.
-            if isinstance(container, (ast.Tuple, ast.List)):
-                if type(key) is int:
-                    if -len(container.elts) <= key < len(container.elts):
-                        return [container.elts[key]], False
-                    return [], (False if absent_ok else blocked('dynamic_key'))
-                if key is not None:
-                    return [], blocked('dynamic_key')
-                return list(container.elts), blocked('dynamic_key')
-            if isinstance(container, ast.Dict):
-                expanded = flatten(container, seen)
-                if expanded is None:
-                    return list(container.values), blocked('dynamic_key')
-                pairs, spread = expanded
-                if key is None:
-                    return [value for _, value in pairs], blocked('dynamic_key')
-                found = [value for index, value in pairs if index == key]
-                if not found:
-                    return [], (False if absent_ok else blocked('dynamic_key'))
-                # Python dict construction keeps the last duplicate key; an
-                # optional spread makes each contributor a live possibility.
-                return (found if spread else [found[-1]]), False
-            return [], blocked('unstable_local' if isinstance(container, ast.Name) else 'other')
-
-        def element(root: str | None, container: ast.AST | None, key: str | int | None,
-                    seen: frozenset[str] = frozenset()) -> tuple[list[ast.AST], bool]:
-            updates = written.get(root or '')
-            extra = [] if not updates else (updates.get(key, []) if key is not None
-                                            else [v for values in updates.values() for v in values])
-            choices, unknown = lookup(container, key, seen, absent_ok=bool(extra))
-            return [*choices, *extra], unknown
 
         def resolve(node: ast.AST | None, seen: frozenset[str] = frozenset(), *, enum_only: bool = False) -> tuple[set[str], bool]:
             node, seen = bound(node, seen)
@@ -570,9 +422,8 @@ def scan_python_production(
                 if isinstance(node.slice, ast.Slice) or (isinstance(node.slice, ast.Constant)
                         and type(node.slice.value) not in (str, int)):
                     return set(), blocked('dynamic_key')
-                root = node.value.id if isinstance(node.value, ast.Name) else None
                 container, visited = bound(node.value, seen)
-                choices, unknown = element(root, container, _index_value(node.slice), visited)
+                choices, unknown = lookup(container, index_value(node.slice))
                 known: set[str] = set()
                 for value in choices:
                     part, unresolved = resolve(value, visited, enum_only=enum_only)
@@ -599,24 +450,12 @@ def scan_python_production(
                     return enum_object_value(node.value, seen)
                 return set(), blocked('attribute_read')
             if isinstance(node, ast.Call):
-                hit = same_module_call(node, 'enum' if enum_only else 'value')
-                return hit if hit is not None else (set(), blocked('call_result'))
+                return set(), blocked('call_result')
             if isinstance(node, ast.Name):
                 return set(), blocked('unstable_local')
             if node is None:
                 return set(), blocked('other')
             return set(), blocked('other')
-
-        def same_module_call(node: ast.Call, mode: str) -> tuple[set[str], bool] | None:
-            if not isinstance(node.func, ast.Name) or node.func.id in calls_shadowed:
-                return None
-            hit = call_values(node.func.id, mode)
-            if hit is None:
-                return None
-            values, reasons = hit
-            for reason in reasons:
-                blocked(reason)
-            return set(values), bool(reasons)
 
         def enum_object_value(node: ast.AST, seen: frozenset[str]) -> tuple[set[str], bool]:
             node, seen = bound(node, seen)
@@ -625,13 +464,6 @@ def scan_python_production(
                 return set().union(*(v for v, _ in parts)), any(u for _, u in parts)
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in local_bindings:
                 return resolve(node, seen, enum_only=True)
-            if isinstance(node, ast.Call):
-                # Only a same-module function that returns owner members as enum
-                # objects has another ``.value``; a function handing back
-                # ``Action.RUN.value`` already returns the serialized string.
-                hit = same_module_call(node, 'object')
-                if hit is not None and hit[0]:
-                    return hit
             # A serialized string (including Action.RUN.value) is not an enum
             # object with another .value attribute.
             return set(), blocked('serialized_value')
@@ -639,76 +471,15 @@ def scan_python_production(
         def returned(node: ast.AST | None, path: tuple[str | int, ...], seen: frozenset[str] = frozenset()) -> tuple[set[str], bool]:
             if not path:
                 return resolve(node, seen)
-            root = node.id if isinstance(node, ast.Name) else None
             node, seen = bound(node, seen)
-            choices, unknown = element(root, node, path[0], seen)
+            choices, unknown = lookup(node, path[0])
             parts = [returned(value, path[1:], seen) for value in choices]
             return set().union(*(v for v, _ in parts)), unknown or any(u for _, u in parts)
 
-        built = SimpleNamespace(nodes=nodes, nested=nested, shadows=shadows, blockers=blockers,
-                                calls_shadowed=calls_shadowed, local_calls=local_calls,
-                                resolve=resolve, returned=returned, enum_object=enum_object_value)
-        environments[(id(body), scope)] = built
-        return built
-
-    def call_values(name: str, mode: str) -> tuple[frozenset[str], tuple[str, ...]] | None:
-        """Union of one same-module function's own returns, or ``None``.
-
-        ``mode`` asks what the caller needs of each return: its written value,
-        only owner members (``enum``), or the member behind an enum object
-        (``object``). The last is not the same question as the first: a function
-        returning ``Action.RUN.value`` hands back a string that has no further
-        ``.value``, so it answers ``object`` with nothing.
-
-        Call arguments are never bound to parameters, so a returned parameter
-        stays unknown and the answer does not depend on the call site; it is
-        memoised per module scan. A call reached from inside its own callee
-        chain keeps the ``call_result`` blocker instead of unrolling recursion.
-        A bare ``return`` or a fall-through yields ``None``, which is not a
-        vocabulary value: it contributes nothing and blocks nothing.
-        """
-        target = module_functions.get(name)
-        if target is None or name in resolving:
-            return None
-        key = (name, mode)
-        if key not in call_memo:
-            resolving.add(name)
-            try:
-                args = target.args
-                params = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
-                params.update(a.arg for a in (args.vararg, args.kwarg) if a)
-                env = environment(target.body, name, params | module_env.shadows,
-                                  module_env.calls_shadowed, frozenset(params))
-                values: set[str] = set()
-                unknown = False
-                start = len(env.blockers)
-                for node in env.nodes:
-                    if isinstance(node, ast.Return) and node.value is not None:
-                        part, missing = (env.enum_object(node.value, frozenset()) if mode == 'object'
-                                         else env.resolve(node.value, enum_only=mode == 'enum'))
-                        values |= part
-                        unknown |= missing
-                first = env.blockers[start] if len(env.blockers) > start else 'call_result'
-                del env.blockers[start:]
-                call_memo[key] = (frozenset(values), (first,) if unknown else ())
-            finally:
-                resolving.discard(name)
-        return call_memo[key]
-
-    def scan_scope(body: list[ast.stmt], scope: str, parameters: set[str],
-                   call_shadows: frozenset[str] = frozenset(), own: frozenset[str] = frozenset(),
-                   env: SimpleNamespace | None = None) -> None:
-        env = env if env is not None else environment(body, scope, parameters, call_shadows, own)
-        blockers = env.blockers
-
         def record(node: ast.AST | None, form: str, location: ast.AST) -> None:
-            # Reasons are read back by position: one scope's environment is
-            # shared with same-module call resolution, which may nest inside.
-            start = len(blockers)
-            values, unknown = (env.returned(node, return_paths.get(scope, ()))
-                               if form == 'return' else env.resolve(node))
-            blocker = blockers[start] if len(blockers) > start else None
-            del blockers[start:]
+            blockers.clear()
+            values, unknown = (returned(node, return_paths.get(scope, ())) if form == 'return' else resolve(node))
+            blocker = blockers[0] if blockers else None
             if node is None and form == 'assignment':
                 # A bare annotation declares the field; there is no value to resolve.
                 blocker = 'annotation_only'
@@ -718,7 +489,7 @@ def scan_python_production(
             result.append(Production(f'{source.path}::{scope}', location.lineno, form,
                                      frozenset(values), unknown, blocker if unknown else None))
 
-        for node in env.nodes:
+        for node in nodes:
             if isinstance(node, ast.Assign):
                 if field and any(matches(t) for t in node.targets):
                     record(node.value, 'assignment', node)
@@ -729,7 +500,7 @@ def scan_python_production(
                     if isinstance(key, ast.Constant) and key.value == field:
                         record(value, 'dict', node)
             elif isinstance(node, ast.Call):
-                output_arguments = env.local_calls.get(node.func.id, {}) if isinstance(node.func, ast.Name) else {}
+                output_arguments = local_calls.get(node.func.id, {}) if isinstance(node.func, ast.Name) else {}
                 for kw in node.keywords:
                     if kw.arg in output_arguments:
                         record(kw.value, 'call_argument', node)
@@ -742,16 +513,15 @@ def scan_python_production(
                 if scope in return_functions:
                     record(node.value, 'return', node)
                 else:
-                    start = len(blockers)
-                    values, unknown = env.resolve(node.value, enum_only=True)
+                    blockers.clear()
+                    values, unknown = resolve(node.value, enum_only=True)
                     # An owner-member result keeps its reason too; an unlabelled
                     # unknown would be invisible in the report breakdown.
-                    reason = blockers[start] if len(blockers) > start else None
-                    del blockers[start:]
+                    reason = blockers[0] if blockers else None
                     if values:
                         result.append(Production(f'{source.path}::{scope}', node.lineno, 'enum_result',
                                                  frozenset(values), unknown, reason if unknown else None))
-        for child in env.nested:
+        for child in nested:
             name = child.name if scope == '<module>' else f'{scope}.{child.name}'
             params: set[str] = set()
             if not isinstance(child, ast.ClassDef):
@@ -759,8 +529,7 @@ def scan_python_production(
                 params = {a.arg for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)}
                 params.update(a.arg for a in (args.vararg, args.kwarg) if a)
             # A nested closure might shadow an owner in any enclosing scope.
-            scan_scope(child.body, name, params | env.shadows, env.calls_shadowed, frozenset(params))
+            scan_scope(child.body, name, params | shadows)
 
-    module_env = environment(tree.body, '<module>', set())
-    scan_scope(tree.body, '<module>', set(), frozenset(), frozenset(), module_env)
+    scan_scope(tree.body, '<module>', set())
     return sorted(set(result), key=lambda row: (row.site, row.line, row.form, sorted(row.values)))

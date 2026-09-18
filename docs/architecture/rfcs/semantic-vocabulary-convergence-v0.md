@@ -409,27 +409,24 @@ dictionaries, call keywords, owner-member results and declared scalar returns
 are parsed with AST. Imported enum aliases resolve only to the registered
 owner, including one unrenamed re-export hop through a tracked module (a
 second hop, a renamed re-export or a rebinding stays unknown); shadowed
-names and unbindable calls remain unknown. Conditional
-results exclude the condition's literals. Three further local forms are bound,
-each only under a stated condition: a call to an undecorated, non-generator,
-plainly-defined top-level `def` **of the same module** resolves to the union of
-that function's own returns, with arguments never bound to parameters, so a
-returned parameter stays unknown and the result is independent of the call site;
-a local written more than once resolves to the union of the writes that
-textually precede the read, and only when every store of that name is a plain
-`name = expression`; and a container mutated only through direct literal-key
-subscript writes keeps its untouched keys, with a written key carrying the union
-of its initializer and every write. Anything outside those conditions — a
-decorator, `async def`, a generator, recursion, an imported or attribute call, a
-loop, `with`, `except`, walrus, augmented, unpacking, `global` or `del`
-rebinding, an alias, a method call, a computed or deeper store, an escape into a
-call, or an unknown `**` spread — leaves the site unknown rather than admitting
-a value. TypeScript object writes, assignments
-and declared returns use the repository's TypeScript parser rather than regex,
-and report the same blocker vocabulary as the Python scanner, so one residue
-taxonomy covers both runtimes.
+names, reassignments and unresolved calls remain unknown. Conditional
+results exclude the condition's literals. TypeScript object writes, assignments
+and declared returns use the repository's TypeScript parser rather than regex.
 Neither parser executes inspected source. These are syntactic result witnesses,
 not a proof of reachability or whole-program data flow.
+
+Neither scanner interprets the module it reads. There is no local environment,
+no loop or call-graph fixpoint, and no model of container mutation: the bound is
+the syntax in front of the reader, not the program's behaviour. What the scan
+adds instead is a **reason** on every unresolved site, drawn from one taxonomy
+shared by both runtimes — `argument_name_only`, `unstable_local`, `call_result`,
+`dynamic_key`, `serialized_value`, `annotation_only`, `attribute_read`, `other`,
+with `typescript_dynamic` kept only as the TypeScript fallback for a write the
+parser cannot classify further. A reason narrows nothing; it tells a reviewer
+which residue is a registry edit away and which needs a different analysis. When
+the scan cannot enumerate the complete set of possible outputs, the site stays
+unresolved with its reason. It is never reported as fully resolved, and never
+treated as dead.
 
 `uv run python examples/semantic-vocabulary-drift-smoke.py --report` lists unresolved
 production locations. Unresolved parts cannot supply missing value evidence; known
@@ -848,7 +845,7 @@ on the next full-tree scan; genuine shared-contract changes still need review.
 | Historical committed snapshots could become stale across merges | Replay the scanner over the first parent and the merge of the last twenty `upstream/main` merge commits | 8 of 20 merges change at least one carrier | Historical cost motivating Q9; current checks compute the combined tree without a committed snapshot |
 | The formal model cannot silently lose a proof obligation | Remove an invariant, role, relation, candidate decision, or proof-boundary category from `formal_model` | The drift smoke fails on the exact formal-model shape | The model is a finite contract and proof ledger; it does not prove the listed properties by itself |
 | An obligation cannot claim a domain nobody counts | `uv run --extra test python -m pytest tests/architecture/test_semantic_vocabulary_drift.py -k domain` | Dropping `domain`, inflating `verified` or `registered`, inventing a selector, claiming an unanchored selector or an out-of-stage evidence bound, and an advisory invariant claiming verified members each fail closed | The sizes are derived from the registry, so the check grounds the declared domain in registry data; it does not prove the obligation over that domain |
-| Bounded binding forms cannot be loosened into false evidence | `uv run --extra test python -m pytest tests/architecture/test_semantic_producer_binding.py` | pass; every recognized form has a negative twin — a decorated, `async`, generator, rebound, imported or recursive callee, an unordered store, an aliased or escaped container, and an unknown `**` spread each keep the site unresolved | Fixture repository; a site the scan cannot bind stays unresolved with its recorded reason, never dead |
+| An unprovable write cannot be reported as a confident value | `uv run --extra test python -m pytest tests/architecture/test_semantic_producer_binding.py` | pass; the five constructs an earlier local-interpretation attempt reported as fully resolved — a loop-carried write, a negative-index write, a mutated dict re-read through a `**` spread, a helper rebound through `global`, and a TypeScript parameter shadowing `String` — each stay unresolved with their own reason | Fixture repository; a reason names the obstacle without narrowing it, so a site the scan cannot bind stays unresolved, never dead |
 | F1/F2 quantify over exactly what the producer check walks | Same test module: compare `check_producers`' predicate with the declared F1/F2 domain | The vocabularies with `producers` are exactly the `kernel` tier, 6 of 26; the other 20 are all `cross_runtime` | The scan reach bounds the claim further and is reported, not pinned |
 
 Known limits, stated so the check is not over-trusted:
@@ -1140,85 +1137,88 @@ introduce a competing target state.
 
 ## Appendix A: Execution ledger (non-normative)
 
-### 2026-09-17 — B2: three bounded binding forms, and the residue that stays unresolved
+### 2026-09-17 — B2: a bounded blocker taxonomy; the residue stays unresolved
 
-- **Trigger:** [#4447](https://github.com/huangruiteng/loopx/issues/4447) recorded
-  the B2 residue as "34 total minus the 15 unprovable by design". Re-measured on
-  `9003577f9` the total is **41**, and the breakdown is across every scanned
-  vocabulary rather than `effective_action` alone: `annotation_only=5,
-  argument_name_only=10, attribute_read=2, call_result=11, other=1,
-  typescript_dynamic=8, unstable_local=4`. The issue's number was stale; this
-  entry records the measured split.
-- **Delivered:** three bounded local forms in `python_production`, each with
-  positive and negative fixtures in
-  `tests/architecture/test_semantic_producer_binding.py`.
-  1. **Same-module call results.** A call to an undecorated, non-generator,
-     plainly-defined top-level `def` of the same module resolves to the union of
-     that function's own returns. Arguments are never bound to parameters, so a
-     returned parameter stays unknown and the answer does not depend on the call
-     site; it is memoised per module scan. A decorator, `async def`, a generator,
-     a second top-level binding of the name, an imported or attribute call, a
-     local rebinding and recursion all keep the `call_result` blocker.
-  2. **Ordered rebinding of a local.** A local written more than once resolves to
-     the union of the writes that textually precede the read, and only when every
-     store of that name is a plain `name = expression`. Loop, `with`, `except`,
-     walrus, augmented, unpacking, `global` and `del` rebindings are not ordered
-     by this scan and erase the local.
-  3. **Key-precise container writes.** A local container mutated only through
-     direct literal-key subscript writes keeps its untouched keys, and a written
-     key carries the union of its initializer and every write. An alias, a method
-     call, a computed or deeper store, a `del`, or passing the container to any
-     call still discards the container, as before. A `**` spread of statically
-     known dict literals is flattened, so an optional spread no longer hides a
-     sibling key; an unknown spread still makes every key dynamic.
-
-  The TypeScript parser gains the two sound forms the Python scanner already had
-  (`||` and `??` arms, a transparent `String(x)`, and `undefined` read as no
-  value) and, more importantly, reports the **same blocker vocabulary**: the
-  single `typescript_dynamic` catch-all is replaced by `attribute_read`,
-  `call_result`, `unstable_local` and `dynamic_key`, with `typescript_dynamic`
-  kept only as the fallback for a form it cannot classify. An owner-member
-  result (`enum_result`) now carries its reason too; an unlabelled unknown was
-  invisible in the report breakdown.
-- **Result:** unresolved sites **41 → 40**, split
+- **Trigger:** [#4447](https://github.com/huangruiteng/loopx/issues/4447) asks B2
+  for *bounded* producer identification, with dynamic, aliased, external and
+  unprovable paths staying **explicitly unresolved**. The issue's residue figure
+  ("34 total minus the 15 unprovable by design") was stale. Re-measured on
+  `d8e7af141` the total is **41**, across every scanned vocabulary rather than
+  `effective_action` alone, split `annotation_only=5, argument_name_only=10,
+  attribute_read=2, call_result=11, other=1, typescript_dynamic=8,
+  unstable_local=4`.
+- **Rejected first, recorded because the failure is the lesson.** The first
+  attempt at this slice grew `python_production` into a local abstract
+  interpreter: ordered rebinding of a local, container-mutation tracking with
+  alias invalidation, `**` spread flattening, and same-module call resolution,
+  plus `String()`/`undefined` special cases in the TypeScript scanner. It closed
+  **one** site, and review reproduced five confidently wrong "fully resolved"
+  verdicts: a loop whose second iteration emits a value the scan never sees; a
+  write through `container[-1]` missed by a read of `container[0]`; a dict
+  mutated after construction and then spread with `**`, read back from its stale
+  initializer; a helper rebound through `global` still attributed to the
+  module-level `def`; and a TypeScript parameter shadowing `String` still treated
+  as the builtin conversion. For a gate that decides whether code is safe, a
+  wrong confident answer is strictly worse than an admitted unknown, so all of it
+  was removed. The five reproductions are kept as tests in
+  `tests/architecture/test_semantic_producer_binding.py`, now asserting the
+  conservative outcome: each stays unresolved, with its reason.
+- **Delivered: the reason, not the value.** Both scanners keep exactly the
+  bounded syntactic reach they had, and every unresolved site now carries a
+  specific, actionable blocker from **one taxonomy shared by both runtimes**.
+  The TypeScript scanner's single `typescript_dynamic` catch-all is replaced by
+  `attribute_read`, `call_result`, `unstable_local` and `dynamic_key`, with
+  `typescript_dynamic` kept only as the fallback for a write the parser cannot
+  classify further; a `??`/`||` fallback reports the reason of the operand that
+  could not be read, since the fallback is not itself the obstacle. An
+  owner-member result (`enum_result`) carries its reason too; an unlabelled
+  unknown was invisible in the report breakdown. A label narrows nothing: it
+  changes no value set and no `unresolved` flag, and it is checked as such.
+- **Result:** unresolved sites **41 → 41**, and the site list is byte-identical
+  to the baseline's. The split moves only between labels:
   `annotation_only=5, argument_name_only=10, attribute_read=7, call_result=14,
-  other=1, unstable_local=3`. All eight TypeScript sites are reclassified (five
-  `attribute_read`, three `call_result`); none was resolvable, so that part is a
-  taxonomy, not a shrink. The one site that closes is
-  `driver.py::build_loopx_turn_plan:500`, which needed all three forms and the
-  spread flattening at once. Evidence improves further than the count shows:
-  unresolved rows carrying at least one known value go **2 → 7**. Registry
-  values, budgets and the producer site list are unchanged, and no site becomes
-  newly visible or unregistered.
-- **Deliberately not bound, with the reason recorded:**
+  other=1, unstable_local=4`, and `typescript_dynamic` empties. All eight
+  TypeScript sites are reclassified; none was
+  resolvable, so this is a taxonomy, not a shrink. That is the intended outcome —
+  where the scan cannot prove the complete set of possible outputs, the honest
+  answer is `unresolved`, never a confident default. Registry values, budgets,
+  anchors and the producer site list are unchanged, and no site becomes newly
+  visible or unregistered.
+- **Deliberately not narrowed, with the reason recorded:**
   - `annotation_only` (5) — all five are bare `effective_action: str` field
-    declarations carrying **no value node at all**. Unprovable by design;
-    the issue's classification is confirmed.
-  - `argument_name_only` (10) — confirmed unprovable by design, with one
-    sharpening: these are unprovable as a *production role*, not unresolvable as
-    an expression. Four of the ten now carry a fully resolved value set and are
-    still correctly unresolved, because the callee (`_execution_obligation` and
-    its peers) reads the field rather than emitting it. The honest way to shrink
-    this bucket is a registry `call_producers` declaration naming a reviewed
-    output builder — a data edit a reviewer sees — never a scanner change.
-    Counting any field-named keyword as production would make the obligation
-    tautological, which Section 5 forbids.
-  - `attribute_read` (7), `call_result` (14), `unstable_local` (3) and `other`
+    declarations carrying **no value node at all**. Unprovable by design; the
+    issue's classification is confirmed.
+  - `argument_name_only` (10) — unprovable as a *production role*, which is not
+    the same as unresolvable as an expression. One of the ten already carries a
+    fully resolved value set and is still correctly unresolved, because the
+    callee reads the field rather than emitting it. Counting any field-named
+    keyword as production would make the obligation tautological, which Section 5
+    forbids. The honest way to narrow this bucket is a registry `call_producers`
+    declaration naming a reviewed output builder — a data edit a reviewer sees —
+    never a cleverer scanner.
+  - `attribute_read` (7), `call_result` (14), `unstable_local` (4) and `other`
     (1) — every remaining site bottoms out in one of four things outside this
-    scan's bound: a read off a caller-supplied mapping or object
-    (`decision.get("effective_action")`, `run_decision.effective_action`), a call
-    into another module, a returned parameter, or a method chain. Binding any of
-    them needs cross-module or object-field resolution, a separate bounded form
-    with its own blast radius; it is not attempted here. **A site this scan
-    cannot bind stays `unresolved` with its recorded reason — it is never
-    treated as dead.**
-- **Cost:** the producer scan runs on every pull request touching `loopx/`. Over
-  the 319 Python files it reaches and the 5 producer vocabularies, best of three
-  runs on one tree: **9.20 s → 7.17 s**. The deepened scan is net faster because
-  it now reuses the memoised parse and the module-function table across
-  vocabularies instead of re-parsing once per scan.
-- **Effect on normative design:** Section 5's bounded producer model names the
-  three forms and the shared blocker taxonomy; no invariant or milestone changes.
+    scan's bound: a read off a caller-supplied mapping or object, a call into
+    another module, a returned parameter, or a method chain. Binding any of them
+    needs cross-module or object-field resolution — a separate bounded form with
+    its own blast radius, and, as the rejected attempt showed, one whose
+    soundness has to be argued before its convenience. It is not attempted here.
+    **A site this scan cannot bind stays `unresolved` with its recorded reason —
+    it is never treated as dead.**
+- **Cost:** the producer scan runs on every pull request touching `loopx/`.
+  Best of three on one tree, over the six vocabularies that declare `producers`:
+  baseline **28.6 s**, this branch **26.4 s**, the rejected interpreter **25.6 s**.
+  The spread inside a single variant is 26-31 s on the measuring host, so none of
+  these differences is outside run-to-run noise: the reduction neither costs nor
+  saves measurable time, because a label is computed on a path that had already
+  failed to resolve. The interpreter's apparent speedup came from a parse memo it
+  shipped alongside, not from the inference; reusing `_parsed` in
+  `scan_python_production` is a sound one-line change on its own and is left to a
+  separate PR rather than folded into a reduction.
+- **Effect on normative design:** Section 5's bounded producer model gains the
+  shared blocker taxonomy and the statement that neither scanner interprets the
+  module it reads; no invariant or milestone changes.
+
 ### 2026-09-17 — Formula, role and enforcement claims separated; formal signature mutated
 
 Normative for the enforcement-lane wording; the checks are unchanged except for
@@ -1467,8 +1467,8 @@ result on the current tree; what changes is what the invariants claim.
 | 2026-09-16 | Q9: compute the full inventory on demand; retire the committed census | Implementation for [maintainer feedback](https://github.com/huangruiteng/loopx/pull/4360#issuecomment-5692062394); PR review pending | Committed snapshot with post-merge regeneration; diff-only scan rejected | 1, I6, 3, 5, 9, 10, 12 |
 | 2026-09-16 | B2: bind one unrenamed re-export hop in the Python producer scanner | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Require every consumer to import the owner module (fragile; failed silently in M2); unbounded multi-hop resolution rejected | 5, Appendix A |
 | 2026-09-16 | B1 rename invariance: add the name-keyed divergence advisory; state the limit it does not close | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B1; PR review pending | Keying the budget on value sets (rejected: `CONFIDENCE_LEVELS` and `EDGE_CASE_COMPLEXITIES` share `high/low/medium` with different meanings); a committed name ledger (rejected at M0: Q9 retired the committed census). The advisory lists surviving forks by name; it was first described as catching a one-sided rename, which measurement disproved, so both mirrors state the limit as it behaves | 9 |
-| 2026-09-17 | B2: bind same-module call results, ordered local rebinding and key-precise container writes; reclassify the TypeScript residue rather than shrink it | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Bind cross-module calls and object fields (rejected: a separate bounded form with its own blast radius, not this slice); count a field-named keyword as production (rejected: it makes the obligation tautological, Section 5); leave `typescript_dynamic` as one catch-all (rejected: eight sites shared one reason, so the residue was not actionable); bind the callee's parameters to the call-site arguments (rejected: the answer would depend on the caller and could not be memoised, and a wrong binding would invent evidence) | 5, 9, Appendix A |
 | 2026-09-17 | B0: state schema validation, implementation stage, evidence status and blocking behaviour separately for I2/I11-I14 and the enforcement lanes; require each formal invariant id exactly once | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B0; PR review pending | Rename the `blocking_next` lane to match its behaviour (rejected: the lane name is the milestone that owns the check, and renaming it would lose that and collapse the two readings the other way); add a `blocks_today` boolean to `formal_model` (rejected: it would be one more declared field a reader could mistake for a measurement, and the fact is a property of the smoke's `main()`, which no registry edit can change); leave the lane gloss and note the gap in the ledger only (rejected: the gloss is the sentence a reviewer quotes) | 2, 5, 11, Appendix A, Appendix B |
+| 2026-09-17 | B2: give every unresolved producer site a specific blocker reason from one taxonomy shared by both runtimes; leave the bounded syntactic reach unchanged | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Bind same-module call results, ordered local rebinding, key-precise container writes and `**` spreads (implemented, then **rejected on review**: it closed one site and produced five confidently wrong "fully resolved" verdicts — a loop-carried write, a negative-index write, a spread of a mutated dict, a `global` rebinding, and a shadowed `String`; a wrong confident answer is worse for this gate than an admitted unknown); count a field-named keyword as production (rejected: it makes the obligation tautological, Section 5); leave `typescript_dynamic` as one catch-all (rejected: eight sites shared one reason, so the residue was not actionable); loosen a budget or anchor to bank the one closed site (rejected: the site was never proven) | 5, 9, Appendix A, Appendix C |
 | 2026-09-17 | Bound F1/F2 to the kernel tier and the scan reach, restate F4 as scope enumeration completeness, and give every obligation a derived `domain` | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447); **kernel-maintainer approval required, not yet given** | Leave the unconditional statements and record the gap in prose only (rejected: the statement was stronger than `validate_production`'s own docstring); restate F4 as per-context value-set disjointness (rejected: refuted by the repo's own data, since `scope_declarations` exists to permit legitimate same-name reuse); widen the scan so the unconditional claim becomes true (rejected: a separate change with its own risk) | 5, 9, Appendix B, Appendix C |
 
 ## Appendix C: Evidence registry
@@ -1497,6 +1497,7 @@ result on the current tree; what changes is what the invariants claim.
 | E21 | F1/F2 were unconditional but verified over one tier | `3ca868193` | `check_producers`' skip predicate, and the producer scan roots, read from the tree | 6 of 26 vocabularies declare `producers`, exactly the `tier: kernel` ones; the 20 skipped are all `cross_runtime`; the scan reaches 432 of 1203 tracked `loopx/**/*.{py,ts}` files (35.9%), the uncovered bulk being capabilities 285, other control-plane 192, extensions 83 | Counts from the registry and the tracked tree; the reach denominator moves with any new module, so it is reported, not pinned |
 | E22 | Fifteen reported unresolved sites can never become evidence | `3ca868193` | smoke report `unresolved_producer_blockers` | 41 unresolved sites, of which `argument_name_only` 10 and `annotation_only` 5 are a field-named keyword argument and a bare declaration; the other 26 are dynamic or interprocedural | Label-keyed; the two labels are code-owned in the scanner, so the floor moves only by a code edit |
 | E23 | F4 as written could not be violated | `3ca868193` | read `check_scope_declarations` against the F4 statement | Scope is declared and never inferred, so `conflict := collision ∧ scope_overlap` is a definition; what is enforced is that a declaration names every defining module exactly once, over 1 declaration and 4 contexts | Judgement from reading the check; value-set disjointness across contexts is deliberately *not* the property, because `SOURCE_SURFACES` legitimately reuses one name in four contexts (E19) |
+| E25 | Local interpretation bought one site and five wrong answers | `d8e7af141` + `a02200591` | replay the producer scan with and without the rejected local interpreter, and run the five reproductions in `tests/architecture/test_semantic_producer_binding.py` against both | The interpreter moved the residue 41 → 40, closing only `driver.py::build_loopx_turn_plan:500`, which needed container-mutation tracking to read a `payload` dict through subscript writes it could not order. On the same build it reported five constructs as **fully resolved** whose true value set it never saw: a loop-carried write (`{"run"}` while iteration two emits `drop`), `codes[-1] = "drop"` read back as `codes[0] == "run"`, a mutated dict re-read through `**` from its stale initializer, a `global`-rebound helper still read off the module `def`, and `String("run")` under a parameter named `String`. Removed, the residue returns to 41 with a byte-identical site list | Fixture constructs plus one real site; they show the inference is unsound, not how often it misfires in this tree. The five now stand as regression tests asserting the unresolved outcome, so the failure mode cannot return unnoticed |
 | E13 | The conflict budget mostly measured local naming | `1dc6ad8d8` | `MODULE_LOCAL_CONVENTION` applied to `conflicting_values` and `same_runtime_forks` names | 16 of 18 conflicts and 7 of 25 forks are module-local conventions; the semantic subsets are 2 and 18 | Classification is a name pattern, documented in the scanner and pinned by a fixture test |
 
 ## Appendix D: Rejected or superseded alternatives
