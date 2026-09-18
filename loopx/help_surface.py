@@ -244,6 +244,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Qualify one exact final diff against an enabled project policy and receipt contract.",
             },
             {
+                "command": "loopx goal-acceptance",
+                "purpose": "Configure, inspect or verify a versioned Goal acceptance basis.",
+            },
+            {
                 "command": "loopx integration-branch --help",
                 "purpose": "Detect reviewed source-branch drift and rebuild one local integration branch.",
             },

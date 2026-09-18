@@ -241,10 +241,13 @@ def assert_blocked_priority_fallback_notice_visible() -> None:
     user_channel = decision["interaction_contract"]["user_channel"]
     assert user_channel["action_required"] is False, user_channel
     assert user_channel["notify"] == "NOTIFY", user_channel
-    assert "no owner action is required" in user_channel["reason"], user_channel
+    # The shipped notice starts this sentence with "No" (it follows a full
+    # stop), so assert the policy phrase case-insensitively instead of pinning
+    # the sentence-initial capitalization.
+    assert "no owner action is required" in user_channel["reason"].lower(), user_channel
     markdown = render_quota_should_run_markdown(decision)
     assert "blocked_priority_fallback: notify_user=True" in markdown, markdown
-    assert "no owner action is required" in markdown, markdown
+    assert "no owner action is required" in markdown.lower(), markdown
     assert f"blocked_priority_item[1]: {BLOCKED_CORE_TODO}" in markdown, markdown
     assert f"blocked_priority_selected: {FALLBACK_TODO}" in markdown, markdown
 
