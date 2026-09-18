@@ -298,7 +298,15 @@ interface CompactEvent {
   readonly sourceRefs: Record<string, string>
 }
 
+/**
+ * Event types the installed generation no longer emits but that a durable log
+ * written by an earlier release still replays. They stay unconsumed instead of
+ * turning into one `unsupported` row per historical token.
+ */
+const RETIRED_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set(['assistant/chunk'])
+
 function compactSessionEvent(event: SessionEvent): CompactEvent | undefined {
+  if (RETIRED_SESSION_EVENT_TYPES.has(event.type)) return undefined
   const data = event.data as Record<string, unknown>
   const summary: Record<string, number | string> = {}
   const sourceRefs: Record<string, string> = { event_seq: String(event.seq) }
@@ -339,10 +347,6 @@ function compactSessionEvent(event: SessionEvent): CompactEvent | undefined {
       ref('tool_call_id', identity(source?.callId))
       return { kind: 'tool_completed', summary, sourceRefs }
     }
-    case 'assistant/chunk':
-      // Token-level chunks are not consumed: they carry model text and add no
-      // stage signal. Their absence is visible through `event_kinds_consumed`.
-      return undefined
     default:
       put('source_event_type', token(event.type))
       return { kind: 'unsupported', summary, sourceRefs }

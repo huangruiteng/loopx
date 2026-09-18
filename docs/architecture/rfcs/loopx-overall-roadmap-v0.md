@@ -124,7 +124,7 @@ This maps **all 30 primary RFCs** at the scope baseline, counting language mirro
 | [Provider-Neutral Post-Writeback Capability Hooks v0](provider-neutral-post-writeback-capability-hooks-v0.md) | S3/S8 | Draft; first periodic-report vertical implemented | P1: R3 return/successors reuse durable intent; isolate hook failure, no primary-transaction coupling/direct effects |
 | [Agent IM, LoopX, And OpenViking Collaboration v0](agent-im-openviking-collaboration-v0.md) | S3/S6/S8 | Draft; three-owner integration unqualified | P1/P2: separate IM delivery, LoopX work authority and OV context; reconnect/revoke/source-loss cases |
 | [Per-Goal Usage, Token, and Cost Surfacing v0](goal-usage-token-cost-v0.md) | S7/S5 | Draft; Codex aggregate/cost display slice exists | P0 observation→P1 provider coverage: unknown is not zero, deduplicate accounting, price source/freshness; usage grants no budget |
-| [Intelligent Review and Dynamic Presentation Surfaces v0](intelligent-review-presentation-surfaces-v0.md) | S5 | Draft; typed proposal inputs exist, general compiler unshipped | P1: one real decision-frame vertical, stale state and optimistic rollback; avoid redundant confirmation |
+| [Intelligent Review and Dynamic Presentation Surfaces v0](intelligent-review-presentation-surfaces-v0.md) | S5 | Draft; action/attention verticals and local delivery-chain/acceptance review implemented | P1: cross-channel disclosure and governed amendment/settlement review; local visibility does not qualify G2 |
 | [Human Attention Wishlist v0](human-attention-wishlist-v0.md) | S5/S11 | Draft; Held | P3: reopen only on repeated second real need; sidecar cannot alter gates/quota/scheduling |
 | [Human-confirmed domain operations (v0)](human-confirmed-domain-operations-v0.md) | S8/S9 | Draft; proposal only | P2: simulated immutable confirmation→effect→reconciliation→return; finance provider separate, no broader coordination grant |
 | [Research Exploration Control Plane v0](research-exploration-control-plane-v0.md) | S11/S3 | Draft; partial M2 composition/successor | P1: independently verify observation/write-time gate/closure basis; defer inferred triggers and model selection |
@@ -234,6 +234,8 @@ These priorities do not change live Goal quota or authorize experiments/cloud re
 - **Rollback:** disable the commit class, retain effect-free proposals; do not restore old revisions or relax fences.
 
 ### R5: TS Convergence and Local Persistence
+
+L3 checkpoint: standalone acquisition/takeover, atomic claim admission and maintenance share typed lease facts/rules and provider opening. Exact acquisition retry verifies current execution proof; real CLI completion can recover missing Markdown display. Full-state scope conflicts, process interruption and File/SQLite/PostgreSQL read-only rehearsal are covered. [Remaining executor and integration boundaries](../../reference/canonical-lease-renew.md); R5, D2/D3 and default qualification remain open.
 
 - **Owner:** TS T0–T4 and shared-authority D1–D3; retain their numbering and gates.
 - **Selection:** prioritize an entire hot-path transaction or recovery lifecycle used by R1–R4. Record before/after callers, owners, crossings, actual deletions and performance. Stop adding per-field Python→TS RPCs; do not rebuild the merged Todo update.

@@ -89,6 +89,21 @@ coordination 路径使用同一份语言中立的 `coordination_state_contract_v
 仅将 typed read result 适配为兼容 summary。这是 contract 检查点，不是已经完成的
 CLI lifecycle cutover。
 
+### Lease 领取与生命周期收敛（2026-09-18）
+
+独立 acquire/接管和维护共用 local provider/source fence。`task_lease_acquire_decision.ts`
+拥有领取准入和 materializer，legacy acquire 与 canonical 原子 Todo claim 复用；
+`task_lease_state.ts` 解释完整 canonical facts，归档 holder 不再阻塞 scope。Python
+只通过一次 native 请求传注册事实，不重建 canonical Todo/lease head；generation
+耗尽明确拒绝。
+
+Acquire receipt 本身不证明当前执行权：创建 CAS 的原样重试恢复原决定，再检查
+当前 owner/key/epoch；续约后返回当前 proof，过期/释放/转交不会复活旧执行。
+Canonical 完成可经既有 outbox 重建缺失的 Markdown 展示。真实 CLI、规模及
+native/imported fixture、进程中断和只读四臂演练覆盖此边界。见[操作与兼容](../../reference/canonical-lease-renew.md)。
+跨外部 effect 的 executor 持锁、剩余 L2/L4/L5 caller、D2/D3 和新 Goal 默认化仍
+独立验收；本批不是全部 L3 或 T4 retirement。
+
 ### Local provider opening 边界（2026-09-13）
 
 Provider-first runtime 现在只有一个 typed local opening seam。没有 selector 时
@@ -642,18 +657,32 @@ observation 调用。Python 只适配 registry、宿主、hook 组合和 CLI，�
 混入功能开关。详见[操作语义](../../quota-allocation.md)。
 
 
-Advancement-frontier checkpoint 闭合：`todos/frontier_revision.ts` 现统一 Agent
-选择、完整度、实质内容哈希、长链阈值与精确 ACK/rearm 分类。Python 保留 v0 字段清单
-与 legacy JSON/metadata codec，使合法且未变化的 frontier 保持已有指纹；删除旧 Python
-revision builder、index selector 和分两步执行的长链决策。终态 advancement 仍影响
-实质身份；仅更新时间不重新触发。阈值仍是 15 项 advancement，或存在 advancement
-时的 20 项可选 open Todo。被排除的 unclaimed 工作不再改变该 Agent 的 checkpoint，
-包括没有 claimed Todo 的 Agent；取消 exclusion 后，该工作重新相关。选中 frontier
-中的重复 ID、重复匹配的 index lane 与不完整时间不能提供完整 checkpoint 或压制
-replan。这些是明确的只读语义修正，不是执行授权。既有 canonical source 在展示截断前
-生成 index。复杂 fixture 经真实 provider 验证 accepted ACK、excluded/eligible 修改、
-新可用工作及陈旧／缺失展示；私有快照只读对照结果不公开原始数据。
-本批闭合一个 T3 规则组，不代表其余 consumer 或 T1/T2/D1–D3 完成。
+Advancement-frontier checkpoint 闭合：`todos/frontier_revision.ts` 统一 Agent
+选择、完整度、实质内容哈希、长链阈值、checkpoint 构造与 ACK/rearm 分类。
+Observation、语义写回和 runnable-successor 回执现在共用一个 typed checkpoint
+构造器。后继路径在一次请求内解析完整来源、owned identity 和替换后的 checkpoint
+列表；Python 不再自行拼装回执，也不为每个身份字段重复读取同一 frontier。
+Python 保留 v0 字段清单、legacy JSON/metadata codec、后继资格与既有 obligation-id
+推导。TS 统一时间顺序，并仅对唯一新鲜后继插入从完整当前来源重建前置 revision；
+Python 验证前置 obligation id。压缩保留实质字段 `done`，历史保留后继来源关系。
+多后继歧义、过期、来源截断或无关实质变化都不能关闭当前 obligation。
+这闭合一个 T3 规则组，不代表其余 consumer 或 T1/T2/D1–D3 完成。
+
+阈值仍是 15 项 advancement，或存在 advancement 时的 20 项可选 open Todo。
+完整实质 revision 包含终态 advancement；仅更新时间不重新触发。完整的 Agent-owned
+identity 还能在同伴改变共享 unclaimed 工作时保持既有 long-chain ACK 有效。
+自己的实质工作变化仍重新触发；全是未认领工作的链不能使用 owned 豁免。
+历史 revision-only ACK 仍按精确 revision 匹配。明确修正：语义写回不再丢失
+owned identity；只有 identity 而没有 revision、或明确不完整的 checkpoint 不能
+压制 replan；其他 trigger kind 不能借用长链身份匹配。阈值、写权限和 obligation-id
+规则均未改变。
+
+Canonical index 仍在展示截断前生成。Exclusion、重复 ID/index lane、不完整时间与
+权威 index 不完整时均保持 fail-closed。真实 CLI 验证两条 ACK 路径经过运行记录及
+历史回读后，同伴 claim 不重新触发、自己的实质修改重新触发；复杂 fixture 还通过
+真实 File provider，在展示陈旧／缺失时覆盖 revision-only 与 owned ACK。
+前端／Lark 配置未改变：这是共享 quota/recovery checkpoint 路径，没有新增控制项
+或用户确认，也不代表 provider promotion。
 
 来源 facts 超过 512 KiB 时使用无损 deflate/base64 传输，保留精确 v0 内容和共享
 2 MiB 请求边界。TS 拒绝畸形载荷及解压超过 64 MiB 的输入，不截断 Todo，也不

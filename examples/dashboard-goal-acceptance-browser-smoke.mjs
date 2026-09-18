@@ -33,8 +33,7 @@ try {
       if (await sidebar.isVisible()) await sidebar.click();
     }
     await page.locator(".personal-goal-link").first().click({timeout: 10000});
-    await page.getByRole("button", {name: language === "en" ? "Open Goal details or capability settings" : "打开 Goal 详情或能力配置"}).click();
-    await page.getByRole("group", {name: language === "en" ? "Goal settings" : "Goal 设置"}).getByRole("button", {name: /Goal details|Goal 详情/}).click();
+    await page.getByRole("button", {name: language === "en" ? "Overview" : "概览", exact: true}).click();
     const card = page.locator(".personal-goal-acceptance");
     await card.getByText("Independent verification report", {exact: true}).waitFor();
     assert.match(await card.innerText(), /agent-a/);
@@ -60,8 +59,7 @@ try {
         const navigation = page.getByRole("button", {name: "Open Goal navigation"});
         if (await navigation.isVisible()) await navigation.click();
         await page.locator(".personal-goal-link").first().click();
-        await page.getByRole("button", {name: "Open Goal details or capability settings"}).click();
-        await page.getByRole("group", {name: "Goal settings"}).getByRole("button", {name: /Goal details/}).click();
+        await page.getByRole("button", {name: "Overview", exact: true}).click();
         const refreshedCard = page.locator(".personal-goal-acceptance");
         if (observation === current) {
           await refreshedCard.getByText("Independent verification report", {exact: true}).waitFor();

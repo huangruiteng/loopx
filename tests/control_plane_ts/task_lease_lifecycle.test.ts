@@ -1697,3 +1697,20 @@ test("fence close keeps its held fence when the authority source changed", async
   assert.equal(retried.released, true);
   assert.equal((await lease(root)).status, "released");
 });
+
+for (const dimension of ["version", "epoch"] as const) {
+  test(`legacy lifecycle rejects exhausted ${dimension} before persistent mutation`, async t => {
+    const root = await workspace(t);
+    const acquired = await executeTaskLeaseAcquire(await acquireRequest(root)); assert.equal(acquired.ok, true);
+    const path = join(root, "runtime", "goals", "goal-a", "task-leases", "todo_target.json");
+    const lease = JSON.parse(await readFile(path, "utf8"));
+    lease[dimension === "version" ? "version" : "lease_epoch"] = Number.MAX_SAFE_INTEGER;
+    await writeFile(path, JSON.stringify(lease)); const before = await readFile(path, "utf8");
+    const result = await executeTaskLeaseLifecycle(await lifecycleRequest(root, dimension === "version" ? "renew" : "transfer", {
+      expected_version: lease.version,
+      ...(dimension === "epoch" ? {new_owner: "agent-b", new_idempotency_key: "lease-b"} : {}),
+    }));
+    assert.equal(result.error_code, "lease_generation_exhausted", JSON.stringify(result));
+    assert.equal(await readFile(path, "utf8"), before);
+  });
+}

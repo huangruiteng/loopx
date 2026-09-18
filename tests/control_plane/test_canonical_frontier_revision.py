@@ -11,6 +11,7 @@ from test_goal_amendment_proposal import _write_fixture, GOAL_ID
 from loopx.control_plane.goals.goal_frontier.long_todo_chain import evaluate_long_todo_chain
 from loopx.control_plane.goals.shared_goal_alignment import project_shared_goal_alignment
 from loopx.control_plane.testing.canary_harness import run_json_cli_result
+from loopx.control_plane.work_items.progress_observation import semantic_delta_from_writeback
 from loopx.status import active_state_todo_fields
 
 
@@ -44,7 +45,8 @@ def _commit_variant(paths, operation, todo_id):
 
 
 @pytest.mark.parametrize("display", ["stale", "missing"])
-def test_complex_canonical_frontier_ack_tracks_only_selectable_material_changes(tmp_path, display):
+@pytest.mark.parametrize("ack_scope", ["revision_only", "owned"])
+def test_complex_canonical_frontier_ack_tracks_only_selectable_material_changes(tmp_path, display, ack_scope):
     paths = _write_fixture(tmp_path)
     projection = _fixture()
     # The shared fixture intentionally includes incomplete historical timestamps.
@@ -57,6 +59,7 @@ def test_complex_canonical_frontier_ack_tracks_only_selectable_material_changes(
             "role": "agent", "status": "open", "done": False, "task_class": "advancement_task",
             "text": "Synthetic independent work", "archive_state": "active", "source_section": "Agent Todo",
             "index": len(projection["todos"]) + 1, "updated_at": "2026-09-01T00:00:00.000002Z",
+            **({"claimed_by": "agent-a"} if index == 0 else {}),
             **({"excluded_agents": ["agent-a"]} if index == 29 else {}),
         })
     from loopx.control_plane.coordination.local_authority_shadow_projection import canonical_bytes
@@ -84,17 +87,26 @@ def test_complex_canonical_frontier_ack_tracks_only_selectable_material_changes(
     ack = {"recorded": True, "semantic_delta": {"accepted": True,
         "obligation_id": "replan-0123456789abcdef", "trigger_kinds": ["long_todo_chain"],
         "trigger_checkpoints": [{"kind": "long_todo_chain", "frontier_revision": initial.frontier_revision}]}}
+    if ack_scope == "owned":
+        ack["semantic_delta"] = semantic_delta_from_writeback(obligation={
+            "obligation_id": "replan-0123456789abcdef", "triggers": [initial.trigger],
+        }, progress_observation={"result_class": "advanced", "surface_id": "canonical-frontier",
+            "evidence_ids": ["evidence:source-readback"]})
+        assert ack["semantic_delta"]["accepted"] and initial.frontier_owned_identity
     assert observe(ack)[1].acknowledged
     _commit_variant(paths, "excluded-edit", "todo_zz_frontier_029")
     assert observe(ack)[1].acknowledged
     _commit_variant(paths, "eligible-edit", "todo_zz_frontier_028")
     changed, decision = observe(ack)
-    assert not decision.acknowledged and decision.rearmed_after_obligation_id == "replan-0123456789abcdef"
+    assert decision.acknowledged is (ack_scope == "owned")
+    assert decision.rearmed_after_obligation_id == (None if ack_scope == "owned" else "replan-0123456789abcdef")
     assert changed.frontier_revision != initial.frontier_revision
     next_ack = deepcopy(ack)
     next_ack["semantic_delta"]["trigger_checkpoints"][0]["frontier_revision"] = changed.frontier_revision
     assert observe(next_ack)[1].acknowledged
     _commit_variant(paths, "remove-exclusion", "todo_zz_frontier_029")
+    assert observe(next_ack)[1].acknowledged is (ack_scope == "owned")
+    _commit_variant(paths, "owned-edit", "todo_zz_frontier_000")
     assert not observe(next_ack)[1].acknowledged
     code, result = run_json_cli_result("quota", "should-run", "--goal-id", GOAL_ID,
         "--agent-id", "agent-a", registry_path=paths["registry"])

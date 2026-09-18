@@ -19,6 +19,7 @@ from .contract import (
 from .handoff_gate import handoff_ready_successor_todo_ids
 from .handoff_note import attach_todo_handoff_note, compact_todo_continuation_hint
 from .todo_semantics import todo_item_task_class
+from .frontier_revision import FRONTIER_REVISION_FIELDS
 
 TODO_SUMMARY_COMPACT_FIELDS = (
     "schema_version",
@@ -273,7 +274,8 @@ def todo_planning_source_items(
             seen.add(todo_id)
             compact = compact_todo_summary_item(item, text=text)
             if include_terminal:
-                for field in ("evidence", "note", "last_actor_agent_id"):
+                # Terminal-inclusive planning also proves exact frontier causality.
+                for field in (*FRONTIER_REVISION_FIELDS, "evidence", "note", "last_actor_agent_id"):
                     if item.get(field) is not None:
                         compact[field] = item[field]
             planning_items.append(compact)

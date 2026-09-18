@@ -91,6 +91,34 @@ test("prepare owns packet normalization, budgets, and path delta", () => {
   });
 });
 
+test("authoring rejects misplaced declared deltas without classifying telemetry", () => {
+  const delta = {schema_version: "goal_path_delta_v0", outcome: "replan",
+    prior_assumption: "Keep the route.", observed_reality: "A dependency changed.",
+    changed: ["Use the successor."]};
+  const patch = {vision_summary: "Deliver the successor."};
+  for (const extra of [
+    {goal_path_delta_v0: delta}, {comparison: delta},
+    {path_delta: delta, comparison: delta},
+    {vision_patch: {...patch, path_delta: delta}},
+  ]) {
+    assert.throws(() => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {vision_patch: patch, ...extra},
+    })), /must be supplied as agent_vision.path_delta/);
+  }
+  const telemetry = {outcome: "ok", evidence_refs: ["evidence:probe"]};
+  const baseline = buildVisionCheckpoint(prepareRequest({agent_vision_packet: {vision_patch: patch}}));
+  assert.deepEqual(buildVisionCheckpoint(prepareRequest({
+    agent_vision_packet: {vision_patch: patch, telemetry},
+  })), baseline);
+  assert.throws(() => buildVisionCheckpoint(prepareRequest({agent_vision_packet: {
+    vision_patch: patch, path_delta: {...delta, schema_version: "unsupported"},
+  }})), /path_delta.schema_version must be goal_path_delta_v0/);
+  const accepted = buildVisionCheckpoint(prepareRequest({agent_vision_packet: {
+    vision_patch: patch, path_delta: delta, telemetry,
+  }}));
+  assert.deepEqual((accepted.agent_vision as Record<string, unknown>).path_delta, delta);
+});
+
 test("structured replans have a bounded 1800-character budget including path evidence", () => {
   for (const character of ["x", "界"]) {
     // Independent boundary oracle: 420 + 420 + 280 + 320 + 320 + 6 + 34.
@@ -183,7 +211,7 @@ test("prepare merges a patch and requires an explicit durable replan", () => {
       merge_patch: true,
       require_path_delta_for_durable_change: true,
     })),
-    /provide goal_path_delta_v0 with outcome=replan/,
+    /provide path_delta with schema_version=goal_path_delta_v0 and outcome=replan/,
   );
 });
 

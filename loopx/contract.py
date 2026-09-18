@@ -755,16 +755,22 @@ def iter_scan_files(scan_root: Path) -> list[Path]:
     files: list[Path] = []
     tracked_files = _tracked_scan_files(scan_root)
     root_parts = set(scan_root.parts)
-    if any(part in DEFAULT_SKIP_DIRS or part.endswith(".egg-info") for part in root_parts):
+    # Dependency pruning never overrides tracked repository ownership.
+    if (
+        any(part in DEFAULT_SKIP_DIRS or part.endswith(".egg-info") for part in root_parts)
+        or os.path.isfile(scan_root / "pyvenv.cfg")
+    ):
         return sorted(tracked_files)
 
     for dir_path, dir_names, file_names in os.walk(scan_root):
+        current_dir = Path(dir_path)
         dir_names[:] = [
             name
             for name in dir_names
-            if name not in DEFAULT_SKIP_DIRS and not name.endswith(".egg-info")
+            if name not in DEFAULT_SKIP_DIRS
+            and not name.endswith(".egg-info")
+            and not os.path.isfile(current_dir / name / "pyvenv.cfg")
         ]
-        current_dir = Path(dir_path)
         for file_name in file_names:
             path = (current_dir / file_name).resolve()
             if path.name.endswith(".local.json"):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import json
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -15,6 +16,7 @@ from .control_plane.effect_runtime import (
     EffectRuntimeRemoteError,
     EffectRuntimeStartupError,
 )
+from .control_plane.runtime.public_safety import validate_public_safe_value
 from .feedback import validate_goal_id
 from .history import load_registry
 from .registry import registry_goals
@@ -70,15 +72,20 @@ class ChatStatusRequestMixin:
     def _send_json(self, payload: dict[str, Any], *, status: int = 200) -> None:
         raise NotImplementedError
 
-    def _status(self) -> None:
+    def _delivery_review(self) -> None:
+        self._status(delivery_review=True)
+
+    def _status(self, *, delivery_review: bool = False) -> None:
         query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
         query_error_code = "invalid_goal_activation"
         try:
             activation_state_filter = parse_goal_activation_filter(query)
             query_error_code = "invalid_workspace_query"
             views = query.get("view")
-            if views is not None and views != ["workspace-directory"]:
+            if views is not None and (delivery_review or views != ["workspace-directory"]):
                 raise ValueError("unsupported workspace status view")
+            if delivery_review and not self._require_loopback_origin():
+                return
             requested_goals = query.get("goal_id")
             goal_id = self.server.selected_goal_id
             if requested_goals is not None:
@@ -89,6 +96,8 @@ class ChatStatusRequestMixin:
                 if goal_id and requested_goal != goal_id:
                     raise ValueError("goal_id is outside this workspace")
                 goal_id = requested_goal
+            if delivery_review and not goal_id:
+                raise ValueError("delivery review requires one goal_id")
         except ValueError as exc:
             self._send_error(
                 str(exc),
@@ -97,7 +106,7 @@ class ChatStatusRequestMixin:
             )
             return
         try:
-            if views is not None or requested_goals is not None:
+            if views is not None or requested_goals is not None or delivery_review:
                 registry = load_registry(self.server.registry_path)
                 if goal_id and goal_id not in {
                     str(g.get("id")) for g in registry_goals(registry)
@@ -107,7 +116,7 @@ class ChatStatusRequestMixin:
                 directory = workspace_goal_directory(
                     registry, selected_goal_id=goal_id
                 )
-                if views is not None:
+                if views == ["workspace-directory"]:
                     self._send_json(directory)
                     return
             projection = collect_status(
@@ -117,12 +126,13 @@ class ChatStatusRequestMixin:
                 limit=self.server.limit,
                 goal_id=goal_id,
                 include_public_boundary_scan=False,
+                include_task_graph=delivery_review,
                 activation_state_filter=activation_state_filter,
                 include_goal_subagent_configuration=(
                     goal_subagent_configuration_enabled(self.server)
                 ),
             )
-            if requested_goals is not None:
+            if requested_goals is not None or delivery_review:
                 latest = workspace_goal_directory(
                     load_registry(self.server.registry_path)
                 )
@@ -134,6 +144,22 @@ class ChatStatusRequestMixin:
                 projection["workspace_registry_revision"] = directory[
                     "registry_revision"
                 ]
+            if delivery_review:
+                if projection.get("ok") is not True:
+                    self._send_error("Delivery review sources are unavailable.", status=503)
+                    return
+                item = next((row for row in projection.get("attention_queue", {}).get("items", [])
+                             if row.get("goal_id") == goal_id), {})
+                goal = next((row for row in projection.get("run_history", {}).get("goals", [])
+                             if row.get("id") == goal_id), {})
+                projection = {
+                    "ok": True,
+                    "goal_id": goal_id,
+                    "observed_at": datetime.now(timezone.utc).isoformat(),
+                    "graph": item.get("task_graph_projection"),
+                    "acceptance": goal.get("acceptance_observation"),
+                }
+                validate_public_safe_value(projection)
             protected_paths = [self.server.registry_path, *self.server.scan_roots]
             projection = json.loads(
                 redact_local_paths(

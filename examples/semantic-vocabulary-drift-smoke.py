@@ -334,8 +334,15 @@ def check_formal_model(model: dict[str, Any], registry: dict[str, Any]) -> None:
             "formal_model role_hierarchy must classify interpreter and pass_through as consumers")
     require(set(model["relations"]) == FORMAL_RELATIONS, "formal_model relations must be the declared edge kinds")
     invariants = model["invariants"]
-    require(isinstance(invariants, list) and {item.get("id") for item in invariants} == FORMAL_INVARIANTS,
-            "formal_model invariants must cover exactly F1-F6")
+    require(isinstance(invariants, list), "formal_model invariants must be a list")
+    invariant_ids = [item.get("id") for item in invariants]
+    require(set(invariant_ids) == FORMAL_INVARIANTS, "formal_model invariants must cover exactly F1-F6")
+    # Every dict below is built by id, so a repeated entry is silently reduced to
+    # its last occurrence: two entries for one id would both validate while only
+    # one of them is reported, and a reader could not tell which statement,
+    # evidence boundary or stage the smoke actually walked.
+    require(len(invariant_ids) == len(set(invariant_ids)),
+            "formal_model invariants must state each of F1-F6 exactly once")
     require(set(FORMAL_DOMAIN_ANCHOR) == FORMAL_INVARIANTS,
             "FORMAL_DOMAIN_ANCHOR must pin a domain for every formal invariant")
     for item in invariants:

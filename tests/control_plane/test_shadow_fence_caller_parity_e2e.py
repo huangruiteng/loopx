@@ -27,7 +27,7 @@ BUILDER = (
     "leases=json.loads(sys.argv[2])); "
     "value['handoff_mode']='hard_lease'; print(json.dumps(value))"
 )
-PLACEHOLDERS = ("runtime_root", "todo_a", "todo_b", "todo_gate")
+PLACEHOLDERS = ("runtime_root", "todo_a", "todo_b", "todo_c", "todo_gate")
 
 
 class Workspace:
@@ -37,6 +37,8 @@ class Workspace:
         self.w = Caller(path, mode, name)
         self.ids: dict[str, str] = {}
         self.lease_version = 0
+        self.lease_owner = "agent-a"
+        self.lease_key = "parity-lease"
         self.control: dict[str, dict] | None = None
 
     def call(self, *args: str) -> dict:
@@ -58,7 +60,7 @@ class Workspace:
     def normalize(self, value: object) -> object:
         text = json.dumps(value)
         text = text.replace(json.dumps(str(self.w.root))[1:-1], "{runtime_root}")
-        for key in ("todo_gate", "todo_b", "todo_a"):
+        for key in ("todo_gate", "todo_c", "todo_b", "todo_a"):
             if key in self.ids:
                 text = text.replace(self.ids[key], "{" + key + "}")
         return json.loads(text)
@@ -98,6 +100,7 @@ def build_seeded(path: Path, mode: str, name: str, *, gate: bool) -> Workspace:
     assert ws.call("handoff-mode", "set", "--mode", "hard_lease")["ok"] is True
     ws.ids["todo_a"] = ws.w.add("Parity target A")
     ws.ids["todo_b"] = ws.w.add("Parity leased B")
+    ws.ids["todo_c"] = ws.w.add("Parity fresh acquisition C")
     if gate:
         gate_add = ws.call("todo", "add", "--role", "user", "--task-class", "user_gate", "--global-gate",
                            "--text", "Approve the parity plan")
@@ -109,7 +112,7 @@ def build_seeded(path: Path, mode: str, name: str, *, gate: bool) -> Workspace:
     lease = ws.control["cli-task_lease_acquire-absent"]["envelope"]
     assert lease.get("acquired") is True, lease
     ws.lease_version = int(lease["lease"]["version"])
-    seed_and_fence(ws, ("todo_a", "todo_b", "todo_gate") if gate else ("todo_a", "todo_b"))
+    seed_and_fence(ws, ("todo_a", "todo_b", "todo_c", "todo_gate") if gate else ("todo_a", "todo_b", "todo_c"))
     return ws
 
 
@@ -144,10 +147,10 @@ def build_w5(path: Path) -> Workspace:
 def lease_args(ws: Workspace, verb: str) -> tuple[str, ...]:
     todo_b, version = ws.ids.get("todo_b", ""), str(ws.lease_version)
     if verb == "acquire":
-        return ("task-lease", "acquire", "--todo-id", ws.ids.get("todo_a", ""), "--owner", "agent-a",
+        return ("task-lease", "acquire", "--todo-id", ws.ids.get("todo_c", ws.ids.get("todo_a", "")), "--owner", "agent-a",
                 "--idempotency-key", "parity-acquire", "--ttl-seconds", "3600")
-    common = ("task-lease", verb, "--todo-id", todo_b, "--owner", "agent-a",
-              "--idempotency-key", "parity-lease", "--expected-version", version)
+    common = ("task-lease", verb, "--todo-id", todo_b, "--owner", ws.lease_owner,
+              "--idempotency-key", ws.lease_key, "--expected-version", version)
     if verb == "renew":
         return (*common, "--ttl-seconds", "7200")
     if verb == "transfer":
@@ -182,8 +185,8 @@ def row_args(ws: Workspace, caller: str) -> tuple[str, ...]:
                                        "--no-follow-up", "--dry-run"),
         "todo_supersede_dry_run": ("todo", "supersede", "--todo-id", a, "--agent-id", "agent-a",
                                    "--text", "Parity successor", "--evidence", "validation://parity", "--dry-run"),
-        "todo_complete_dry_run_leased": ("todo", "complete", "--todo-id", b, "--agent-id", "agent-a",
-                                         "--task-lease-idempotency-key", "parity-lease",
+        "todo_complete_dry_run_leased": ("todo", "complete", "--todo-id", b, "--agent-id", ws.lease_owner,
+                                         "--task-lease-idempotency-key", ws.lease_key,
                                          "--task-lease-expected-version", version,
                                          "--evidence", "validation://parity", "--no-follow-up", "--dry-run"),
     }
@@ -228,12 +231,80 @@ def observe_row(ws: Workspace, row: dict) -> dict:
     return ws.observe(row_args(ws, row["caller"]))
 
 
+def assert_canonical_lease_transition(ws: Workspace, caller: str, before: dict, observed: dict) -> None:
+    """Prove the caller's transition and carry only independently checked proof."""
+    assert "lease_path" not in observed["envelope"], observed
+    canonical_after = native(ws.w, "read", {})
+    old_head, new_head = before["head"], canonical_after["head"]
+    assert int(new_head["cursor"]) == int(old_head["cursor"]) + 1
+    assert new_head["head"]["todos"] == old_head["head"]["todos"]
+    target = ws.ids["todo_b"]
+    old_leases, new_leases = old_head["head"]["leases"], new_head["head"]["leases"]
+    assert [lease for lease in new_leases if lease["todo_id"] != target] == [
+        lease for lease in old_leases if lease["todo_id"] != target
+    ]
+    old = next(lease for lease in old_leases if lease["todo_id"] == target)
+    current = next(lease for lease in new_leases if lease["todo_id"] == target)
+    assert observed["envelope"]["lease"] == ws.normalize(current)
+    released, transferred = caller == "task_lease_release", caller == "task_lease_transfer"
+    expected = {
+        "version": old["version"] + (0 if released else 1),
+        "lease_epoch": old["lease_epoch"] + (1 if transferred else 0),
+        "owner": "agent-b" if transferred else old["owner"],
+        "idempotency_key": "parity-transfer" if transferred else old["idempotency_key"],
+        "write_scopes": old["write_scopes"],
+        "status": "released" if released else "active",
+    }
+    assert {key: current[key] for key in expected} == expected
+    if released:
+        assert current["expires_at"] == old["expires_at"]
+        assert current["released_at"] == current["updated_at"]
+    else:
+        # Renew invalidates the old version; transfer also retires the sender's
+        # owner/key. Preserve those distinct completion-proof rejections.
+        stale = ws.call(*row_args(ws, "todo_complete_dry_run_leased"))
+        code = "lease_cas_mismatch" if transferred else "version_mismatch"
+        assert stale["ok"] is False and stale["error_code"] == code, stale
+        assert native(ws.w, "read", {}) == canonical_after
+    ws.lease_version = expected["version"]
+    ws.lease_owner, ws.lease_key = expected["owner"], expected["idempotency_key"]
+    # The receiver's current proof previews successfully, while a released
+    # proof cannot authorize completion. Neither preview may mutate authority.
+    preview = ws.call(*row_args(ws, "todo_complete_dry_run_leased"))
+    if released:
+        assert preview["ok"] is False and preview["error_code"] == "handoff_mode_requires_lease", preview
+    else:
+        assert preview["ok"] is True and preview["completed"] is True, preview
+    assert native(ws.w, "read", {}) == canonical_after
+
+
+def assert_canonical_acquisition(ws: Workspace, before: dict, observed: dict) -> None:
+    """New execution C must not change the existing B proof or keyless A tests."""
+    after = native(ws.w, "read", {})
+    old, current = before["head"], after["head"]
+    assert int(current["cursor"]) == int(old["cursor"]) + 1
+    assert current["head"]["todos"] == old["head"]["todos"]
+    target = ws.ids["todo_c"]
+    assert [r for r in current["head"]["leases"] if r["todo_id"] != target] == old["head"]["leases"]
+    lease = next(r for r in current["head"]["leases"] if r["todo_id"] == target)
+    assert lease["owner"] == "agent-a" and lease["idempotency_key"] == "parity-acquire"
+    assert lease["version"] == lease["lease_epoch"] == 1 and lease["status"] == "active"
+    assert observed["envelope"]["lease"] == ws.normalize(lease)
+    assert "lease_path" not in observed["envelope"]
+    replay = ws.call(*lease_args(ws, "acquire"))
+    assert replay["ok"] and replay["idempotent"] and not replay["acquired"]
+    assert replay["lease"] == lease
+    assert native(ws.w, "read", {}) == after
+
+
 @pytest.mark.parametrize("row", load_rows(), ids=[row["id"] for row in load_rows()])
 def test_fence_caller_parity(workspaces: Callable[[str], Workspace], row: dict) -> None:
     if row["id"] == "fixture-missing":
         pytest.fail(f"parity fixture is missing: {FIXTURE}")
     ws = workspaces(row["workspace"])
-    canonical_before = native(ws.w, "read", {}) if row["caller"] == "task_lease_renew" else None
+    canonical_before = native(ws.w, "read", {}) if row["caller"] in {
+        "task_lease_renew", "task_lease_transfer", "task_lease_release",
+    } or (row["caller"] == "task_lease_acquire" and row["fence_state"] == "engaged") else None
     observed = observe_row(ws, row)
     assert observed["exit"] == row["exit"], observed
     if row.get("match") == "subset":
@@ -245,27 +316,12 @@ def test_fence_caller_parity(workspaces: Callable[[str], Workspace], row: dict) 
         # operation ID and lease expiry are not a literal legacy-writer envelope.
         assert observed["envelope"].get("claimed_todos") or observed["envelope"].get("active_leases"), observed
         assert observed["envelope"].get("provider_revision"), observed
-    if row["caller"] == "task_lease_renew":
-        # The public CLI now uses a canonical-only request. Keep the old wire
-        # fence rows intact, and prove the new route changes only its real lease.
-        assert "lease_path" not in observed["envelope"], observed
-        canonical_after = native(ws.w, "read", {})
-        before = canonical_before["head"]
-        after = canonical_after["head"]
-        assert int(after["cursor"]) == int(before["cursor"]) + 1
-        assert after["head"]["todos"] == before["head"]["todos"]
-        old_lease = next(item for item in before["head"]["leases"] if item["todo_id"] == ws.ids["todo_b"])
-        renewed = next(item for item in after["head"]["leases"] if item["todo_id"] == ws.ids["todo_b"])
-        assert renewed["version"] == old_lease["version"] + 1
-        for field in ("owner", "idempotency_key", "lease_epoch", "write_scopes"):
-            assert renewed[field] == old_lease[field]
-        # A later completion must refresh its proof after this successful renew.
-        # Explicitly preserve the stale-proof rejection before updating the
-        # fixture's current version for the existing valid-preview row.
-        stale = ws.call(*row_args(ws, "todo_complete_dry_run_leased"))
-        assert stale["ok"] is False and stale["error_code"] == "version_mismatch", stale
-        assert native(ws.w, "read", {}) == canonical_after
-        ws.lease_version = renewed["version"]
+    if canonical_before is not None:
+        # Public canonical callers change the provider; legacy wire rows stay fenced.
+        if row["caller"] == "task_lease_acquire":
+            assert_canonical_acquisition(ws, canonical_before, observed)
+        else:
+            assert_canonical_lease_transition(ws, row["caller"], canonical_before, observed)
     assert observed["effect"] == row["effect"], observed
     assert observed["outbox_added"] == row.get("outbox_added", []), observed
 

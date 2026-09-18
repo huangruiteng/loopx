@@ -1,3 +1,4 @@
+import {executeTaskLeaseAcquire} from "../../loopx/control_plane/work_items/task_lease_acquire.ts";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {mkdtemp, writeFile, rm, access} from "node:fs/promises";
@@ -14,11 +15,11 @@ import {selectLocalSqliteAuthority} from "../../loopx/control_plane/coordination
 import {engageLegacyCoordinationWriterFence} from "../../loopx/control_plane/coordination/legacy_writer_fence.ts";
 import {canonicalAuthoritySha256} from "../../loopx/control_plane/coordination/authority_store_codec.ts";
 import {authorityProjectionFixture} from "./authority_projection_fixture.ts";
-import {executeCanonicalTaskLeaseRenew} from "../../loopx/control_plane/coordination/task_lease_renew.ts";
+import {executeCanonicalTaskLeaseLifecycle} from "../../loopx/control_plane/coordination/task_lease_lifecycle.ts";
 import type {AuthorityStore} from "../../loopx/control_plane/coordination/authority_store.ts";
 import {taskLeaseOperationIdentity, taskLeaseOperationRequestDigest} from "../../loopx/control_plane/work_items/task_lease_operation_identity.ts";
 import {legacyCoordinationWriterFencePath} from "../../loopx/control_plane/coordination/legacy_writer_fence.ts";
-import {TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA} from "../../loopx/control_plane/coordination/coordination_state_contract.generated.ts";
+import {TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA, TASK_LEASE_ACQUIRE_REQUEST_SCHEMA, TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA, TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA} from "../../loopx/control_plane/coordination/coordination_state_contract.generated.ts";
 import {shadowManagementStatePath} from "../../loopx/control_plane/coordination/shadow_management.ts";
 import {atomicWriteJson} from "../../loopx/control_plane/effect_runtime_io.ts";
 
@@ -52,7 +53,7 @@ async function fixture(t: TestContext, provider: "file" | "sqlite") {
     runtime_root: runtime, goal_id: goal, state_path: state, fence: {schema_version: "loopx_legacy_coordination_writer_fence_v0",
       state: "engaged", goal_id: goal, fence_id: "renew-fixture", source_version: "state:1",
       source_projection_sha256: canonicalAuthoritySha256(projection), expected_shadow_provider_revision: head.provider_revision}})).status, "applied");
-  const request = {schema_version: TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA, operation: "renew", runtime_root: runtime,
+  const request = {schema_version: TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA, operation: "renew" as const, runtime_root: runtime,
     goal_id: goal, todo_id: "todo_renew", owner: "agent-a", idempotency_key: "execution-a", expected_version: 1, ttl_seconds: 600,
     authority: {handoff_mode: "hard_lease", registered_agent_candidates: [["agent-a", "agent-b"]], todos: [todo],
       todo_projection_error: null, source_receipts: [{source_id: "state", path: state, state: "file", sha256: createHash("sha256").update(content).digest("hex")}]}};
@@ -73,6 +74,57 @@ for (const provider of ["file", "sqlite"] as const) {
   const skip = provider === "sqlite" ? sqliteSkipReason() : undefined;
   const providerTest = (name: string, body: (t: TestContext) => Promise<void>) =>
     test(name, {skip}, body);
+  function acquireRequest(request: Awaited<ReturnType<typeof fixture>>["request"]) {
+    return {schema_version: TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA, runtime_root: request.runtime_root,
+      goal_id: request.goal_id, todo_id: request.todo_id, owner: "agent-a", idempotency_key: "acquire-new",
+      expected_version: 1, ttl_seconds: 600, write_scopes: ["src/**"], authority: request.authority};
+  }
+  const acquireNow = new Date("2026-09-13T10:11:00Z");
+  providerTest(`${provider} native acquisition ignores stale Todo/mode and preserves the legacy fence`, async t => {
+    const {store, request, state} = await fixture(t, provider);
+    const command = acquireRequest(request);
+    const before = await store.loadAuthority();
+    const legacy = await executeTaskLeaseAcquire({...command, schema_version: TASK_LEASE_ACQUIRE_REQUEST_SCHEMA}, {now: () => acquireNow});
+    assert.equal(legacy.error_code, "legacy_coordination_writer_fenced");
+    assert.deepEqual(await store.loadAuthority(), before);
+    const result = await executeTaskLeaseAcquire({...command, authority: {...command.authority,
+      handoff_mode: "soft_claim", todos: []}}, {now: () => acquireNow});
+    assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.source_authority, provider + "_v0");
+    assert.equal(result.legacy_fallback_used, false); assert.equal(result.lease_path, undefined);
+    assert.equal((result.lease as Record<string, unknown>).version, 2);
+    assert.equal((result.lease as Record<string, unknown>).lease_epoch, 8);
+    await access(state);
+  });
+  for (const fault of ["source", "fence", "field"] as const) {
+    providerTest(`${provider} acquisition fails closed on ${fault} without legacy or canonical writes`, async t => {
+      const {store, request, state, runtime, goal} = await fixture(t, provider);
+      const command = acquireRequest(request), before = await store.loadAuthority();
+      if (fault === "fence") await rm(legacyCoordinationWriterFencePath(runtime, goal));
+      const result = await executeTaskLeaseAcquire(fault === "field" ? {...command, lock_token: "wrong-domain"} : command,
+        {now: () => acquireNow, beforeWrite: fault === "source" ? async () => {await writeFile(state, "changed source");} : undefined});
+      assert.equal(result.error_code, {source: "authority_source_changed", fence: "canonical_acquire_fence_missing",
+        field: "invalid_canonical_acquire_request"}[fault]);
+      assert.deepEqual(await store.loadAuthority(), before);
+    });
+  }
+  for (const boundary of ["before", "after"] as const) {
+    providerTest(`${provider} real process death ${boundary} acquire commit preserves one new generation`, async t => {
+      const {root, store, request} = await fixture(t, provider);
+      const command = acquireRequest(request), config = join(root, "acquire-child.json");
+      await writeFile(config, JSON.stringify({...command, operation: "acquire", now: acquireNow.toISOString()}));
+      const before = await store.loadAuthority();
+      const child = spawnSync(process.execPath, ["--no-warnings", "--experimental-sqlite", "--experimental-strip-types", CHILD, config, boundary, "600"], {encoding: "utf8", timeout: 30000});
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+      if (boundary === "before") assert.deepEqual(await store.loadAuthority(), before);
+      const result = await executeTaskLeaseAcquire(command, {now: () => acquireNow});
+      assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.status, boundary === "before" ? "applied" : "replayed");
+      const final = await store.loadAuthority(); if (final.status !== "loaded") throw new Error("missing head");
+      assert.equal(final.cursor, "2"); assert.equal((result.lease as Record<string, unknown>).version, 2);
+      assert.equal((result.lease as Record<string, unknown>).lease_epoch, 8);
+      assert.equal((await executeTaskLeaseAcquire(command, {now: () => acquireNow})).status, "replayed");
+      assert.deepEqual(await store.loadAuthority(), final);
+    });
+  }
   providerTest(`${provider} legacy wire requests remain fenced`, async t => {
     const {store, request} = await fixture(t, provider); const before = await store.loadAuthority();
     const result = await executeTaskLeaseLifecycle({...request, schema_version: TASK_LEASE_LIFECYCLE_REQUEST_SCHEMA_VERSION}, {now: () => NOW});
@@ -191,7 +243,7 @@ for (const provider of ["file", "sqlite"] as const) {
     const wrapper: AuthorityStore = {storeIdentity: () => store.storeIdentity(), loadAuthority: () => store.loadAuthority(),
       readReceipt: id => store.readReceipt(id), scanCommitted: (...args) => store.scanCommitted(...args),
       commitAuthority: async input => {assert.equal((await store.commitAuthority(input)).status, "applied"); throw new Error("response lost");}};
-    const result = await executeCanonicalTaskLeaseRenew(wrapper, {...request, registered_agents: ["agent-a", "agent-b"], now: NOW});
+    const result = await executeCanonicalTaskLeaseLifecycle(wrapper, {...request, registered_agents: ["agent-a", "agent-b"], now: NOW});
     assert.equal(result.status, "recovered", JSON.stringify(result));
     assert.deepEqual(result.lease, {...lease, version: 2, updated_at: "2026-09-13T10:05:00Z", expires_at: "2026-09-13T10:15:00Z"});
     const head = await store.loadAuthority(); assert.equal(head.status, "loaded"); if (head.status === "loaded") assert.equal(head.cursor, "2");
@@ -211,6 +263,57 @@ for (const provider of ["file", "sqlite"] as const) {
       assert.equal((await executeTaskLeaseLifecycle(request, {now: () => NOW})).status, "replayed");
       assert.deepEqual(await store.loadAuthority(), final);
     });
+  }
+  for (const operation of ["transfer", "release"] as const) {
+    providerTest(`${provider} canonical ${operation} preserves source and maintenance fences`, async t => {
+      const {store, request, state, runtime, goal} = await fixture(t, provider);
+      const command = {...request, schema_version: TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA, operation,
+        ttl_seconds: operation === "release" ? null : 600,
+        ...(operation === "transfer" ? {new_owner: "agent-a", new_idempotency_key: "rotated-key"} : {authority: null})};
+      const before = await store.loadAuthority();
+      const foreign = await executeTaskLeaseLifecycle({...command, release_lease: true}, {now: () => NOW});
+      assert.equal(foreign.error_code, "invalid_canonical_lifecycle_request");
+      assert.deepEqual(await store.loadAuthority(), before);
+      if (operation === "transfer") {
+        const revoked = await executeTaskLeaseLifecycle(command, {now: () => NOW,
+          beforeWrite: async () => {await writeFile(state, "registration revoked");}});
+        assert.equal(revoked.error_code, "authority_source_changed");
+        assert.deepEqual(await store.loadAuthority(), before);
+      } else {
+        const extra = await executeTaskLeaseLifecycle({...command, ttl_seconds: 600}, {now: () => NOW});
+        assert.equal(extra.error_code, "invalid_canonical_lifecycle_request");
+        assert.deepEqual(await store.loadAuthority(), before);
+        const cleanup = await executeTaskLeaseLifecycle(command, {now: () => new Date("2030-01-01Z")});
+        assert.equal(cleanup.ok, true); assert.equal(cleanup.released, true);
+        assert.equal((cleanup.lease as Record<string, unknown>).status, "released");
+      }
+      const current = await store.loadAuthority();
+      await rm(legacyCoordinationWriterFencePath(runtime, goal));
+      const unfenced = await executeTaskLeaseLifecycle(command, {now: () => NOW});
+      assert.equal(unfenced.error_code, `canonical_${operation}_fence_missing`);
+      assert.deepEqual(await store.loadAuthority(), current);
+    });
+    for (const boundary of ["before", "after"] as const) {
+      providerTest(`${provider} process death ${boundary} ${operation} commit cannot duplicate the transition`, async t => {
+        const {root, store, request} = await fixture(t, provider);
+        const command = {...request, schema_version: TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA, operation,
+          ttl_seconds: operation === "release" ? null : 600,
+          ...(operation === "transfer" ? {new_owner: "agent-a", new_idempotency_key: "rotated-key"} : {})};
+        const config = join(root, "lifecycle-child.json"); await writeFile(config, JSON.stringify({...command, now: NOW.toISOString()}));
+        const before = await store.loadAuthority();
+        const child = spawnSync(process.execPath, ["--no-warnings", "--experimental-sqlite", "--experimental-strip-types", CHILD,
+          config, boundary, "600"], {encoding: "utf8", timeout: 30000});
+        assert.equal(child.signal, "SIGKILL", child.stderr);
+        if (boundary === "before") assert.deepEqual(await store.loadAuthority(), before);
+        const recovered = await executeTaskLeaseLifecycle(command, {now: () => NOW});
+        assert.equal(recovered.ok, true, JSON.stringify(recovered));
+        assert.equal(recovered.status, boundary === "before" ? "applied" : "replayed");
+        const final = await store.loadAuthority(); assert.equal(final.status, "loaded");
+        if (final.status === "loaded") assert.equal(final.cursor, "2");
+        assert.equal((await executeTaskLeaseLifecycle(command, {now: () => NOW})).status, "replayed");
+        assert.deepEqual(await store.loadAuthority(), final);
+      });
+    }
   }
   for (const differentIntent of [false, true]) {
     providerTest(`${provider} real processes arbitrate ${differentIntent ? "different" : "identical"} renew intent at one version`, async t => {

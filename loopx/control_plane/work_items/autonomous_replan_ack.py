@@ -108,6 +108,9 @@ def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] 
                 "trigger_kinds",
                 "trigger_checkpoints",
                 "obligation_id",
+                "successor_todo_id",
+                "successor_origin_obligation_id",
+                "successor_binding",
                 "observation_fingerprint",
                 "reason",
             )

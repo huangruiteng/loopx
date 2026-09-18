@@ -197,19 +197,6 @@
 .personal-execution-rule-note { overflow: hidden; color: var(--pw-faint); font-size: 11px; text-overflow: ellipsis; }
 .personal-workspace-shell[data-pw-theme="brutal"] .personal-execution-chip { border-color: #141414; border-radius: 4px; }
 .personal-channel-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; }
-.personal-goal-tools { position: relative; flex: 0 0 auto; }
-.personal-goal-tools-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 11px; border: 1px solid #b8c9f5; border-radius: 10px; background: var(--pw-blue-soft); color: var(--pw-blue-ink); cursor: pointer; font: inherit; font-size: 12px; font-weight: 720; white-space: nowrap; }
-.personal-goal-tools-trigger:hover, .personal-goal-tools-trigger[aria-expanded="true"] { border-color: #7f9fe9; background: #e5edff; color: #1948b5; }
-.personal-goal-tools-trigger:focus-visible { outline: 3px solid rgb(47 102 233 / 28%); outline-offset: 2px; }
-.personal-goal-tools-trigger > svg:last-child { transition: transform 160ms ease; }
-.personal-goal-tools-trigger[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
-.personal-goal-tools-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: grid; gap: 4px; width: min(300px, calc(100vw - 28px)); padding: 6px; border: 1px solid var(--pw-line-strong); border-radius: 12px; background: #fff; box-shadow: 0 16px 44px rgb(30 40 64 / 16%); }
-.personal-goal-tools-menu > button { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 9px; width: 100%; min-height: 52px; padding: 7px 9px; border: 0; border-radius: 9px; background: transparent; color: var(--pw-text); cursor: pointer; text-align: left; }
-.personal-goal-tools-menu > button:hover, .personal-goal-tools-menu > button:focus-visible { background: var(--pw-blue-soft); outline: none; }
-.personal-goal-tools-menu > button > svg { justify-self: center; color: var(--pw-blue); }
-.personal-goal-tools-menu > button > span { display: grid; gap: 2px; min-width: 0; }
-.personal-goal-tools-menu strong { font-size: 12.5px; }
-.personal-goal-tools-menu small { color: var(--pw-muted); font-size: 10.5px; line-height: 1.35; }
 .personal-icon-button.personal-mobile-menu { display: none; }
 .personal-select { position: relative; min-width: 0; }
 .personal-select-trigger { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid var(--pw-line-strong); border-radius: 10px; background: #fff; color: var(--pw-text); cursor: pointer; font-size: 12px; font-weight: 500; line-height: 16px; text-align: left; }
@@ -247,8 +234,8 @@
 .personal-icon-button { display: inline-grid; flex: 0 0 36px; place-items: center; width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; border: 1px solid var(--pw-line); border-radius: 10px; background: #fff; color: var(--pw-muted); cursor: pointer; }
 .personal-icon-button:hover { border-color: var(--pw-line-strong); color: var(--pw-text); }
 .personal-channel-scroll { overflow: auto; min-width: 0; min-height: 0; padding: 22px max(26px, calc((100% - 820px) / 2)); }
-.personal-channel-scroll:has(.personal-task-kanban) { padding-inline: max(26px, calc((100vw - 1240px) / 2 - 150px)); }
-.personal-channel-scroll:has(.personal-task-board) { overflow: hidden; }
+.personal-channel-scroll[data-active-goal-view="tasks"]:has(.personal-task-kanban) { padding-inline: max(26px, calc((100vw - 1240px) / 2 - 150px)); }
+.personal-channel-scroll[data-active-goal-view="tasks"]:has(.personal-task-board) { overflow: hidden; }
 .personal-manager-greeting { display: flex; align-items: center; gap: 14px; padding: 18px 20px; margin-bottom: 16px; }
 .personal-home-lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .personal-system-health-banner { margin-bottom: 16px; padding: 12px 16px; border: 1px solid #fecaca; border-radius: 12px; background: #fef2f2; color: #991b1b; }
@@ -826,7 +813,7 @@
 .personal-task-lane-filter label { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 9px; border: 1px solid var(--pw-line-strong); border-radius: 8px; background: var(--pw-bg); }
 .personal-task-lane-filter select { max-width: 300px; border: 0; outline: 0; background: transparent; color: var(--pw-text); font: inherit; font-size: 11.5px; font-weight: 600; appearance: none; }
 .personal-task-board { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
-.personal-channel-scroll:has(.personal-task-board.is-list-view) { overflow-y: auto; }
+.personal-channel-scroll[data-active-goal-view="tasks"]:has(.personal-task-board.is-list-view) { overflow-y: auto; }
 .personal-task-board.is-list-view { height: auto; min-height: 100%; gap: 24px; }
 .personal-task-view-toolbar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; }
 .personal-task-view-toolbar > div:first-child { display: grid; gap: 4px; }
@@ -859,8 +846,8 @@
 .personal-task-list-rows > button > small, .personal-task-list-rows > .personal-task-card > button > small { grid-column: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--pw-muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .personal-task-list-rows .personal-task-card-actions { top: auto; bottom: 12px; background: var(--pw-card); }
 @media (min-width: 721px) {
-  .personal-channel-header:has(~ .personal-channel-scroll .is-list-view) { flex-wrap: wrap; }
-  .personal-channel-header:has(~ .personal-channel-scroll .is-list-view) .personal-channel-title { flex-basis: 100%; }
+  .personal-channel-header:has(~ .personal-channel-scroll[data-active-goal-view="tasks"] .is-list-view) { flex-wrap: wrap; }
+  .personal-channel-header:has(~ .personal-channel-scroll[data-active-goal-view="tasks"] .is-list-view) .personal-channel-title { flex-basis: 100%; }
 }
 .personal-task-kanban { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); flex: 1; gap: 12px; align-items: stretch; min-height: 0; }
 .personal-task-chat-receipt { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border: 1px solid #d8e2f8; border-radius: 10px; background: #f8faff; box-shadow: 0 1px 3px rgb(47 102 233 / 4%); }
@@ -924,7 +911,7 @@
 .personal-task-session-status { color: var(--pw-blue-ink); font-weight: 650; }
 .personal-task-kanban .personal-task-empty { margin: 2px 0 4px; padding: 16px 10px; border: 1px dashed var(--pw-line-strong); border-radius: 10px; text-align: center; font-size: 12px; }
 .personal-workspace-shell.has-drawer .personal-task-kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.personal-workspace-shell.has-task-inspector .personal-channel-scroll:has(.personal-task-kanban) { padding-inline: 20px; }
+.personal-workspace-shell.has-task-inspector .personal-channel-scroll[data-active-goal-view="tasks"]:has(.personal-task-kanban) { padding-inline: 20px; }
 .personal-workspace-shell.has-task-inspector .personal-task-kanban { grid-template-columns: repeat(4, 260px); width: max-content; min-width: 100%; }
 .personal-workspace-shell[data-pw-theme="brutal"] .personal-task-chat-receipt { border: 2px solid #141414; border-radius: 4px; background: #fff; box-shadow: 3px 3px 0 #141414; }
 .personal-workspace-shell[data-pw-theme="brutal"] .personal-task-chat-icon { border: 2px solid #141414; border-radius: 4px; background: #ffe23f; color: #141414; }
@@ -1246,18 +1233,15 @@
   .personal-channel-actions { min-width: 0; }
   .personal-agent-select { max-width: 132px; min-width: 0; }
   .personal-channel-actions > .personal-icon-button { display: none; }
-  .personal-goal-tools-trigger { width: 40px; height: 40px; padding: 0; }
-  .personal-goal-tools-trigger span, .personal-goal-tools-trigger > svg:last-child { display: none; }
-  .personal-goal-tools-menu { position: fixed; top: 60px; right: 14px; }
   .personal-goal-tabs { grid-column: 1 / -1; order: 4; margin-left: 0; overflow-x: auto; align-self: auto; }
   .personal-channel-actions .personal-live-indicator { display: none; }
   .personal-channel-scroll, .personal-composer-wrap { padding-left: 14px; padding-right: 14px; }
-  .personal-channel-scroll:has(.personal-task-board) { overflow-y: auto; }
+  .personal-channel-scroll[data-active-goal-view="tasks"]:has(.personal-task-board) { overflow-y: auto; }
   .personal-task-board { height: auto; min-height: 100%; }
   .personal-task-kanban, .personal-workspace-shell.has-drawer .personal-task-kanban, .personal-workspace-shell.has-task-inspector .personal-task-kanban { grid-template-columns: minmax(0, 1fr); width: 100%; height: auto; }
   .personal-task-kanban .personal-object-list { min-height: auto; }
   .personal-task-lane-scroll, .personal-task-lane-scroll.has-overflow-before, .personal-task-lane-scroll.has-overflow-after { flex: none; min-height: auto; padding-right: 8px; overflow: visible; box-shadow: none; scrollbar-gutter: auto; }
-  .personal-quick-prompts { overflow-x: auto; }
+  .personal-quick-prompts { overflow-x: auto; flex-wrap: nowrap; }
   .personal-quick-prompts button { flex: 0 0 auto; min-height: 36px; }
   .personal-manager-conversation-tray > header { align-items: flex-start; flex-wrap: wrap; }
   .personal-manager-conversation-actions { width: 100%; justify-content: flex-end; }
@@ -1727,3 +1711,28 @@
 .personal-goal-acceptance .personal-acceptance-observation { border-top: 1px solid var(--color-border, #ebebeb); padding: 8px 0; }
 .personal-goal-acceptance dd, .personal-goal-acceptance p { overflow-wrap: anywhere; }
 .personal-goal-acceptance details { margin-top: 16px; }
+
+.personal-channel-scroll[data-active-goal-view="overview"] { padding-inline: max(24px, calc((100% - 1120px) / 2)); }
+
+/* Goal identity and settings stay above its views; runtime selection stays beside them. */
+.personal-channel-header[data-goal-selected="true"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 16px; padding-block: 12px 0; }
+.personal-channel-header[data-goal-selected="true"] .personal-channel-title { grid-row: 1; grid-column: 1 / 3; }
+.personal-channel-header[data-goal-selected="true"] .personal-channel-title h1 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.personal-channel-header[data-goal-selected="true"] .personal-channel-actions { grid-row: 1; grid-column: 3; }
+.personal-goal-navigation { grid-row: 2; grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.personal-channel-header[data-goal-selected="true"] .personal-goal-tabs { margin-left: 0; overflow: visible; order: 0; }
+.personal-channel-actions > .personal-goal-settings-action { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+@media (max-width: 1050px) {
+  .personal-channel-header[data-goal-selected="true"] .personal-mobile-menu { grid-row: 1; grid-column: 1; }
+  .personal-channel-header[data-goal-selected="true"] .personal-channel-title { grid-column: 2; }
+}
+@media (max-width: 720px) {
+  .personal-channel-header[data-goal-selected="true"] { gap: 4px 8px; }
+  .personal-goal-navigation { gap: 12px; }
+  .personal-goal-navigation .personal-agent-select { max-width: 132px; }
+  .personal-goal-navigation .personal-select-value > small { display: none; }
+  .personal-channel-header[data-goal-selected="true"] .personal-goal-tabs { gap: 8px; }
+  .personal-goal-navigation .personal-goal-tabs button { min-width: 44px; padding-inline: 0; }
+  .personal-goal-navigation .personal-read-only-source { max-width: 132px; }
+  .personal-channel-scroll[data-active-goal-view="overview"] { padding-inline: 14px; }
+}

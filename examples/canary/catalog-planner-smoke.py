@@ -992,11 +992,22 @@ def assert_coverage_audit_tracks_p0_p1_patterns() -> None:
 
 def assert_coverage_audit_reports_matrix_drift(tmp_dir: Path) -> None:
     catalog_text = CATALOG.read_text(encoding="utf-8")
-    drift_text = catalog_text.replace(
-        "| Planning Governance | IP-010, IP-013, IP-018, IP-024 |",
-        "| Planning Governance | IP-010, IP-013, IP-018 |",
-        1,
-    )
+    # Mutate one coverage token, independently of unrelated catalog additions.
+    rows = catalog_text.splitlines(keepends=True)
+    matching = [
+        index for index, row in enumerate(rows)
+        if row.startswith("| Planning Governance |")
+        and "IP-024" in [pattern.strip() for pattern in row.split("|")[2].split(",")]
+    ]
+    assert len(matching) == 1, "expected one Planning Governance coverage row"
+    index = matching[0]
+    cells = rows[index].split("|")
+    patterns = [pattern.strip() for pattern in cells[2].split(",")]
+    assert patterns.count("IP-024") == 1, "drift probe requires exactly one IP-024 token"
+    cells[2] = " " + ", ".join(pattern for pattern in patterns if pattern != "IP-024") + " "
+    rows[index] = "|".join(cells)
+    drift_text = "".join(rows)
+    assert drift_text != catalog_text, "drift probe must change its input"
     drift_catalog = tmp_dir / "catalog-drift.md"
     drift_catalog.write_text(drift_text, encoding="utf-8")
     payload = build_catalog_canary_coverage_audit(catalog_path=drift_catalog)

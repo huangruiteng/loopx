@@ -5,16 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...runtime.time import parse_timestamp
 from ...todos.frontier_revision import (
     TODO_FRONTIER_REVISION_SCHEMA_VERSION,
-    advancement_frontier_owned_identity,
-    advancement_frontier_revision_from_index,
-    selectable_advancement_frontier_owned_identity,
-    selectable_advancement_frontier_revision,
+    frontier_source_facts,
 )
 from ...effect_runtime import effect_runtime_result
-from ...todos.frontier_revision import frontier_source_facts
 
 
 LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
@@ -35,24 +30,8 @@ class LongTodoChainObservation:
     agent_id: str | None
     frontier_revision: str | None
     frontier_revision_complete: bool
+    trigger: dict[str, Any]
     frontier_owned_identity: str | None = None
-
-    def to_trigger(self) -> dict[str, Any]:
-        trigger: dict[str, Any] = {
-            "trigger_count": self.trigger_count,
-            "count_kind": self.count_kind,
-            "selectable_open_count": self.selectable_open_count,
-            "selectable_advancement_count": self.selectable_advancement_count,
-            "current_agent_claimed_advancement_count": (
-                self.current_agent_claimed_advancement_count
-            ),
-            "unclaimed_advancement_count": self.unclaimed_advancement_count,
-            "threshold": self.threshold,
-            "agent_id": self.agent_id,
-        }
-        if self.frontier_revision_complete and self.frontier_revision:
-            trigger["frontier_revision"] = self.frontier_revision
-        return trigger
 
 
 @dataclass(frozen=True)
@@ -61,46 +40,27 @@ class LongTodoChainAckDecision:
     rearmed_after_obligation_id: str | None = None
 
 
-def long_todo_chain_source_checkpoint(
+def long_todo_chain_successor_checkpoints(
     source_items: list[dict[str, Any]],
     *,
     agent_id: str | None,
+    triggers: list[dict[str, Any]],
+    obligation_id: str,
+    candidates: list[dict[str, Any]],
     frontier_revision_index: Any = None,
-) -> tuple[dict[str, str], str] | None:
-    """Return the revision and ordering fence for an exact Todo source."""
+) -> dict[str, Any] | None:
+    """Resolve successor checkpoints and fresh causal bindings in one TS read."""
 
-    projected = advancement_frontier_revision_from_index(
-        frontier_revision_index,
-        agent_id=agent_id,
-    )
-    frontier_revision, frontier_updated_at, revision_complete = (
-        projected
-        if projected is not None
-        else selectable_advancement_frontier_revision(
-            source_items,
-            agent_id=agent_id,
-        )
-    )
-    if not revision_complete or not frontier_revision or not frontier_updated_at:
-        return None
-    owned_identity = (
-        advancement_frontier_owned_identity(
-            frontier_revision_index, agent_id=agent_id
-        )
-        if projected is not None
-        else selectable_advancement_frontier_owned_identity(
-            source_items, agent_id=agent_id
-        )
-    )
-    checkpoint = {
-        "kind": LONG_TODO_CHAIN_TRIGGER,
-        "frontier_revision": frontier_revision,
-    }
-    if owned_identity:
-        # The ACK stays valid while this agent's own selectable rows are
-        # unchanged, even when another lane claims work this agent can still see.
-        checkpoint["frontier_owned_identity"] = owned_identity
-    return (checkpoint, frontier_updated_at)
+    needs_predecessor_source = any(row["origin_obligation_id"] != obligation_id for row in candidates)
+    result: dict[str, Any] | None = effect_runtime_result("todo.frontier_revision.project", {
+        "schema_version": "todo_frontier_revision_request_v0",
+        "operation": "successor_checkpoints", "agent_id": agent_id,
+        "triggers": triggers,
+        "obligation_id": obligation_id, "candidates": candidates,
+        "index": frontier_revision_index,
+        "rows": frontier_source_facts(source_items) if needs_predecessor_source or not isinstance(frontier_revision_index, dict) else None,
+    })["source_checkpoint"]
+    return result
 
 
 def evaluate_long_todo_chain(
@@ -126,17 +86,3 @@ def evaluate_long_todo_chain(
         LongTodoChainObservation(**observation) if observation is not None else None,
         LongTodoChainAckDecision(**decision) if decision is not None else None,
     )
-
-
-def long_todo_chain_transition_is_fresh(
-    *,
-    frontier_updated_at: Any,
-    transition_generated_at: Any,
-) -> bool:
-    """Fence a successor Todo against the authoritative source revision."""
-
-    frontier_time = parse_timestamp(frontier_updated_at)
-    transition_time = parse_timestamp(transition_generated_at)
-    if frontier_time is None or transition_time is None:
-        return False
-    return bool(transition_time >= frontier_time)

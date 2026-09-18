@@ -42,6 +42,10 @@ const envelope = JSON.parse(readFileSync(new URL(
     service_profiles: string[];
     service_requires_factory: true;
   };
+  lease_lifecycle: {owner: string; receiver: string; execution_key: string;
+    receiver_execution_key: string; version: number; lease_epoch: number; now: string};
+  lease_acquisition: {execution_key: string; next_execution_key: string; write_scopes: string[]; ttl_seconds: number;
+    conflict_todo_id: string; conflict_write_scopes: string[]};
   semantic_cases: Record<string, Record<string, unknown>>;
   presentation_cases: Record<string, Record<string, unknown>>;
   update_cases: Record<string, Record<string, unknown>>;
@@ -466,4 +470,40 @@ export function productionScaleObservationStep(
   }
   return {operation_id: `history-observation-${String(index).padStart(4, "0")}`,
     todo_id: String(monitor.todo_id), mutation: {kind: "todo_upsert", todo}};
+}
+
+/** Exercise execution handover inside the same mixed-status, decision and
+ * historical-lease population. The ordinary fixture's counts stay unchanged. */
+export function productionScaleLeaseLifecycleFixture(goalId: string,
+  schema: AuthorityProjectionSchema = "native") {
+  const fixture = productionScaleCoordinationFixture(goalId, schema);
+  const scenario = envelope.lease_lifecycle;
+  const todos = fixture.projection.todos as Record<string, unknown>[];
+  const leases = fixture.projection.leases as Record<string, unknown>[];
+  const target = fixture.completion_todo_id;
+  const projection = authorityProjectionFixture(goalId,
+    todos.map(todo => todo.todo_id === target ? {...todo, claimed_by: null} : todo),
+    leases.map(lease => lease.todo_id === target ? {...lease, owner: scenario.owner,
+      idempotency_key: scenario.execution_key, version: scenario.version,
+      lease_epoch: scenario.lease_epoch} : lease), schema,
+    {source_authority: "synthetic_production_scale_fixture", handoff_mode: "hard_lease"});
+  return {projection, target, scenario, registered_agents: fixture.registered_agents};
+}
+
+/** Start without a target lease, with a live peer beyond the bounded display. */
+export function productionScaleLeaseAcquisitionFixture(goalId: string,
+  schema: AuthorityProjectionSchema = "native") {
+  const fixture = productionScaleLeaseLifecycleFixture(goalId, schema);
+  const scenario = envelope.lease_acquisition;
+  const todos = fixture.projection.todos as Record<string, unknown>[];
+  const leases = fixture.projection.leases as Record<string, unknown>[];
+  const target = todos.find(todo => todo.todo_id === fixture.target)!;
+  const oldLease = leases.find(lease => lease.todo_id === fixture.target)!;
+  const projection = authorityProjectionFixture(goalId,
+    [...todos, {...target, todo_id: scenario.conflict_todo_id, text: "Independent scope holder beyond display limits"}],
+    [...leases.filter(lease => lease.todo_id !== fixture.target), {...oldLease,
+      todo_id: scenario.conflict_todo_id, owner: "agent-b", idempotency_key: "scope-holder",
+      write_scopes: ["independent-work/**"]}], schema,
+    {source_authority: "synthetic_production_scale_fixture", handoff_mode: "hard_lease"});
+  return {...fixture, projection, acquisition: scenario};
 }

@@ -70,3 +70,34 @@ def test_full_budget_roundtrips_without_erasing_replan_or_partial_writes(tmp_pat
     assert "total_agent_vision uses 1801 chars; limit is 1800" in fixture.payload(rejected)["error"]
     assert index.read_bytes() == before_index
     assert state.read_bytes() == before_state
+
+
+def test_misplaced_delta_rejects_before_write_and_corrected_packet_roundtrips(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "examples/project/goal-vision-refresh-state-budget-smoke.py"
+    spec = importlib.util.spec_from_file_location("vision_packet_fixture", source)
+    fixture = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixture)
+    registry, runtime, project = fixture.write_fixture(tmp_path)
+    state = project / ".codex/goals" / fixture.GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    before = state.read_bytes()
+    delta = {"schema_version": "goal_path_delta_v0", "outcome": "replan",
+             "prior_assumption": "Keep the route.", "observed_reality": "A dependency changed.",
+             "changed": ["Use the successor."]}
+    packet = {"vision_patch": {"vision_summary": "Deliver the successor."},
+              "goal_path_delta_v0": delta}
+    path = tmp_path / "vision.json"
+    fixture.write_json(path, packet)
+    rejected = fixture.run_cli(registry, runtime, vision_path=path, check=False,
+                               dry_run=False, autonomous_replan_recorded=False)
+    assert rejected.returncode == 1
+    assert "must be supplied as agent_vision.path_delta" in fixture.payload(rejected)["error"]
+    assert state.read_bytes() == before
+    index = runtime / "goals" / fixture.GOAL_ID / "runs/index.jsonl"
+    assert not index.exists()
+    packet["path_delta"] = packet.pop("goal_path_delta_v0")
+    packet["telemetry"] = {"outcome": "ok", "evidence_refs": ["evidence:probe"]}
+    fixture.write_json(path, packet)
+    result = fixture.payload(fixture.run_cli(registry, runtime, vision_path=path, check=True,
+        dry_run=False, autonomous_replan_recorded=False))
+    assert result["agent_vision"]["path_delta"] == delta
+    assert json.loads(index.read_text().splitlines()[-1])["agent_vision"]["path_delta"] == delta

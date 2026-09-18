@@ -1,7 +1,8 @@
-/** Disposable child for renewal race and lost-response integration tests. */
+import {executeCanonicalTaskLeaseAcquire} from "../../loopx/control_plane/coordination/task_lease_acquire.ts";
+/** Disposable child for acquisition/lifecycle crash and race qualification. */
 import {readFileSync} from "node:fs";
 import {openLocalAuthorityStore} from "../../loopx/control_plane/coordination/local_authority_provider.ts";
-import {executeCanonicalTaskLeaseRenew} from "../../loopx/control_plane/coordination/task_lease_renew.ts";
+import {executeCanonicalTaskLeaseLifecycle} from "../../loopx/control_plane/coordination/task_lease_lifecycle.ts";
 import type {AuthorityStore} from "../../loopx/control_plane/coordination/authority_store.ts";
 const [path, mode, ttl] = process.argv.slice(2);
 const request = JSON.parse(readFileSync(path!, "utf8"));
@@ -24,7 +25,8 @@ const measured: AuthorityStore = {
     return result;
   },
 };
-const result = await executeCanonicalTaskLeaseRenew(measured, {...request,
-  registered_agents: ["agent-a", "agent-b"], now: new Date(request.now), ttl_seconds: Number(ttl)});
+const execute = request.operation === "acquire" ? executeCanonicalTaskLeaseAcquire : executeCanonicalTaskLeaseLifecycle;
+const result = await execute(measured, {...request,
+  registered_agents: ["agent-a", "agent-b"], now: new Date(request.now), ttl_seconds: request.operation === "release" ? null : Number(ttl)});
 process.stdout.write(JSON.stringify(result));
 if (process.connected) process.disconnect();

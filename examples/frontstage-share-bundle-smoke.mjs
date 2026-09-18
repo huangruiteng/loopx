@@ -118,21 +118,42 @@ assertExists(resolve(siteDir, "index.html"));
 assertExists(resolve(siteDir, "frontstage/index.html"));
 assertExists(resolve(siteDir, "benchmarks/swe-marathon/index.html"));
 assertExists(resolve(siteDir, "benchmarks/deepswe/behavior-discovery/index.html"));
+// Static research articles must remain readable and navigable in the shipped
+// bundle without falling back to the homepage SPA.
+for (const route of ["benchmarks/deepswe-sol/"]) {
+  const pagePath = resolve(siteDir, route, "index.html");
+  const html = await readFile(pagePath, "utf8");
+  if (!/<h1\b/.test(html) || html.includes('<div id="root">') || html.includes("<script")) {
+    throw new Error(`Research article must ship static content: ${route}`);
+  }
+  for (const match of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+    const target = match[1].split(/[?#]/)[0];
+    if (target && !nonBundleReferencePattern.test(target)) assertRelativeReferenceExists(pagePath, target);
+  }
+}
 // Editorial pages must ship their text and locale navigation without an SPA
 // fallback or client-side execution, including on repository-base hosting.
 const blogArticle = "from-one-shot-agents-to-long-horizon-control/";
 for (const locale of ["", "zh/"]) {
-  const articles = locale ? ["", blogArticle, "agent-facing-kanban/"] : ["", blogArticle];
+  const articles = locale ? ["", blogArticle, "agent-facing-kanban/", "application-scenarios/"] : ["", blogArticle];
   for (const article of articles) {
     const pagePath = resolve(siteDir, "blog", locale, article, "index.html");
     assertExists(pagePath);
     const html = await readFile(pagePath, "utf8");
     const language = locale ? "zh-CN" : "en";
-    if (!html.includes(`<html lang="${language}">`) || !html.includes("<h1>") || html.includes("<script")) {
+    const interactive = article === "application-scenarios/";
+    if (!html.includes(`<html lang="${language}">`) || !html.includes("<h1>") || (!interactive && html.includes("<script"))) {
       throw new Error(`Blog must provide static content in ${language}: ${pagePath}`);
     }
+    if (interactive) {
+      const scripts = [...html.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/g)].map((match) => match[0]);
+      if (scripts.length !== 1 || scripts[0] !== '<script src="presentation.js" defer></script>') {
+        throw new Error("Application article must keep enhancement in its local deferred script");
+      }
+      assertExists(resolve(dirname(pagePath), "presentation.js"));
+    }
     // A single-language article must not advertise a nonexistent translation.
-    const alternates = article === "agent-facing-kanban/" ? [] : ["en", "zh-CN", "x-default"];
+    const alternates = ["agent-facing-kanban/", "application-scenarios/"].includes(article) ? [] : ["en", "zh-CN", "x-default"];
     for (const hreflang of alternates) {
       if (!html.includes(`hreflang="${hreflang}"`)) throw new Error(`Missing Blog language alternate: ${hreflang}`);
     }

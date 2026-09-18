@@ -14,6 +14,7 @@ import uuid
 from weakref import WeakValueDictionary
 
 from .chat import require_matching_replay, resolve_attached_completion_replay
+from .chat_event_cache import ChatEventCache
 from .file_lock import exclusive_file_lock
 
 
@@ -143,8 +144,7 @@ class ChatSessionStore:
         self._session_lock_guard = threading.Lock()
         self._session_locks: WeakValueDictionary[str, threading.Lock] = WeakValueDictionary()
         self._event_lock = threading.RLock()
-        self._event_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        self._event_cache_revision: dict[tuple[str, str], tuple[int, int, int] | None] = {}
+        self._event_cache = ChatEventCache(self._event_lock)
         self._event_pending: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._event_flush_locks: WeakValueDictionary[tuple[str, str], threading.Lock] = WeakValueDictionary()
         self.sessions_root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -1294,13 +1294,10 @@ class ChatSessionStore:
         key = (session_id, turn_id)
         path = self._event_path(session_id, turn_id)
         revision = self._event_revision(path)
-        with self._event_lock:
-            if self._event_cache_revision.get(key) == revision and key in self._event_cache:
-                return self._event_cache[key]
-        rows = _read_jsonl(path)
-        with self._event_lock:
-            self._event_cache[key] = rows
-            self._event_cache_revision[key] = revision
+        rows = self._event_cache.get(key, revision)
+        if rows is None:
+            rows = _read_jsonl(path)
+            self._event_cache.put(key, revision, rows)
         return rows
 
     @staticmethod
@@ -1314,12 +1311,6 @@ class ChatSessionStore:
     def _event_flush_lock(self, key: tuple[str, str]) -> threading.Lock:
         with self._event_lock:
             return self._event_flush_locks.setdefault(key, threading.Lock())
-
-    def _drop_event_cache(self, key: tuple[str, str], expected: list[dict[str, Any]] | None = None) -> None:
-        with self._event_lock:
-            if expected is None or self._event_cache.get(key) is expected:
-                self._event_cache.pop(key, None)
-                self._event_cache_revision.pop(key, None)
 
     def append_event(
         self,
@@ -1368,11 +1359,9 @@ class ChatSessionStore:
                             event["sequence"] = sequence
                         _append_jsonl_rows(path, pending)
                         if any(row["kind"] in TERMINAL_EVENT_KINDS for row in pending):
-                            self._drop_event_cache(key)
+                            self._event_cache.drop(key)
                         else:
-                            with self._event_lock:
-                                self._event_cache[key] = [*rows, *pending]
-                                self._event_cache_revision[key] = self._event_revision(path)
+                            self._event_cache.put(key, self._event_revision(path), [*rows, *pending])
                 except Exception:
                     with self._event_lock:
                         later = self._event_pending.get(key, [])
@@ -1389,9 +1378,7 @@ class ChatSessionStore:
         key = (session_id, turn_id)
         path = self._event_path(session_id, turn_id)
         revision = self._event_revision(path)
-        with self._event_lock:
-            cached = self._event_cache.get(key)
-            rows = cached if cached is not None and self._event_cache_revision.get(key) == revision else None
+        rows = self._event_cache.get(key, revision)
         if rows is None:
             with exclusive_file_lock(path, agent_id="loopx-chat", operation="read_chat_events"):
                 rows = self._event_rows_locked(session_id, turn_id)
@@ -1400,7 +1387,7 @@ class ChatSessionStore:
         start = bisect_right(rows, after, key=lambda row: int(row.get("sequence") or 0))
         result = rows[start:]
         if rows and rows[-1].get("kind") in TERMINAL_EVENT_KINDS:
-            self._drop_event_cache(key, rows)
+            self._event_cache.retain_terminal(key, rows)
         return result
 
     def compact_completed_events(self, *, older_than_hours: float = 24.0) -> int:
@@ -1432,7 +1419,7 @@ class ChatSessionStore:
                     _replace_jsonl(event_path, retained)
                     compacted += 1
                 revision = self._event_revision(event_path)
-                self._drop_event_cache((session_id, turn_id))
+                self._event_cache.drop((session_id, turn_id))
             with exclusive_file_lock(turn_path, agent_id="loopx-chat", operation="mark_chat_events_compacted"):
                 current = _read_json(turn_path)
                 if current.get("status") in TERMINAL_TURN_STATES:

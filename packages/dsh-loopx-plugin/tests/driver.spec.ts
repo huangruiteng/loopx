@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import type { FileRunner } from '../src/cli.ts'
 import {
@@ -61,29 +62,29 @@ function fakeAgent(id = sessionId): FakeAgent {
       return false
     },
   }
-  let session: {
+  interface FixtureHeader {
+    version: number
     id: string
-    header: {
-      version: number
-      id: string
-      createdAt: number
-      cwd: string
-      seedLength: number
-    }
-    events: SessionEvent[]
-    surface: { nodes: never[] }
-  } = {
-    id,
-    header: {
-      version: 0,
-      id,
-      createdAt: 1,
-      cwd: '/fixture/project',
-      seedLength: 0,
-    },
-    events: [],
-    surface: { nodes: [] },
+    createdAt: number
+    cwd: string
+    seedLength: number
   }
+  // The installed generation exposes one `snapshotEvents()` reader instead of
+  // the retired `events` property, so the fixture owns the log and hands it out.
+  let sessionEvents: SessionEvent[] = []
+  const fixtureSession = (header: FixtureHeader) => ({
+    id,
+    header,
+    snapshotEvents: () => sessionEvents,
+    surface: { nodes: [] as never[] },
+  })
+  let session = fixtureSession({
+    version: 0,
+    id,
+    createdAt: 1,
+    cwd: '/fixture/project',
+    seedLength: 0,
+  })
   const agent = {
     id,
     options: {},
@@ -110,16 +111,13 @@ function fakeAgent(id = sessionId): FakeAgent {
     get maintenanceCalls() { return maintenanceCalls },
     nextTurn,
     nextStep,
-    appendEvent(event) { session.events.push(event) },
-    replaceSession(headerId, events = [...session.events]) {
-      session = {
-        ...session,
-        events,
-        header: {
-          ...session.header,
-          ...(headerId === undefined ? {} : { id: headerId }),
-        },
-      }
+    appendEvent(event) { sessionEvents.push(event) },
+    replaceSession(headerId, events = [...sessionEvents]) {
+      sessionEvents = events
+      session = fixtureSession({
+        ...session.header,
+        ...(headerId === undefined ? {} : { id: headerId }),
+      })
     },
     setStatus(value) { status = value },
   }
@@ -138,7 +136,7 @@ function turnEndEvent(
 ): SessionEvent<'turn/end'> {
   return {
     type: 'turn/end',
-    seq,
+    seq: SessionSeq(seq),
     time: 1,
     data: {
       turn: 0,

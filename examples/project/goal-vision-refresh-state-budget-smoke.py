@@ -375,7 +375,7 @@ def main() -> int:
             check=False,
         )
         assert unexplained_inline_drift.returncode == 1, unexplained_inline_drift
-        assert "provide goal_path_delta_v0 with outcome=replan" in payload(
+        assert "provide path_delta with schema_version=goal_path_delta_v0 and outcome=replan" in payload(
             unexplained_inline_drift
         )["error"], unexplained_inline_drift.stdout
 
@@ -391,7 +391,7 @@ def main() -> int:
             check=False,
         )
         assert unexplained_drift.returncode == 1, unexplained_drift
-        assert "provide goal_path_delta_v0 with outcome=replan" in payload(
+        assert "provide path_delta with schema_version=goal_path_delta_v0 and outcome=replan" in payload(
             unexplained_drift
         )["error"], unexplained_drift.stdout
 

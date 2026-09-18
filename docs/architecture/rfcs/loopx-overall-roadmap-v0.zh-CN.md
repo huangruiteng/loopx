@@ -124,7 +124,7 @@ S 工作流表示长期责任，G 里程碑表示一次可验收的产品组合�
 | [Provider-Neutral Post-Writeback Capability Hooks v0](provider-neutral-post-writeback-capability-hooks-v0.zh-CN.md) | S3/S8 | Draft；periodic-report 首个 vertical 已实现 | P1：R3 返回/后继复用 durable intent；hook 失败隔离，不能加入主事务或直接执行 effect |
 | [Agent IM, LoopX, And OpenViking Collaboration v0](agent-im-openviking-collaboration-v0.md) | S3/S6/S8 | Draft；三 owner 集成仍待资格 | P1/P2：IM 投递、LoopX work authority、OV context 分离；断线重放/权限撤销/来源失效 |
 | [Per-Goal Usage, Token, and Cost Surfacing v0](goal-usage-token-cost-v0.md) | S7/S5 | Draft；Codex aggregate/cost 展示已有切片 | P0 观测→P1 多 provider：未知不作零、重复扣费去重、价格来源/时效；usage 不自动授权预算 |
-| [Intelligent Review and Dynamic Presentation Surfaces v0](intelligent-review-presentation-surfaces-v0.zh-CN.md) | S5 | Draft；typed proposal 输入存在，通用 compiler 未交付 | P1：一个真实决策帧纵切，状态 stale 与 optimistic rollback；减少无意义二次确认 |
+| [Intelligent Review and Dynamic Presentation Surfaces v0](intelligent-review-presentation-surfaces-v0.zh-CN.md) | S5 | Draft；action/attention 纵切及本地交付链/验收复盘已实现 | P1：跨渠道披露和受治理的修订/结算复盘；本地可见性不代表 G2 通过 |
 | [Human Attention Wishlist v0](human-attention-wishlist-v0.zh-CN.md) | S5/S11 | Draft；Held | P3：第二个重复真实需求出现才重开；sidecar 不改变 gate/quota/调度 |
 | [Human-confirmed domain operations (v0)](human-confirmed-domain-operations-v0.zh-CN.md) | S8/S9 | Draft；proposal only | P2：模拟 adapter 的一次不可变确认→effect→对账→原路回报；金融 provider 独立包，不扩普通协调权限 |
 | [Research Exploration Control Plane v0](research-exploration-control-plane-v0.zh-CN.md) | S11/S3 | Draft；M2 composition/successor 局部实现 | P1：observation/write-time gate/closure basis 独立验证；自选模型和推断触发继续 defer |
@@ -234,6 +234,8 @@ R2 的一条依赖必须通过真实 LoopX Agent 间的请求/产物交接完成
 - **回滚：** 停该 commit class，新 proposal 保留且不产生 effect；不恢复旧 revision 或放松 fence。
 
 ### R5：TS 收敛与本地持久化
+
+L3 检查点：独立领取/接管、原子 claim 准入与维护共用 typed lease facts/rules 和 provider opening；原领取重试校验当前执行 proof，真实 CLI 完成可恢复缺失 Markdown 展示。覆盖完整 scope 冲突、进程中断及 File/SQLite/PostgreSQL 只读演练。[剩余 executor 与集成边界](../../reference/canonical-lease-renew.md)；R5、D2/D3 和默认化资格仍未完成。
 
 - **Owner：** TS RFC T0–T4、shared-authority D1–D3；保留两套编号及原门禁。
 - **选择规则：** 优先迁移 R1–R4 热路径的一笔完整事务或恢复生命周期，附前后 caller/owner/crossing 表、实际删除和性能证据。不要继续按单字段增加 Python→TS RPC；不要重建已合入的 Todo update。

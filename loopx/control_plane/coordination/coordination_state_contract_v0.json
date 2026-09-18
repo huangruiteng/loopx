@@ -174,8 +174,10 @@
   },
   "task_lease_protocol": {
     "acquire_request_schema": "loopx_task_lease_acquire_native_v0",
+    "canonical_acquire_request_schema": "loopx_canonical_task_lease_acquire_request_v0",
     "lifecycle_request_schema": "loopx_task_lease_lifecycle_native_v0",
-    "canonical_renew_request_schema": "loopx_canonical_task_lease_renew_request_v0"
+    "canonical_renew_request_schema": "loopx_canonical_task_lease_renew_request_v0",
+    "canonical_lifecycle_request_schema": "loopx_canonical_task_lease_lifecycle_request_v0"
   },
   "capability_hook_protocol": {
     "registration_schema": "loopx_capability_hook_registration_v0",

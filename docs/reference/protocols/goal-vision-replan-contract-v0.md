@@ -107,24 +107,26 @@ other's active vision.
 
 ### Path Delta
 
-A machine-generated vision packet may include one optional
-`goal_path_delta_v0`. It makes a bounded loop's look-back explicit without
-adding more inline CLI flags or expanding the heartbeat prompt. The packet is
-written through the existing `--agent-vision-json` boundary and is retained in
-the same agent-scoped run-history and shared-runtime vision projection:
+A vision packet may include a top-level `path_delta` object; `goal_path_delta_v0`
+is its `schema_version`, not its enclosing field. The shared TypeScript authoring
+boundary rejects misplaced declared deltas before any write, including through
+CLI and Turn. It does not infer a protocol from ordinary metadata field names.
+Existing packets may omit the nested schema version; an explicitly supplied
+version must match. Historical read compaction remains unchanged.
 
 ```json
 {
-  "schema_version": "goal_path_delta_v0",
-  "outcome": "replan",
-  "prior_assumption": "The current monitor lane would produce acceptance evidence.",
-  "observed_reality": "Two bounded polls produced no material transition.",
-  "retained": ["Keep the verified monitor target and evidence refs."],
-  "changed": ["Create one runnable advancement successor."],
-  "stopped": ["Stop treating future polling as completion evidence."],
-  "unresolved_questions": ["Which successor can falsify the new path?"],
-  "reentry_condition": "Resume the monitor-only wait after successor evidence lands.",
-  "evidence_refs": ["evidence:monitor-poll-02", "todo:successor-01"]
+  "vision_patch": {"vision_summary": "Deliver the verified successor."},
+  "path_delta": {
+    "schema_version": "goal_path_delta_v0",
+    "outcome": "replan",
+    "prior_assumption": "Polling would produce acceptance evidence.",
+    "observed_reality": "Repeated polls produced no material transition.",
+    "retained": ["Keep the verified monitor target."],
+    "changed": ["Create one runnable advancement successor."],
+    "stopped": ["Stop treating polling as completion evidence."],
+    "evidence_refs": ["evidence:monitor-poll", "todo:successor"]
+  }
 }
 ```
 
@@ -231,6 +233,14 @@ Valid checkpoint decisions are:
   decision; and
 - `not_required`: no material closeout trigger was present, including a valid
   typed in-flight continuation.
+
+A material closeout should carry its own vision patch or evidence-backed unchanged
+reason. If omitted, `refresh-state` still records the outcome and returns the
+checkpoint repair action. Follow that action in the same turn with the original
+settlement identity, removing already executed state mutations. The supplement
+must satisfy the checkpoint before terminal closeout; it neither re-authors the
+outcome nor spends a second time. Never invent an unchanged reason to clear a gap.
+Typed in-flight continuations keep their existing exemption.
 
 `missing_required` is not a chat reminder. Status keeps it in compact run
 history, quota filters it by current `agent_id`, and goal-frontier projection

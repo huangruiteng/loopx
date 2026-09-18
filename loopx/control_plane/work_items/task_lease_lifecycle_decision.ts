@@ -2,6 +2,7 @@ import {leaseOwnerRejection as ownerRejection} from "./task_lease_eligibility.ts
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { type JsonObject } from "../effect_program.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
+import {leaseEpoch, utcIsoformat, type LeaseRecord} from "./task_lease_acquire.ts";
 
 export const TASK_LEASE_LIFECYCLE_DECISION_OPERATIONS = [
   "renew",
@@ -273,6 +274,9 @@ export function decideTaskLeaseLifecycle(
     ) {
       return result("rejected", "idempotency_key_reuse");
     }
+    if (!Number.isSafeInteger(lease.version + 1) || !Number.isSafeInteger(lease.lease_epoch + 1)) {
+      return result("rejected", "lease_generation_exhausted");
+    }
     return result("apply", "lease_transfer", {
       nextLease: {
         ...lease,
@@ -283,9 +287,34 @@ export function decideTaskLeaseLifecycle(
       },
     });
   }
+  if (!Number.isSafeInteger(lease.version + 1)) {
+    return result("rejected", "lease_generation_exhausted");
+  }
   return result("apply", "lease_renew", {
     nextLease: { ...lease, version: lease.version + 1 },
   });
+}
+
+/** Shared record materialization; storage adapters cannot redefine generations
+ * or timestamps. Release retains the fence generation as historical evidence. */
+export function releasedTaskLeaseRecord(lease: LeaseRecord, at: Date): LeaseRecord {
+  return {...lease, lease_epoch: leaseEpoch(lease), status: "released",
+    released_at: utcIsoformat(at), updated_at: utcIsoformat(at)};
+}
+
+export function materializeTaskLeaseLifecycle(lease: LeaseRecord,
+  command: TaskLeaseLifecycleDecisionCommand, decision: TaskLeaseLifecycleDecision,
+  at: Date): LeaseRecord {
+  if (decision.outcome !== "apply" || decision.next_lease === null) {
+    throw new EffectRuntimeRequestError("only an applied lease decision may change its record");
+  }
+  if (command.operation === "release") return releasedTaskLeaseRecord(lease, at);
+  const next = decision.next_lease;
+  return {...lease,
+    ...(command.operation === "transfer" ? {owner: next.owner,
+      idempotency_key: next.idempotency_key, lease_epoch: next.lease_epoch} : {}),
+    version: next.version, updated_at: utcIsoformat(at),
+    expires_at: utcIsoformat(new Date(at.valueOf() + command.ttl_seconds! * 1000))};
 }
 
 export function evaluateTaskLeaseLifecycleDecision(

@@ -161,7 +161,9 @@ def collect_status(
             bool(runtime_projection_routes.get("healthy"))
             if runtime_projection_routes.get("available")
             else None
-        )
+        ),
+        # Registry, Goal and activation scope already live in the status envelope.
+        "goal_count": int(runtime_projection_routes.get("goal_count") or 0),
     }
     contract_projection = {
         "ok": contract.get("ok"),

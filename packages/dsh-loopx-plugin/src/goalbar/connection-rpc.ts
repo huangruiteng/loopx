@@ -19,19 +19,6 @@ export const GOALBAR_RPC_CHANNEL = '/loopx' as const
 export const GOALBAR_SHARED_API_CHANNEL = '/api' as const
 const GOALBAR_SHARED_API_ENDPOINT = 'loopx.goalbar' as const
 
-interface ConnectionFetchRoute {
-  readonly path: string
-  readonly methods: readonly ['POST']
-  readonly requestBody: 'buffered'
-  readonly fetch: (request: Request) => Promise<Response>
-}
-
-interface SharedApiConnection extends HostConnectionHandle {
-  readonly fetch: {
-    register(route: ConnectionFetchRoute): () => Promise<void>
-  }
-}
-
 type ConnectionRpcResult = Awaited<ReturnType<ConnectionRpcHandler>>
 
 function badRequestCarrier(): ConnectionRpcResult {
@@ -51,12 +38,6 @@ function successCarrier(value: GoalBarResponseV1): ConnectionRpcResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function hasSharedApiFetch(
-  connection: HostConnectionHandle,
-): connection is SharedApiConnection {
-  return Reflect.has(connection, 'fetch')
 }
 
 function responseEnvelope(rpcId: string, result: ConnectionRpcResult): Response {
@@ -145,29 +126,19 @@ export function createGoalBarConnectionHandler(
   }
 }
 
+/** @deprecated Explicit legacy registration; the plugin uses the shared API. */
 export function registerGoalBarConnectionRpc(
-  connection: HostConnectionHandle,
+  connection: Pick<HostConnectionHandle, 'rpc'>,
   service: GoalBarServiceHandle,
 ): () => Promise<void> {
-  return connection.rpc.handle(
-    GOALBAR_RPC_CHANNEL,
-    createGoalBarConnectionHandler(service),
-    { authority: 'loopback' },
-  )
+  return connection.rpc.handle(GOALBAR_RPC_CHANNEL, createGoalBarConnectionHandler(service))
 }
 
-/**
- * Register GoalBar on the carrier supported by the installed DSH generation.
- * DSH 0.1.5 owns extension routes inside its authenticated shared `/api`
- * bridge; earlier compatible releases expose the legacy standalone channel.
- */
+/** Register on the authenticated shared API required by the DSH peer floor. */
 export function registerGoalBarConnectionTransport(
-  connection: HostConnectionHandle,
+  connection: Pick<HostConnectionHandle, 'fetch'>,
   service: GoalBarServiceHandle,
 ): () => Promise<void> {
-  if (!hasSharedApiFetch(connection)) {
-    return registerGoalBarConnectionRpc(connection, service)
-  }
   const handler = createGoalBarConnectionHandler(service)
   return connection.fetch.register({
     path: `${GOALBAR_SHARED_API_CHANNEL}/${GOALBAR_SHARED_API_ENDPOINT}`,

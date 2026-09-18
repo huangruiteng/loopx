@@ -159,6 +159,15 @@ async function fixture(): Promise<Fixture> {
   ], { cwd: project })).exitCode).toBe(0)
 
   const queued: UserMessage[] = []
+  const sessionEvents = [{
+    type: 'user/message',
+    data: {
+      id: randomUUID(),
+      role: 'user',
+      content: [{ type: 'text', text: 'Use LoopX.' }],
+      source: { kind: 'skill-invocation', name: 'loopx', form: 'instructions' },
+    },
+  }] as unknown as SessionEvent[]
   const session = {
     id: sessionId,
     header: {
@@ -168,21 +177,12 @@ async function fixture(): Promise<Fixture> {
       cwd: project,
       seedLength: 0,
     },
-    events: [{
-      type: 'user/message',
-      data: {
-        id: randomUUID(),
-        role: 'user',
-        content: [{ type: 'text', text: 'Use LoopX.' }],
-        source: { kind: 'skill-invocation', name: 'loopx', form: 'instructions' },
-      },
-    }] as SessionEvent[],
+    snapshotEvents: () => sessionEvents,
     surface: { nodes: [] },
   }
   const inbox = {
     nextTurn: queued,
     nextStep: [] as UserMessage[],
-    get hasPending() { return queued.length > 0 || this.nextStep.length > 0 },
     remove(id: UserMessage['id']) {
       const index = queued.findIndex(message => message.id === id)
       if (index < 0) return false

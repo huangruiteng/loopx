@@ -1,7 +1,7 @@
 {
   "schema_version": "loopx_legacy_writer_fence_caller_parity_v0",
   "source_baseline": "0fb497af8",
-  "description": "Observable behaviour of every fenced coordination entry point: legacy-only writers remain fenced, while promoted terminal and archive rows deliberately route through canonical authority. Stable provider-first fields use subset matching; exit status and exclusion-free effect snapshots remain exact. `baseline` entries document earlier revisions and are never executed.",
+  "description": "Observable behaviour of every fenced coordination entry point: legacy-only writers remain fenced, while promoted lease, terminal and archive rows deliberately route through canonical authority. Stable provider-first fields use subset matching; exit status and exclusion-free effect snapshots remain exact. `baseline` entries document earlier revisions and are never executed.",
   "placeholders": [
     "{runtime_root}",
     "{todo_a}",
@@ -1078,35 +1078,22 @@
       "baseline": null
     },
     {
-      "id": "cli-task_lease_acquire-engaged",
+      "id": "cli-task_lease_acquire-canonical",
       "surface": "cli",
       "workspace": "w1",
       "caller": "task_lease_acquire",
       "fence_state": "engaged",
-      "exit": 1,
+      "exit": 0,
       "expect": {
-        "ok": false,
+        "ok": true,
         "schema_version": "task_lease_v0",
         "action": "acquire",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced",
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        },
-        "settlement": {
-          "effect_id": null,
-          "receipts": [],
-          "failure": {
-            "step": "validation",
-            "kind": "permission_denied",
-            "code": "legacy_coordination_writer_fenced"
-          }
-        }
+        "legacy_fallback_used": false,
+        "acquired": true,
+        "idempotent": false,
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "status": "applied"
       },
       "effect": {
         "added": [],
@@ -1127,8 +1114,33 @@
           "error": "native task-lease acquire result shape mismatch",
           "error_code": "RuntimeError",
           "schema_version": "task_lease_v0"
+        },
+        "8330a974c": {
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "acquire",
+          "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
+          "error_code": "legacy_coordination_writer_fenced",
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+            "authority_mode": "file_v0",
+            "fence_id": "caller-fixture"
+          },
+          "settlement": {
+            "effect_id": null,
+            "receipts": [],
+            "failure": {
+              "step": "validation",
+              "kind": "permission_denied",
+              "code": "legacy_coordination_writer_fenced"
+            }
+          }
         }
-      }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-task_lease_renew-canonical",
@@ -1189,72 +1201,23 @@
       "match": "subset"
     },
     {
-      "id": "cli-task_lease_transfer-engaged",
+      "id": "cli-task_lease_transfer-canonical",
       "surface": "cli",
       "workspace": "w1",
       "caller": "task_lease_transfer",
       "fence_state": "engaged",
-      "exit": 1,
+      "exit": 0,
       "expect": {
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        },
-        "handoff_mode": "hard_lease",
-        "ok": false,
+        "ok": true,
         "schema_version": "task_lease_v0",
         "action": "transfer",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced"
-      },
-      "effect": {
-        "added": [],
-        "removed": [],
-        "changed": []
-      },
-      "outbox_added": [],
-      "baseline": {
-        "note": "recorded through the real CLI against each revision",
-        "0fb497af8": {
-          "ok": false,
-          "error": "native task-lease lifecycle schema mismatch",
-          "error_code": "RuntimeError",
-          "schema_version": "task_lease_v0"
-        },
-        "ee1b17217": {
-          "ok": false,
-          "error": "native task-lease lifecycle schema mismatch",
-          "error_code": "RuntimeError",
-          "schema_version": "task_lease_v0"
-        }
-      }
-    },
-    {
-      "id": "cli-task_lease_release-engaged",
-      "surface": "cli",
-      "workspace": "w1",
-      "caller": "task_lease_release",
-      "fence_state": "engaged",
-      "exit": 1,
-      "expect": {
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        },
+        "status": "applied",
+        "transferred": true,
+        "idempotent": false,
         "handoff_mode": "hard_lease",
-        "ok": false,
-        "schema_version": "task_lease_v0",
-        "action": "release",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced"
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "legacy_fallback_used": false
       },
       "effect": {
         "added": [],
@@ -1275,8 +1238,25 @@
           "error": "native task-lease lifecycle schema mismatch",
           "error_code": "RuntimeError",
           "schema_version": "task_lease_v0"
+        },
+        "001c6daf2": {
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+            "authority_mode": "file_v0",
+            "fence_id": "caller-fixture"
+          },
+          "handoff_mode": "hard_lease",
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "transfer",
+          "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
+          "error_code": "legacy_coordination_writer_fenced"
         }
-      }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-todo_complete-engaged",
@@ -1691,35 +1671,23 @@
       }
     },
     {
-      "id": "cli-task_lease_acquire-engaged-capture",
+      "id": "cli-task_lease_release-canonical",
       "surface": "cli",
-      "workspace": "w2",
-      "caller": "task_lease_acquire",
+      "workspace": "w1",
+      "caller": "task_lease_release",
       "fence_state": "engaged",
-      "exit": 1,
+      "exit": 0,
       "expect": {
-        "ok": false,
+        "ok": true,
         "schema_version": "task_lease_v0",
-        "action": "acquire",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced",
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        },
-        "settlement": {
-          "effect_id": null,
-          "receipts": [],
-          "failure": {
-            "step": "validation",
-            "kind": "permission_denied",
-            "code": "legacy_coordination_writer_fenced"
-          }
-        }
+        "action": "release",
+        "status": "applied",
+        "released": true,
+        "idempotent": false,
+        "handoff_mode": "hard_lease",
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "legacy_fallback_used": false
       },
       "effect": {
         "added": [],
@@ -1727,7 +1695,90 @@
         "changed": []
       },
       "outbox_added": [],
-      "baseline": null
+      "baseline": {
+        "note": "recorded through the real CLI against each revision",
+        "0fb497af8": {
+          "ok": false,
+          "error": "native task-lease lifecycle schema mismatch",
+          "error_code": "RuntimeError",
+          "schema_version": "task_lease_v0"
+        },
+        "ee1b17217": {
+          "ok": false,
+          "error": "native task-lease lifecycle schema mismatch",
+          "error_code": "RuntimeError",
+          "schema_version": "task_lease_v0"
+        },
+        "001c6daf2": {
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+            "authority_mode": "file_v0",
+            "fence_id": "caller-fixture"
+          },
+          "handoff_mode": "hard_lease",
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "release",
+          "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
+          "error_code": "legacy_coordination_writer_fenced"
+        }
+      },
+      "match": "subset"
+    },
+    {
+      "id": "cli-task_lease_acquire-canonical-capture",
+      "surface": "cli",
+      "workspace": "w2",
+      "caller": "task_lease_acquire",
+      "fence_state": "engaged",
+      "exit": 0,
+      "expect": {
+        "ok": true,
+        "schema_version": "task_lease_v0",
+        "action": "acquire",
+        "legacy_fallback_used": false,
+        "acquired": true,
+        "idempotent": false,
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "status": "applied"
+      },
+      "effect": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "outbox_added": [],
+      "baseline": {
+        "8330a974c": {
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "acquire",
+          "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
+          "error_code": "legacy_coordination_writer_fenced",
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+            "authority_mode": "file_v0",
+            "fence_id": "caller-fixture"
+          },
+          "settlement": {
+            "effect_id": null,
+            "receipts": [],
+            "failure": {
+              "step": "validation",
+              "kind": "permission_denied",
+              "code": "legacy_coordination_writer_fenced"
+            }
+          }
+        }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-task_lease_renew-canonical-capture",
@@ -1775,27 +1826,23 @@
       "match": "subset"
     },
     {
-      "id": "cli-task_lease_transfer-engaged-capture",
+      "id": "cli-task_lease_transfer-canonical-capture",
       "surface": "cli",
       "workspace": "w2",
       "caller": "task_lease_transfer",
       "fence_state": "engaged",
-      "exit": 1,
+      "exit": 0,
       "expect": {
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        },
-        "handoff_mode": "hard_lease",
-        "ok": false,
+        "ok": true,
         "schema_version": "task_lease_v0",
         "action": "transfer",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced"
+        "status": "applied",
+        "transferred": true,
+        "idempotent": false,
+        "handoff_mode": "hard_lease",
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "legacy_fallback_used": false
       },
       "effect": {
         "added": [],
@@ -1803,30 +1850,44 @@
         "changed": []
       },
       "outbox_added": [],
-      "baseline": null
+      "baseline": {
+        "001c6daf2": {
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+            "authority_mode": "file_v0",
+            "fence_id": "caller-fixture"
+          },
+          "handoff_mode": "hard_lease",
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "transfer",
+          "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
+          "error_code": "legacy_coordination_writer_fenced"
+        }
+      },
+      "match": "subset"
     },
     {
-      "id": "cli-task_lease_release-engaged-capture",
+      "id": "cli-task_lease_release-canonical-capture",
       "surface": "cli",
       "workspace": "w2",
       "caller": "task_lease_release",
       "fence_state": "engaged",
-      "exit": 1,
+      "exit": 0,
       "expect": {
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        },
-        "handoff_mode": "hard_lease",
-        "ok": false,
+        "ok": true,
         "schema_version": "task_lease_v0",
         "action": "release",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced"
+        "status": "applied",
+        "released": true,
+        "idempotent": false,
+        "handoff_mode": "hard_lease",
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "legacy_fallback_used": false
       },
       "effect": {
         "added": [],
@@ -1834,7 +1895,25 @@
         "changed": []
       },
       "outbox_added": [],
-      "baseline": null
+      "baseline": {
+        "001c6daf2": {
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_b}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+            "authority_mode": "file_v0",
+            "fence_id": "caller-fixture"
+          },
+          "handoff_mode": "hard_lease",
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "release",
+          "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
+          "error_code": "legacy_coordination_writer_fenced"
+        }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-task_lease_acquire-invalid",
@@ -1847,16 +1926,12 @@
         "ok": false,
         "schema_version": "task_lease_v0",
         "action": "acquire",
-        "error": "legacy coordination writer fence must be engaged",
+        "legacy_fallback_used": false,
         "error_code": "legacy_writer_fence_read_failed",
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "failed",
-          "reason_code": "legacy_writer_fence_read_failed",
-          "reason": "legacy coordination writer fence must be engaged",
-          "authority_mode": "unknown_fail_closed"
-        },
+        "error": "legacy coordination writer fence must be engaged",
+        "source_authority": null,
+        "decision_read_from_provider": false,
+        "status": "failed",
         "settlement": {
           "effect_id": null,
           "receipts": [],
@@ -1873,7 +1948,33 @@
         "changed": []
       },
       "outbox_added": [],
-      "baseline": null
+      "baseline": {
+        "8330a974c": {
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "acquire",
+          "error": "legacy coordination writer fence must be engaged",
+          "error_code": "legacy_writer_fence_read_failed",
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "failed",
+            "reason_code": "legacy_writer_fence_read_failed",
+            "reason": "legacy coordination writer fence must be engaged",
+            "authority_mode": "unknown_fail_closed"
+          },
+          "settlement": {
+            "effect_id": null,
+            "receipts": [],
+            "failure": {
+              "step": "validation",
+              "kind": "permission_denied",
+              "code": "legacy_writer_fence_read_failed"
+            }
+          }
+        }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-todo_capture_followups-invalid",
@@ -1919,16 +2020,12 @@
         "ok": false,
         "schema_version": "task_lease_v0",
         "action": "acquire",
-        "error": "EISDIR: illegal operation on a directory, read",
+        "legacy_fallback_used": false,
         "error_code": "legacy_writer_fence_read_failed",
-        "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "failed",
-          "reason_code": "legacy_writer_fence_read_failed",
-          "reason": "EISDIR: illegal operation on a directory, read",
-          "authority_mode": "unknown_fail_closed"
-        },
+        "error": "EISDIR: illegal operation on a directory, read",
+        "source_authority": null,
+        "decision_read_from_provider": false,
+        "status": "failed",
         "settlement": {
           "effect_id": null,
           "receipts": [],
@@ -1945,7 +2042,33 @@
         "changed": []
       },
       "outbox_added": [],
-      "baseline": null
+      "baseline": {
+        "8330a974c": {
+          "ok": false,
+          "schema_version": "task_lease_v0",
+          "action": "acquire",
+          "error": "EISDIR: illegal operation on a directory, read",
+          "error_code": "legacy_writer_fence_read_failed",
+          "lease_path": "{runtime_root}/goals/observable/task-leases/{todo_a}.json",
+          "write_check": {
+            "schema_version": "loopx_legacy_coordination_write_check_result_v0",
+            "status": "failed",
+            "reason_code": "legacy_writer_fence_read_failed",
+            "reason": "EISDIR: illegal operation on a directory, read",
+            "authority_mode": "unknown_fail_closed"
+          },
+          "settlement": {
+            "effect_id": null,
+            "receipts": [],
+            "failure": {
+              "step": "validation",
+              "kind": "permission_denied",
+              "code": "legacy_writer_fence_read_failed"
+            }
+          }
+        }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-todo_capture_followups-unreadable",
@@ -1988,15 +2111,14 @@
       "fence_state": "engaged_without_store",
       "exit": 1,
       "expect": {
+        "ok": false,
         "schema_version": "task_lease_v0",
-        "status": "missing",
+        "action": "acquire",
+        "legacy_fallback_used": false,
+        "error_code": "canonical_lease_authority_unavailable",
         "source_authority": "file_v0",
         "decision_read_from_provider": true,
-        "legacy_fallback_used": false,
-        "ok": false,
-        "action": "acquire",
-        "error": "canonical Todo authority is unavailable",
-        "error_code": "local_authority_todo_list_unavailable"
+        "status": "missing"
       },
       "effect": {
         "added": [],
@@ -2005,8 +2127,20 @@
       },
       "outbox_added": [],
       "baseline": {
-        "note": "ee1b17217 printed schema_version loopx_local_coordination_todo_list_result_v0 because the exception payload was spread after the envelope keys"
-      }
+        "note": "ee1b17217 printed schema_version loopx_local_coordination_todo_list_result_v0 because the exception payload was spread after the envelope keys",
+        "8330a974c": {
+          "schema_version": "task_lease_v0",
+          "status": "missing",
+          "source_authority": "file_v0",
+          "decision_read_from_provider": true,
+          "legacy_fallback_used": false,
+          "ok": false,
+          "action": "acquire",
+          "error": "canonical Todo authority is unavailable",
+          "error_code": "local_authority_todo_list_unavailable"
+        }
+      },
+      "match": "subset"
     }
   ]
 }

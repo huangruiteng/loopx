@@ -115,7 +115,7 @@ const BASIC_CREDENTIAL_VALUE =
 const PRIVATE_TEXT_PATTERNS = [
   /\/Users\//,
   /\/ext_data\//,
-  /larkoffice/i,
+  /lark[o]ffice/i, // Equivalent matcher avoids matching its own policy source.
   /docs\.internal/i,
   /\bt-20\d{12}-[a-z0-9]+\b/,
   /\bBearer\b/i,
@@ -340,6 +340,11 @@ function normalizeGoalPathDelta(
 ): [JsonObject | null, Record<string, number>] {
   if (value === null || value === undefined) return [null, {}];
   const source = requiredObject(value, "agent_vision.path_delta");
+  if (source.schema_version !== undefined && source.schema_version !== GOAL_PATH_DELTA_SCHEMA_VERSION) {
+    throw new EffectRuntimeRequestError(
+      `agent_vision.path_delta.schema_version must be ${GOAL_PATH_DELTA_SCHEMA_VERSION}`,
+    );
+  }
   const outcome = compactText(source.outcome).toLowerCase().replaceAll("-", "_");
   if (!(GOAL_PATH_DELTA_OUTCOMES as readonly string[]).includes(outcome)) {
     throw new EffectRuntimeRequestError(
@@ -484,6 +489,22 @@ function decodePrepareRequest(request: JsonObject): VisionRefreshPrepareRequest 
 
 function prepareVisionRefresh(request: VisionRefreshPrepareRequest): JsonObject {
   const packet = request.agent_vision_packet;
+  // Validate authoring before merge/compaction can silently discard a declared
+  // protocol. Ordinary extension metadata is not classified by overlapping keys.
+  for (const [container, prefix] of [[packet, "agent_vision"], [packet.vision_patch, "agent_vision.vision_patch"]] as const) {
+    if (typeof container !== "object" || container === null || Array.isArray(container)) continue;
+    for (const [field, value] of Object.entries(container)) {
+      if (prefix === "agent_vision" && field === "path_delta") continue;
+      if (field === GOAL_PATH_DELTA_SCHEMA_VERSION ||
+          (prefix === "agent_vision.vision_patch" && field === "path_delta") ||
+          (typeof value === "object" && value !== null && !Array.isArray(value) &&
+           (value as JsonObject).schema_version === GOAL_PATH_DELTA_SCHEMA_VERSION)) {
+        throw new EffectRuntimeRequestError(
+          `${prefix}.${field} must be supplied as agent_vision.path_delta; ${GOAL_PATH_DELTA_SCHEMA_VERSION} is the schema_version, not the enclosing field`,
+        );
+      }
+    }
+  }
   const existing = request.existing_agent_vision ?? {};
   const updatePacket: JsonObject = { ...packet };
   if (request.merge_patch && Object.keys(existing).length > 0) {
@@ -619,7 +640,7 @@ function prepareVisionRefresh(request: VisionRefreshPrepareRequest): JsonObject 
     );
     if (changedFields.length > 0 && pathDelta?.outcome !== "replan") {
       throw new EffectRuntimeRequestError(
-        `autonomous agent vision replan changes durable fields ${changedFields.join(", ")}; provide goal_path_delta_v0 with outcome=replan so the mainline change is explicit`,
+        `autonomous agent vision replan changes durable fields ${changedFields.join(", ")}; provide path_delta with schema_version=goal_path_delta_v0 and outcome=replan so the mainline change is explicit`,
       );
     }
   }

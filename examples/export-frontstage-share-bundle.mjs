@@ -17,6 +17,7 @@ const showcaseCatalogPath = "docs/showcases/showcase-catalog.json";
 const projectionFixturePath = "examples/goal-channel-frontstage-fixture.py";
 const installerScriptPath = "scripts/install-from-github.sh";
 const deepSweBehaviorArticlePath = "benchmark/deepswe/behavior-discovery/index.html";
+const deepSweSolArticlePath = "apps/presentation/site/public/benchmarks/deepswe-sol/index.html";
 const homepageEvidenceAssets = [
   "docs/assets/long-running-loop-openviking-trajectory.png",
   "docs/assets/long-running-loop-ml-experiment-trajectory.png",
@@ -322,6 +323,7 @@ ${previewBlock}
 - Homepage source: \`apps/presentation/site\`.
 - SWE-Marathon research brief: \`${sweMarathonBriefUrl}\`, built from the pinned public-safe aggregate and case-insight projection under \`benchmark/swe-marathon/\`.
 - DeepSWE behavior discoveries: \`${deepSweBehaviorArticleUrl}\`, copied byte-for-byte from the reviewed standalone article at \`${deepSweBehaviorArticlePath}\`.
+- DeepSWE × Sol research brief: \`${base}benchmarks/deepswe-sol/\`, a static historical-study interpretation from \`${deepSweSolArticlePath}\`.
 - Homepage evidence assets: ${homepageEvidenceAssets.map((path) => `\`${path}\``).join(", ")}.
 - Personal Workspace demo and guide: docs/guides/personal-workspace-user-guide/.
 - Legacy Frontstage URLs redirect to the case directory without loading a dashboard or forwarding status parameters.
@@ -344,6 +346,7 @@ async function writeManifest(outDir, base, interactivePages) {
     homepage_entry: "site/index.html",
     swe_marathon_brief_entry: "site/benchmarks/swe-marathon/index.html",
     deepswe_behavior_article_entry: "site/benchmarks/deepswe/behavior-discovery/index.html",
+    deepswe_sol_article_entry: "site/benchmarks/deepswe-sol/index.html",
     installer_entry: "site/install.sh",
     frontstage_entry: "site/frontstage/index.html",
     frontstage_redirect: "docs/showcases/index.en.html",
@@ -352,6 +355,7 @@ async function writeManifest(outDir, base, interactivePages) {
       public_homepage: "apps/presentation/site",
       swe_marathon_brief: "benchmark/swe-marathon",
       deepswe_behavior_article: deepSweBehaviorArticlePath,
+      deepswe_sol_article: deepSweSolArticlePath,
       installer_script: installerScriptPath,
       homepage_evidence_assets: homepageEvidenceAssets,
       primary_public_story: showcaseCatalogPath,

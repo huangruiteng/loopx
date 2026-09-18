@@ -160,7 +160,11 @@ the TypeScript runtime each own one spelling of the same idea.
   defined nowhere else under `loopx/`. Everyone else imports.
 - **I2 Closed sets.** Every value a registered vocabulary may carry is listed.
   The code carries no unregistered value in either runtime and the registry
-  lists no value the code does not carry.
+  lists no value the code does not carry. Stage `m0`, delivered, and blocking
+  today: the fixed literal scan exits the smoke non-zero on an unregistered
+  comparison. Its evidence is bounded to the dispatch forms the scanner
+  recognises, so a value that reaches the code by any other form is unverified,
+  not shown to be absent.
 - **I3 Cross-runtime parity.** When a vocabulary has a Python and a TypeScript
   owner, both carry the identical set.
 - **I4 Total projections.** A registered projection names every source value
@@ -205,24 +209,38 @@ the TypeScript runtime each own one spelling of the same idea.
   Only the owner defines the set and only producers write values. Mentioning,
   comparing, serializing, or displaying a value confers no ownership. An
   interpreter or pass-through that starts writing a value has become a
-  producer and must be registered as one. Enforced from M0.5.
+  producer and must be registered as one. Stage `m0_5`, delivered. Blocking
+  today for the producer half: a site that writes a kernel value without being
+  registered as a producer exits the smoke non-zero (`undeclared producer
+  sites`). Not blocking for the consumer half: interpreters and pass-throughs
+  are deliberately unregistered, so their only evidence is the advisory F3
+  inventory and no check can fail on them.
 - **I12 Every kernel value is produced.** For a `kernel` vocabulary, every
   value not listed under `compatibility_only` has at least one production site
   the fixed production forms recognise or an executable witness at a registered input decoder. A variable-source note alone is not production evidence. A
   value that is only compared is dead or compatibility-only, never canonical.
-  `skip` in `effective_action` is the first expected failure. Enforced from
-  M0.5; at M0 the literal scan accepts a compared value as carried.
+  `skip` in `effective_action` is the first expected failure. Stage `m0_5`,
+  delivered. Blocking today over the kernel tier: a registered kernel value with
+  no observed producer exits the smoke non-zero. Evidence is bounded to the
+  production forms inside the scan reach, which is F2's `verified / registered`
+  of 6 / 26, so the `cross_runtime` tier is unverified rather than passed. At M0
+  the literal scan accepted a compared value as carried.
 - **I13 Producers write registered values only.** A production site that
   writes a value outside the registered set fails closed, independently of
   whether any consumer compares it. Production is stricter than comparison: a
   consumer comparing an unregistered value is dead code, a producer writing one
-  is protocol drift. Enforced from M0.5; the M0 literal scan covers both forms
-  together.
+  is protocol drift. Stage `m0_5`, delivered. Blocking today: a recognised
+  producer writing a value outside the registered set exits the smoke non-zero,
+  over the same 6 / 26 domain as F1. Unresolved dynamic sites are reported and
+  counted, never treated as proven safe. At M0 the literal scan covered both
+  forms together.
 - **I14 Scope is declared, not inferred.** A name defined in several modules
   is a fork unless the registry declares it `bounded_context` and lists the
   contexts and one owner symbol per context. Declared names leave the fork
   budget; a rename does not change the budget's meaning and is not a fix.
-  Enforced from M0.5; at M0 `SOURCE_SURFACES` is counted as a fork and noted.
+  Stage `m0_5`, delivered. Blocking today: a declaration that does not name every
+  defining module exactly once exits the smoke non-zero, over 4 / 4 declared
+  contexts. At M0 `SOURCE_SURFACES` was counted as a fork and noted.
 
 ## 3. Scope and non-goals
 
@@ -572,13 +590,13 @@ Each obligation records the set it quantifies over in
 `formal_model.invariants[].domain`, and the smoke derives both sizes from the
 registry rather than trusting the declared numbers:
 
-| Obligation | Quantifies over | Verified / registered | Evidence bound |
-| --- | --- | --- | --- |
-| F1, F2 | `vocabularies[tier=kernel].producers` | 6 / 26 | producer scan reach |
-| F3 | `vocabularies[*]` | 0 / 26 | inventory only |
-| F4 | `scope_declarations[*].contexts` | 4 / 4 | declared defining modules |
-| F5 | `projections[*]` | 1 / 1 | executable owner function |
-| F6 | `persists_edges[*]` | 0 / 0 | unmodelled |
+| Obligation | Quantifies over | Verified / registered | Evidence bound | Stage | Blocks today |
+| --- | --- | --- | --- | --- | --- |
+| F1, F2 | `vocabularies[tier=kernel].producers` | 6 / 26 | producer scan reach | `m0_5` | Yes, within the 6 |
+| F3 | `vocabularies[*]` | 0 / 26 | inventory only | `advisory` | No |
+| F4 | `scope_declarations[*].contexts` | 4 / 4 | declared defining modules | `m0_5` | Yes |
+| F5 | `projections[*]` | 1 / 1 | executable owner function | `m0` | Yes |
+| F6 | `persists_edges[*]` | 0 / 0 | unmodelled | `unproved` | No |
 
 `verified` is the sub-domain the enforcement stage walks; `registered` is the
 whole population of the same unit. An advisory or unproved stage walks nothing,
@@ -590,6 +608,29 @@ producer scan reach is measured on every run instead of pinned, because its
 denominator moves with any new module; the smoke prints the current ratio, the
 unresolved-site total, and the share of that total no wider scan could ever
 resolve (E21).
+
+#### Four separate readings of one obligation row
+
+A `formal_model.invariants[]` row is read four ways. This RFC states each of them
+separately, because collapsing them is exactly how validated metadata comes to
+read as an executed proof:
+
+| Reading | Where it lives | What it can say, and what it cannot |
+| --- | --- | --- |
+| Schema validation | `check_formal_model` in the drift smoke | The block has the exact key set, the five roles, the consumer hierarchy, the seven relation kinds, each of F1 to F6 stated exactly once with a non-empty statement and evidence boundary, a lane agreeing with its stage, and a domain whose two sizes the smoke recomputes from the registry. It says the claim is *well formed*. It never evaluates the claim |
+| Implementation stage | `invariants[].enforcement` and the lane name | Which milestone owns the check: `m0`, `m0_5`, `advisory`, `unproved`. A stage is a position in the delivery plan, not a result |
+| Evidence status | `invariants[].evidence`, `invariants[].domain`, and `proof_boundary` | What the check rests on and how much of the population it walks: `verified / registered` under a named `evidence_bound`, classified `established`, `bounded`, `unknown` or `unproved`. Bounded evidence over a sub-domain is not proof over the whole |
+| Blocking behaviour | whether a violation makes `examples/semantic-vocabulary-drift-smoke.py` exit non-zero | The only reading that answers "will this stop a merge". It is a property of the calls in the smoke's `main()`, not of any field in the registry |
+
+The four do not move together, and the current tree is the proof of that. F1, F2
+and F4 carry implementation stage `m0_5` and sit in the `blocking_next` lane, yet
+they block a merge today over the kernel tier and the declared scopes. F3 is
+schema-valid, carries an evidence string, and walks nothing. F6 is schema-valid
+and has no check at all. A row that validates therefore establishes exactly one
+thing: the claim is well formed. Reading a discharged proof, a delivered check or
+a merge blocker out of that validation is the failure mode this subsection
+exists to prevent, and the regressions in
+`tests/architecture/test_semantic_formal_model.py` pin the distinction in code.
 
 These are different proof obligations. M0 establishes owner-set equality,
 cross-runtime parity, the declared executable projection, and inventory
@@ -674,9 +715,9 @@ vocabulary key fails the smoke.
 | `vocabularies.<name>.input_producer` | Fixed executable decoder witness, currently `turn_result_kind` only | Every registered input produces the matching typed member and invalid probes reject; arbitrary callable selection is forbidden |
 | `vocabularies.<name>.producers` (M0.5) | `path::Symbol` sites that write the field, required for `kernel` | Every site writes registered values only; every value not under `compatibility_only` has at least one source site or executable input witness (I12, I13) |
 | `vocabularies.<name>.compatibility_only` (M0.5) | values retained for persisted readers or a legacy typed caller interface | Subset of `values`; zero production sites; each carries a `value_notes` reason and a retirement milestone |
-| `formal_model` | finite universes, role relations and hierarchy, semantic obligations, candidate decisions, and established/bounded/unknown/unproved claims | Exact schema, role hierarchy, candidate decisions, and invariant ids are checked by the drift smoke; enforcement stages cannot be mistaken for completed proofs |
+| `formal_model` | finite universes, role relations and hierarchy, semantic obligations, candidate decisions, and established/bounded/unknown/unproved claims | Schema validation only. The drift smoke checks the exact key set, the role hierarchy, the candidate decisions, and that each of F1 to F6 is stated exactly once with a non-empty statement, evidence boundary and derived domain; `tests/architecture/test_semantic_formal_model.py` mutates each of those rules. A validated block is a well-formed claim, never an executed proof, and what blocks a merge is the code in the smoke's `main()`, not this field (Section 5, "Four separate readings of one obligation row") |
 | `formal_model.invariants[].domain` | the set the obligation quantifies over: `quantifies_over` selector, `verified` and `registered` sizes, `evidence_bound` | Selector and bound are code-owned names pinned per invariant by `FORMAL_DOMAIN_ANCHOR`; both sizes are derived from the registry and must equal the declared ones; an advisory or unproved stage must declare `verified: 0`, an enforced stage a non-empty domain |
-| `formal_model.enforcement_policy` | blocking-now, blocking-next, advisory, and unproved lanes | Every formal invariant appears exactly once and its lane agrees with its enforcement stage |
+| `formal_model.enforcement_policy` | blocking-now, blocking-next, advisory, and unproved lanes | Every formal invariant appears in exactly one lane and its lane agrees with its `enforcement` stage. The lane records the implementation stage that owns the check, not whether a violation blocks a merge today; the two are tabulated separately in Section 11 |
 | `vocabularies.<name>.value_notes`, `deprecated_values` | per-value review notes; values slated for removal | Names must be registered values |
 | `relations.same_concept` | groups of `vocabulary.value` members | Every member resolves |
 | `relations.shared_field_names` | one field name, its slots and the vocabulary or values each carries | Every slot resolves |
@@ -969,14 +1010,25 @@ Track B: scope + producer model + metric boundaries ─────────�
 ```
 
 The formal model uses four enforcement lanes so a difficult property does not
-become an accidental merge blocker:
+become an accidental merge blocker. A lane name records the **implementation
+stage** that owns the check. It is not a statement about what blocks a merge,
+and the two are listed in separate columns because they have diverged:
 
-| Lane | Properties | Current meaning |
-| --- | --- | --- |
-| `blocking_now` | F5 projection totality | Enforced by the M0 smoke today |
-| `blocking_next` | F1 producer closedness, F2 canonical liveness, F4 scope separation | Planned blocking checks after M0.5; not claimed by M0 |
-| `advisory` | F3 consumer domain closedness | Reported evidence; it does not block ordinary consumer edits |
-| `unproved` | F6 persistence/version compatibility | An explicit proof gap; it cannot be reported as passed |
+| Lane | Properties | Implementation stage | Blocks a pull request today |
+| --- | --- | --- | --- |
+| `blocking_now` | F5 projection totality | `m0`, delivered | Yes. A source value the projection neither maps nor rejects exits the smoke non-zero |
+| `blocking_next` | F1 producer closedness, F2 canonical liveness, F4 scope separation | `m0_5`, delivered for the kernel tier and for declared scopes | Yes, inside their declared domains. An unregistered produced value, a registered kernel value with no observed producer, and a scope declaration that does not name every defining module each exit the smoke non-zero. Outside those domains nothing is walked, which is unverified, not passed |
+| `advisory` | F3 consumer domain closedness | `advisory`, no analysis written | No. Consumer and interpreter edges are inventory output; nothing can fail on them |
+| `unproved` | F6 persistence/version compatibility | `unproved`, not modelled | No, and it cannot be reported as passed either |
+
+The `blocking_next` row previously read *planned blocking checks after M0.5; not
+claimed by M0*. That was true when the lane was named and false once M0.5b
+shipped: `check_producers` and `check_scope_declarations` are called from the
+drift smoke's `main()`, and by I10 that smoke fails closed on every pull request
+that runs the Python tests. The lane name is deliberately unchanged -- it still
+records which milestone owns the check -- and the blocking claim has moved to
+its own column. A lane is a schedule position; only the code in `main()` decides
+what stops a merge.
 
 The exit condition for a phase is its evidence row, not the existence of a
 formula or a registry entry. A property moves from `unproved` to `advisory` only
@@ -1167,6 +1219,44 @@ introduce a competing target state.
   vocabularies instead of re-parsing once per scan.
 - **Effect on normative design:** Section 5's bounded producer model names the
   three forms and the shared blocker taxonomy; no invariant or milestone changes.
+### 2026-09-17 — Formula, role and enforcement claims separated; formal signature mutated
+
+Normative for the enforcement-lane wording; the checks are unchanged except for
+one added rule. Track B slice B0 of #4447.
+
+- **One measured inconsistency, fixed in the prose.** The Section 11 lane table
+  glossed `blocking_next` as *planned blocking checks after M0.5; not claimed by
+  M0*. F1, F2 and F4 sit in that lane and all three fail closed today: dropping a
+  registered value that `executor.py::_run_turn` writes raises `producer writes
+  unregistered values`; adding a kernel value nobody produces raises `decoder
+  does not produce registered input`; removing one context from the
+  `SOURCE_SURFACES` declaration raises `contexts must name every defining module
+  exactly once`. Each exits the smoke non-zero, and by I10 the smoke runs on the
+  pull-request path. The lane name is a milestone label, so it was kept and the
+  blocking claim moved to a column of its own.
+- **Four readings now stated separately** wherever I2 and I11 to I14 and the
+  lanes are described: schema validation, implementation stage, evidence status,
+  and actual blocking behaviour. A validated `formal_model` row establishes only
+  that the claim is well formed; it is not a delivered check, not an executed
+  proof, and not a merge blocker.
+- **The formal signature was almost untested.** One test touched
+  `check_formal_model`, and it read two fields of `candidate_decisions`. The key
+  set, the five roles, the consumer hierarchy, the six invariant ids, the
+  per-invariant shape and the four-lane partition were unmutated.
+  `tests/architecture/test_semantic_formal_model.py` adds 26 single-mutation
+  regressions, each asserting the checker fails closed naming its own rule.
+- **One mutation escaped and the check was tightened.** An exactly duplicated
+  invariant entry passed: the id set and the lane partition are both sets, so a
+  repeat leaves them unchanged, and every dict `check_formal_model` builds by id
+  keeps the last occurrence only. A second `F1_producer_closedness` carrying a
+  weaker statement validated, and nothing recorded which of the two the smoke had
+  walked. The list must now state each id exactly once.
+- **Not addressed here.** The grounding gap the 2026-09-17 domain entry named is
+  still open: moving an invariant's `enforcement` and its policy lane together
+  stays internally consistent, so a coordinated two-field edit can still
+  downgrade a check without any test failing. Closing it needs the lane to be
+  derived from the code that runs, not declared beside it. B0 narrows the gap to
+  a coordinated edit and documents the residue; it does not close it.
 
 ### 2026-09-17 — Invariant statements bounded to their verified domains
 
@@ -1378,6 +1468,7 @@ result on the current tree; what changes is what the invariants claim.
 | 2026-09-16 | B2: bind one unrenamed re-export hop in the Python producer scanner | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Require every consumer to import the owner module (fragile; failed silently in M2); unbounded multi-hop resolution rejected | 5, Appendix A |
 | 2026-09-16 | B1 rename invariance: add the name-keyed divergence advisory; state the limit it does not close | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B1; PR review pending | Keying the budget on value sets (rejected: `CONFIDENCE_LEVELS` and `EDGE_CASE_COMPLEXITIES` share `high/low/medium` with different meanings); a committed name ledger (rejected at M0: Q9 retired the committed census). The advisory lists surviving forks by name; it was first described as catching a one-sided rename, which measurement disproved, so both mirrors state the limit as it behaves | 9 |
 | 2026-09-17 | B2: bind same-module call results, ordered local rebinding and key-precise container writes; reclassify the TypeScript residue rather than shrink it | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B2; PR review pending | Bind cross-module calls and object fields (rejected: a separate bounded form with its own blast radius, not this slice); count a field-named keyword as production (rejected: it makes the obligation tautological, Section 5); leave `typescript_dynamic` as one catch-all (rejected: eight sites shared one reason, so the residue was not actionable); bind the callee's parameters to the call-site arguments (rejected: the answer would depend on the caller and could not be memoised, and a wrong binding would invent evidence) | 5, 9, Appendix A |
+| 2026-09-17 | B0: state schema validation, implementation stage, evidence status and blocking behaviour separately for I2/I11-I14 and the enforcement lanes; require each formal invariant id exactly once | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447) B0; PR review pending | Rename the `blocking_next` lane to match its behaviour (rejected: the lane name is the milestone that owns the check, and renaming it would lose that and collapse the two readings the other way); add a `blocks_today` boolean to `formal_model` (rejected: it would be one more declared field a reader could mistake for a measurement, and the fact is a property of the smoke's `main()`, which no registry edit can change); leave the lane gloss and note the gap in the ledger only (rejected: the gloss is the sentence a reviewer quotes) | 2, 5, 11, Appendix A, Appendix B |
 | 2026-09-17 | Bound F1/F2 to the kernel tier and the scan reach, restate F4 as scope enumeration completeness, and give every obligation a derived `domain` | Implementation, Refs [#4447](https://github.com/huangruiteng/loopx/issues/4447); **kernel-maintainer approval required, not yet given** | Leave the unconditional statements and record the gap in prose only (rejected: the statement was stronger than `validate_production`'s own docstring); restate F4 as per-context value-set disjointness (rejected: refuted by the repo's own data, since `scope_declarations` exists to permit legitimate same-name reuse); widen the scan so the unconditional claim becomes true (rejected: a separate change with its own risk) | 5, 9, Appendix B, Appendix C |
 
 ## Appendix C: Evidence registry

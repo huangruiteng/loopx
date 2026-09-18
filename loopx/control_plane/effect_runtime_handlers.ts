@@ -119,8 +119,8 @@ import { validateDeliveryClaim } from "./work_items/delivery_outcome.ts";
 import {
   evaluateTaskLeaseAcquireDecision,
   evaluateTaskLeaseWriteScopesOverlap,
-  executeTaskLeaseAcquire,
-} from "./work_items/task_lease_acquire.ts";
+} from "./work_items/task_lease_acquire_decision.ts";
+import {executeTaskLeaseAcquire} from "./work_items/task_lease_acquire.ts";
 import { executeTaskLeaseLifecycle } from "./work_items/task_lease_lifecycle.ts";
 import {
   commitLocalAuthorityShadowEntry,

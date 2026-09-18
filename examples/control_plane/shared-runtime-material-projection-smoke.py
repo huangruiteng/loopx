@@ -264,7 +264,9 @@ def exercise_split_runtime(root: Path) -> None:
         assert dream_status["run_history"]["goals"][0]["latest_status_run"][
             "classification"
         ] == "dreaming_proposal_deferred"
-        assert dream_status["runtime_projection_routes"] == {"healthy": True}
+        route_health = dream_status["runtime_projection_routes"]
+        assert route_health["healthy"] is True, route_health
+        assert route_health["goal_count"] >= 1, route_health
 
         source_row = read_rows(source_runtime)[-1]
         replay_record, replay_index = build_shared_runtime_material_projection(

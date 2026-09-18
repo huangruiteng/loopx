@@ -144,7 +144,7 @@ export const teamPlanScenario = {
         }
       });
       await page.locator(".personal-goal-link", { hasText: "Product Release" }).click();
-      await page.locator(".personal-goal-tabs button", { hasText: "Chat" }).click();
+      await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Chat|对话)$/ }).click();
 
       const row = page.locator(".personal-proposal-row", { hasText: "分配 2 项任务" });
       try {
@@ -227,7 +227,7 @@ export const teamPlanScenario = {
       // plan asked for there is confirmable there instead of only under the Goal
       // it staffs. The Goal-scoped card stays in that Goal's workspace.
       await page.locator(".personal-manager-link").first().click();
-      await page.locator(".personal-goal-tabs button", { hasText: "Chat" }).click();
+      await page.getByRole("navigation", { name: "管家视图" }).getByRole("button", { name: /^(Chat|对话)$/ }).click();
       const managerCard = page.locator(".personal-proposal-row", { hasText: MANAGER_PROPOSAL_TITLE });
       try {
         await managerCard.waitFor({ state: "visible", timeout: 15_000 });

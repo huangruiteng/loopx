@@ -35,6 +35,21 @@
     "service_profiles": ["postgresql"],
     "service_requires_factory": true
   },
+  "lease_lifecycle": {
+    "owner": "agent-a",
+    "receiver": "agent-b",
+    "execution_key": "lifecycle-a",
+    "receiver_execution_key": "lifecycle-b",
+    "version": 3,
+    "lease_epoch": 7,
+    "now": "2026-09-13T10:05:00Z"
+  },
+  "lease_acquisition": {
+    "execution_key": "acquire-a", "next_execution_key": "acquire-b",
+    "write_scopes": ["lease-admission/**"], "ttl_seconds": 600,
+    "conflict_todo_id": "todo_zz_acquire_scope",
+    "conflict_write_scopes": ["lease-admission/shared/**"]
+  },
   "semantic_cases": {
     "title_only_monitor": {
       "todo_id": "todo_fixture_title_monitor",

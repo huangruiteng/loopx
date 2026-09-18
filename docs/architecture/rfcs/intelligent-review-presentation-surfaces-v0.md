@@ -896,6 +896,27 @@ deduplication. CLI and Lark contracts are unchanged.
 
 ### Stage 4: replan, acceptance, and settlement review
 
+The local Goal **Overview** delivery section composes the existing bounded
+`task_graph_projection_v0` and `goal_acceptance_observation_projection_v0` in
+one on-demand Chat read. It supports map/list layouts, search, direct-neighbor
+focus, current-source navigation and a Markdown snapshot export. Coverage,
+missing predecessors, omitted gates and unassessed acceptance remain explicit.
+Workspace changes invalidate navigation/export until refresh; failed reads and
+source/Goal mismatch never become empty success. Outputs retain their existing Files owner and are not exported as acceptance evidence.
+Overview, Tasks, Chat and Files are direct Goal navigation; configuration opens
+the existing settings editor. Visited views retain filters, completed history
+and scroll within the same Goal/source. The delivery section is inline in
+Overview, not a third board/list layout or nested settings modal.
+
+This is a bounded S5/G2 visibility slice, not G2 qualification or a general
+interaction compiler. It reuses existing graph, acceptance and preview/apply
+owners; it creates no task, lease, permission or acceptance writer. CLI readback
+retains the same projections. Lark's existing Goal Channel is unchanged;
+cross-channel review rendering and governed amendment/settlement interaction
+remain the next domain-owned boundary in this tracker. Validation:
+`tests/test_delivery_review.py`, Dashboard `smoke:delivery-review`, and real
+packaged-browser interaction in both locales and narrow/desktop layouts.
+
 - add domain adapters for material replan delta, acceptance gaps, and effect
   repair state;
 - keep each domain reducer authoritative;

@@ -123,7 +123,7 @@ export const navigationSortingScenario = {
       pass(4, "First viewport exposes needs-you, running, observing, and scheduled Goal lanes with collapsed history.");
       pass(15, "Desktop viewport matches the approved single-sidebar/channel/drawer composition.");
       await page.locator(".personal-goal-link").filter({ hasText: "Progress Projection" }).click();
-      await page.getByRole("button", { name: "Tasks", current: "page" }).waitFor({ state: "visible" });
+      await page.getByRole("button", { name: /^(Tasks|任务)$/, current: "page" }).waitFor({ state: "visible" });
       await page.locator(".personal-task-card", { hasText: "Deferred queue task" }).locator("button").first().click();
       const dateResumeDrawer = page.getByRole("dialog", { name: "Todo 详情" });
       await dateResumeDrawer.waitFor({ state: "visible" });
@@ -141,6 +141,40 @@ export const navigationSortingScenario = {
       await page.screenshot({ path: resolve(outputDir, "typed-date-resume-detail.png"), fullPage: false, animations: "disabled" });
       await page.getByRole("button", { name: /关闭详情/ }).click();
       pass(22, "Todo detail renders the shared typed date condition, ready state, and stable receipt id.");
+
+      // A visit to another view or settings must not discard loaded task history.
+      const historyScroll = page.getByTestId("completed-task-lane").getByRole("region");
+      await page.waitForFunction(() => {
+        const lane = document.querySelector('[data-testid="completed-task-lane"] .personal-task-lane-scroll');
+        return lane && lane.scrollHeight > lane.clientHeight + 740;
+      });
+      await historyScroll.evaluate(element => { element.scrollTop = 740; });
+      await page.waitForFunction(() => document.querySelector('[data-testid="completed-task-lane"] .personal-task-lane-scroll').scrollTop === 740);
+      const retainedHistory = await historyScroll.elementHandle();
+      const goalViews = page.getByRole("navigation", { name: "Goal 视图" });
+      for (const name of ["概览", "成果", "对话", "任务"]) {
+        await goalViews.getByRole("button", { name, exact: true }).click();
+      }
+      if (!await retainedHistory.evaluate(element => element.isConnected && element.scrollTop === 740)) {
+        throw new Error("View navigation lost the loaded history or its reading position");
+      }
+      const settingsTrigger = page.getByRole("button", { name: "Goal 设置", exact: true });
+      await settingsTrigger.focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Goal 设置");
+      if (!await retainedHistory.evaluate(element => element.isConnected && element.scrollTop === 740)) {
+        throw new Error("Settings return reset loaded task history");
+      }
+      await page.locator(".personal-goal-link", { hasText: "Multi Agent Projection" }).click();
+      const laneFilter = page.getByRole("combobox", { name: "按工作 Agent 筛选", exact: true });
+      await laneFilter.selectOption("codex-older-lane");
+      await goalViews.getByRole("button", { name: "概览", exact: true }).click();
+      await goalViews.getByRole("button", { name: "任务", exact: true }).click();
+      if (await laneFilter.inputValue() !== "codex-older-lane") throw new Error("View navigation reset the Agent filter");
+      await page.locator(".personal-goal-link", { hasText: "Product Release" }).click();
+      if (await retainedHistory.evaluate(element => element.isConnected)) throw new Error("Task view state leaked across Goals");
+      pass(25, "Direct Goal navigation retains history scroll and Agent filters; settings restores history and keyboard focus; switching Goals releases the old view.");
       const remote = await browser.newPage({ viewport: { width: 1512, height: 982 } });
       await installApi(remote);
       await remote.goto(url, { waitUntil: "networkidle" });
@@ -172,7 +206,12 @@ export const navigationSortingScenario = {
       if (visibleRemoteCreateButtons) throw new Error("Remote read-only source still exposed Goal creation");
       if (!(await remote.getByText("remote-lab", { exact: true }).count())) throw new Error("Remote source identity is not visible");
       await remote.locator(".personal-goal-link").first().click();
-      await remote.getByRole("button", { name: "Tasks", current: "page" }).waitFor({ state: "visible" });
+      await remote.getByRole("button", { name: /^(Tasks|任务)$/, current: "page" }).waitFor({ state: "visible" });
+      if (await remote.getByRole("button", { name: "Goal 设置", exact: true }).count()) throw new Error("Remote Goal exposed local capability settings");
+      await remote.getByRole("button", { name: "概览", exact: true }).click();
+      await remote.locator(".goal-overview-source-note").waitFor({ state: "visible" });
+      if (await remote.locator(".delivery-review").count()) throw new Error("Remote Overview queried the local delivery source");
+      await remote.getByRole("button", { name: "任务", exact: true }).click();
       await remote.locator(".personal-object-list", { hasText: "进行中" }).locator("button").first().click();
       await remote.getByRole("dialog", { name: "Todo 详情" }).waitFor({ state: "visible" });
       const remoteTodoDrawer = remote.getByRole("dialog", { name: "Todo 详情" });
@@ -206,6 +245,8 @@ export const navigationSortingScenario = {
       }
       const mobileOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (mobileOverflow > 1) throw new Error(`Mobile workspace has ${mobileOverflow}px horizontal overflow`);
+      const promptRows = await mobile.locator(".personal-quick-prompts button").evaluateAll(buttons => new Set(buttons.map(button => Math.round(button.getBoundingClientRect().top))).size);
+      if (promptRows > 1) throw new Error("Mobile quick prompts displaced the workspace with multiple rows");
       await mobile.screenshot({ path: resolve(outputDir, "mobile-first-screen.png"), fullPage: false, animations: "disabled" });
       const mobileComposer = mobile.getByLabel("向 LoopX 发送消息");
       const composerBox = await mobileComposer.boundingBox();
@@ -263,17 +304,19 @@ export const navigationSortingScenario = {
       await mobileNavigationTrigger.click();
       await mobile.getByRole("dialog", { name: "Goal 导航" }).waitFor({ state: "visible" });
       await mobile.locator(".personal-goal-link").first().click();
-      await mobile.getByRole("button", { name: "Tasks", current: "page" }).waitFor({ state: "visible" });
-      await mobile.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
-      const mobileGoalToolsMenu = mobile.getByRole("group", { name: "Goal 设置" });
-      await mobileGoalToolsMenu.waitFor({ state: "visible" });
-      const mobileMenuBox = await mobileGoalToolsMenu.boundingBox();
+      await mobile.getByRole("button", { name: /^(Tasks|任务)$/, current: "page" }).waitFor({ state: "visible" });
+      const mobileSettings = mobile.getByRole("button", { name: "Goal 设置", exact: true });
+      await mobileSettings.waitFor({ state: "visible" });
+      for (const name of ["概览", "任务", "对话", "成果"]) {
+        await mobile.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name, exact: true }).waitFor({ state: "visible" });
+      }
+      const mobileMenuBox = await mobileSettings.boundingBox();
       if (!mobileMenuBox || mobileMenuBox.x < 0 || mobileMenuBox.x + mobileMenuBox.width > 390) {
-        throw new Error(`Mobile Goal settings menu escaped the viewport: ${JSON.stringify(mobileMenuBox)}`);
+        throw new Error(`Mobile Goal settings escaped the viewport: ${JSON.stringify(mobileMenuBox)}`);
       }
       const mobileGoalOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (mobileGoalOverflow > 1) throw new Error(`Mobile Goal header has ${mobileGoalOverflow}px horizontal overflow`);
-      await mobile.screenshot({ path: resolve(outputDir, "mobile-goal-settings-menu.png"), fullPage: false, animations: "disabled" });
+      await mobile.screenshot({ path: resolve(outputDir, "mobile-goal-navigation.png"), fullPage: false, animations: "disabled" });
       await mobile.close();
       const progressive = await browser.newPage({ viewport: { width: 1512, height: 982 } });
       const progressiveApi = await installApi(progressive);

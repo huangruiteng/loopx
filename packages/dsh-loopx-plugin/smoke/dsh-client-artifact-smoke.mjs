@@ -21,8 +21,8 @@ const rows = [
 const clientInject = [
   '@deepseek-ai/dsh-client-connection',
   '@deepseek-ai/dsh-client-locale',
-  '@deepseek-ai/dsh-client-runtime',
   '@deepseek-ai/dsh-client-ui-conversation',
+  '@deepseek-ai/dsh-client-ui-renderer',
 ]
 const approvedRequires = new Set([
   'react',
@@ -30,8 +30,8 @@ const approvedRequires = new Set([
   'react-dom',
   'react-dom/client',
   '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-runtime/client',
   '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-renderer/client',
   '@deepseek-ai/dsh-client-ui-slots',
 ])
 const packedStaticEntries = new Set([
@@ -239,6 +239,15 @@ async function createRealClientModuleSystem(context, staticModules) {
             rev: 'dsh-loopx-plugin-artifact-smoke',
             external: [],
           }],
+          // 0.1.5 requires every entry to belong to exactly one initial-load
+          // batch, so the synthetic manifest carries the application batch the
+          // real host composes around this single row.
+          batches: [{
+            phase: 'application',
+            url: `/plugins/${packageId}/client.js`,
+            rev: 'dsh-loopx-plugin-artifact-smoke',
+            entries: [packageId],
+          }],
         },
         staticModules,
       },
@@ -398,26 +407,46 @@ async function assertDshDiscovery(root) {
   const registry = Object.create(ClientModuleRegistry.prototype)
   registry.pkgMeta = new Map()
   registry.table = new Map()
-  registry.resolvePkgJson = specifier => installedRequire.resolve(`${specifier}/package.json`)
+  registry.sources = new Map()
+  registry.dirty = new Set()
+  registry.initialRevisionNonce = 'artifact-smoke-nonce'
+  registry.nextInitialRevision = 0
+  const baseUrl = pathToFileURL(join(root, 'package.json')).href
+  // 0.1.5 resolves the mounted row through the Loader's own `internal`
+  // resolver, so the probe supplies that face instead of the retired
+  // `resolvePkgJson` stub, and `resolveSource` reads the base URL from the
+  // entry's tree context rather than from the call site.
   registry.ctx = {
+    logger: { warn() {} },
     loader: {
+      internal: {
+        version: 'v1',
+        resolveSync: specifier => ({
+          url: pathToFileURL(installedRequire.resolve(`${specifier}/package.json`)).href,
+        }),
+      },
       entries: () => [{
         options: { name: packageId },
+        parent: { tree: { ctx: { baseUrl } } },
         fiber: {},
         disabled: false,
       }],
     },
   }
-  const meta = registry.resolveMeta(packageId)
-  assert.equal(meta.clientPath, join(root, 'lib', 'client.js'))
-  assert.deepEqual(meta.inject, clientInject)
-  assert.equal(meta.immediately, false)
-  assert.equal(registry.processOne(packageId), true)
+  // 0.1.5 returns the located manifest beside the parsed client declaration.
+  const resolved = registry.resolveMeta(packageId, baseUrl)
+  assert.equal(resolved.meta.clientPath, join(root, 'lib', 'client.js'))
+  assert.deepEqual(resolved.meta.inject, clientInject)
+  assert.equal(resolved.meta.immediately, false)
+  assert.equal(registry.processOne(packageId, error => { throw error }), true)
   const record = registry.table.get(packageId)
   assert.equal(record.clientPath ?? record.meta?.clientPath, join(root, 'lib', 'client.js'))
   assert.equal(record.entry.id, packageId)
   assert.deepEqual(record.entry.inject, clientInject)
-  assert.match(record.entry.rev, /^[0-9a-f]{12}$/u)
+  // The initial row revision is an opaque allocation, and the composed combo
+  // URL is what carries it as the HMR cache-buster.
+  assert.equal(record.entry.rev, 'artifact-smoke-nonce-0')
+  assert(record.entry.url.includes(`rev=artifact-smoke-nonce-0`))
 }
 
 async function assertHostExports(root) {
@@ -445,10 +474,10 @@ async function assertHostExports(root) {
   const hostContext = {
     agents: { get: () => undefined },
     connection: {
-      rpc: {
-        handle(channel, candidate, options) {
-          assert.equal(channel, '/loopx')
-          assert.deepEqual(options, { authority: 'loopback' })
+      fetch: {
+        register(route) {
+          assert.equal(route.path, '/api/loopx.goalbar')
+          const candidate = route.fetch
           assert.equal(handler, undefined, 'Host registered duplicate RPC handlers')
           handler = candidate
           return async () => { rpcDisposals += 1 }
@@ -469,11 +498,15 @@ async function assertHostExports(root) {
   assert.equal(host.apply(hostContext), undefined)
   assert.equal(typeof handler, 'function')
   assert.equal(typeof disposeHost, 'function')
-  const malformed = await handler(
-    'goalbar/read',
-    { unexpected: true },
-    new AbortController().signal,
-  )
+  const response = await handler(new Request('http://fixture/api/loopx.goalbar', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request', rpcId: 'malformed', method: 'loopx.goalbar',
+      payload: { unexpected: true },
+    }),
+  }))
+  const { result: malformed } = await response.json()
   assert.equal(malformed.ok, false)
   assert.equal(malformed.error.code, 'bad-request')
   await disposeHost()

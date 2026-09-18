@@ -891,6 +891,10 @@ def collect_doctor(
         if default_global_registry.exists()
         else {
             "schema_version": "runtime_projection_route_diagnostics_v0",
+            "registry": str(default_global_registry.resolve()),
+            "runtime_root": str(DEFAULT_RUNTIME_ROOT.resolve()),
+            "goal_filter": None,
+            "activation_state_filter": None,
             "available": False,
             "goal_count": 0,
             "healthy": True,
@@ -1186,7 +1190,10 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         f"- skill_delivery_mode: `{(payload.get('skill_delivery') or {}).get('mode')}`",
         f"- skill_delivery_status: `{(payload.get('skill_delivery') or {}).get('status')}`",
         f"- global_registry_writable: `{(payload.get('global_registry_writability') or {}).get('ok')}`",
-        f"- runtime_projection_routes_healthy: `{(payload.get('runtime_projection_routes') or {}).get('healthy')}`",
+        f"- runtime_projection_routes_healthy: `{(payload.get('runtime_projection_routes') or {}).get('healthy')}`"
+        f" (registry=`{(payload.get('runtime_projection_routes') or {}).get('registry')}`,"
+        f" goals=`{(payload.get('runtime_projection_routes') or {}).get('goal_count')}`,"
+        f" counts=`{json.dumps((payload.get('runtime_projection_routes') or {}).get('counts') or {}, sort_keys=True)}`)",
         f"- user_local_bin_on_path: `{(payload.get('path') or {}).get('user_local_bin_on_path')}`",
         f"- python: `{(payload.get('python') or {}).get('executable')}`",
         f"- typescript_control_plane: `{typescript_control_plane.get('status')}`",

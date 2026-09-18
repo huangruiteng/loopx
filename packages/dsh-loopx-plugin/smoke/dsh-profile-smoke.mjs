@@ -136,21 +136,37 @@ async function assertClientDiscovery(installed, manifest) {
   const registry = Object.create(ClientModuleRegistry.prototype)
   registry.pkgMeta = new Map()
   registry.table = new Map()
-  registry.resolvePkgJson = specifier => installedRequire.resolve(`${specifier}/package.json`)
+  registry.sources = new Map()
+  registry.dirty = new Set()
+  registry.initialRevisionNonce = 'profile-smoke-nonce'
+  registry.nextInitialRevision = 0
+  const baseUrl = pathToFileURL(join(installed, 'package.json')).href
+  // 0.1.5 resolves the mounted row through the Loader's own `internal`
+  // resolver and reads the base URL from the entry's tree context.
   registry.ctx = {
+    logger: { warn() {} },
     loader: {
+      internal: {
+        version: 'v1',
+        resolveSync: specifier => ({
+          url: pathToFileURL(installedRequire.resolve(`${specifier}/package.json`)).href,
+        }),
+      },
       entries: () => [{
         options: { name: packageId },
+        parent: { tree: { ctx: { baseUrl } } },
         fiber: {},
         disabled: false,
       }],
     },
   }
-  const meta = registry.resolveMeta(packageId)
-  assert.equal(meta.clientPath, join(installed, 'lib', 'client.js'))
-  assert.deepEqual(meta.inject, manifest.dsh.client.inject)
-  assert.equal(registry.processOne(packageId), true)
-  assert.match(registry.table.get(packageId)?.entry.rev ?? '', /^[0-9a-f]{12}$/u)
+  // 0.1.5 returns the located manifest beside the parsed client declaration,
+  // and the initial row revision is an opaque allocation rather than a hash.
+  const resolved = registry.resolveMeta(packageId, baseUrl)
+  assert.equal(resolved.meta.clientPath, join(installed, 'lib', 'client.js'))
+  assert.deepEqual(resolved.meta.inject, manifest.dsh.client.inject)
+  assert.equal(registry.processOne(packageId, error => { throw error }), true)
+  assert.equal(registry.table.get(packageId)?.entry.rev ?? '', 'profile-smoke-nonce-0')
   const client = await readFile(join(installed, 'lib', 'client.js'), 'utf8')
   assert(client.startsWith('window.__ModuleLoader__.load({'))
   assert(client.includes('id: "dsh-loopx-plugin"'))
@@ -269,13 +285,13 @@ async function exerciseInstalled(installed) {
   const session = {
     id: 'inactive-session',
     header: { id: 'inactive-session', cwd: installed },
-    events: [],
+    snapshotEvents: () => [],
   }
   const inactiveAgent = {
     id: 'inactive-session',
     status: 'idle',
     session,
-    inbox: { hasPending: false },
+    inbox: { nextTurn: [], nextStep: [] },
     followup(message) {
       followupMessages.push(message)
     },

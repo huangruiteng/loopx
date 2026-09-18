@@ -1204,7 +1204,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     if replan_rule.rule is GoalFrontierReplanRule.LONG_TODO_CHAIN:
         assert long_chain_observation is not None
         assert long_chain_ack_decision is not None
-        long_chain_trigger = long_chain_observation.to_trigger()
+        long_chain_trigger = long_chain_observation.trigger
         return build_autonomous_replan_obligation_payload(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
             agent_id=agent_id,

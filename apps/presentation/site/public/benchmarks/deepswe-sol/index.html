@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafafa">
+  <title>DeepSWE × Sol：从继续执行到有效交付 · LoopX</title>
+  <meta name="description" content="解读 DeepSWE 113 任务的历史研究：三组结果、五种执行配置、Heartbeat 恢复、worktree 补丁交付与独立验证。">
+  <link rel="canonical" href="https://huangruiteng.github.io/loopx/benchmarks/deepswe-sol/">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../blog/blog.css">
+  <link rel="stylesheet" href="study.css">
+</head>
+<body class="research-page">
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="research-header">
+  <div class="research-nav shell">
+    <a class="brand" href="../../?lang=zh"><span class="product-mark" aria-hidden="true"><i></i><i></i></span>LoopX <span class="nav-edition">/ RESEARCH</span></a>
+    <nav aria-label="研究目录"><a href="#results">结果</a><a href="#arms">执行配置</a><a href="#continuation">续跑</a><a href="#delivery">交付</a><a href="#limits">局限</a><a href="#sources">来源</a></nav>
+  </div>
+</header>
+<main id="main" class="shell">
+  <section class="hero" aria-labelledby="study-title">
+    <div class="hero-copy">
+      <p class="eyebrow">DeepSWE · GPT-5.6 Sol · v1 研究解读</p>
+      <h1 id="study-title">从继续执行，<br>走到有效交付。</h1>
+      <p class="deck">113 个软件工程任务，把长程 Agent 的三个问题放到一起：工作怎样继续，补丁是否交付，结果是否正确。</p>
+      <p class="contributor">研究归档贡献 <a href="https://github.com/huangruiteng/loopx/pull/4502">@gwh6669999 ↗</a><br>2026 年 9 月 16 日合入 · 实验修订 <code>2cef51d</code></p>
+      <a class="text-link" href="#continuation">看运行器怎样做出下一步判断 <span aria-hidden="true">↓</span></a>
+    </div>
+    <figure class="result-figure" aria-labelledby="result-caption">
+      <p class="eyebrow">113 TASKS / HISTORICAL BEST-VALID</p>
+      <h2>三种配置，三组完成结果</h2>
+      <div class="bar-row"><div class="bar-label"><span>裸 Codex</span><strong>54 <small>/ 113</small></strong></div><div class="bar-track" aria-hidden="true"><i style="width:47.8%"></i></div><span class="rate">47.8%</span></div>
+      <div class="bar-row"><div class="bar-label"><span>原生 Goal</span><strong>60 <small>/ 113</small></strong></div><div class="bar-track" aria-hidden="true"><i style="width:53.1%"></i></div><span class="rate">53.1%</span></div>
+      <div class="bar-row heartbeat"><div class="bar-label"><span>LoopX + Heartbeat</span><strong>70 <small>/ 113</small></strong></div><div class="bar-track" aria-hidden="true"><i style="width:61.9%"></i></div><span class="rate">61.9%</span></div>
+      <div class="bar-axis" aria-hidden="true"><span>0%</span><span>100%</span></div>
+      <figcaption id="result-caption">每任务取最佳有效结果，非单次通过率。不同配置的时间窗口不一致，不能解释为同预算下的机制增益。</figcaption>
+    </figure>
+  </section>
+
+  <aside class="scope-note" aria-label="研究状态"><strong>历史研究，按归档口径阅读。</strong>本次合入没有重跑或复验历史成绩。SSH Goal 与 Codex CLI 两组数据及结论已撤回，本页仅解释其执行结构，不展示它们的成绩。<a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-versions.md">归档说明 ↗</a></aside>
+
+  <section class="study-section" id="results">
+    <div class="section-lead"><p class="eyebrow">01 / RESULTS</p><h2>先把数字放回它的统计口径。</h2><p>Heartbeat 相比原生 Goal 多完成 10 个任务，完成比例相差约 8.8 个百分点。这是值得继续研究的观察；汇总表本身还不能说明，差异来自额外计算量、恢复策略，还是交付修复。</p></div>
+    <div class="table-scroll" role="region" aria-label="历史结果表，可横向滚动" tabindex="0"><table class="score-table">
+      <caption>来源：v1 README。统一分母 113，聚合方式为 per-task best valid。</caption>
+      <thead><tr><th scope="col">配置</th><th scope="col">完成任务</th><th scope="col">完成比例</th><th scope="col">Partial</th><th scope="col">F2P</th><th scope="col">P2P</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">裸 Codex <code>plain</code></th><td>54 / 113</td><td>47.8%</td><td>0.9206</td><td>0.745</td><td>0.997</td></tr>
+        <tr><th scope="row">原生 Goal <code>goal</code></th><td>60 / 113</td><td>53.1%</td><td>0.9620</td><td>0.868</td><td>0.997</td></tr>
+        <tr class="highlight"><th scope="row">LoopX + Heartbeat <code>heartbeat</code></th><td>70 / 113</td><td>61.9%</td><td>0.9739</td><td>0.886</td><td>0.993</td></tr>
+      </tbody>
+    </table></div>
+    <p class="caption">Partial、F2P 与 P2P 沿用原表字段；F2P 关注失败测试转为通过，P2P 关注原有通过测试是否保持通过。公开归档未提供逐题归约数据与完整计分脚本，本页不重新定义权重，也不将这些比例当作独立任务数。</p>
+    <div class="reading-pair">
+      <div><h3>已能看到什么</h3><p>原生 Goal 相比单次执行已经出现差异；Heartbeat 的历史完成数进一步上升。三组 P2P 均接近 1，但 Heartbeat 略低，不能只用完成数概括全部质量变化。</p></div>
+      <div><h3>还不能推导什么</h3><p>没有逐任务的成败配对，无法知道哪些任务转正或转负；没有完整尝试次数和成本，无法估计成功率稳定性、单位成本收益或单项机制的因果效应。</p></div>
+    </div>
+  </section>
+
+  <section class="study-section" id="arms">
+    <div class="section-lead"><p class="eyebrow">02 / EXECUTION CONFIGURATIONS</p><h2>比较的核心：谁负责让工作继续？</h2><p>这五种配置同时改变了运行接口、状态组织和继续方式。它们提供不同的实验切口，不能看成只开关一个功能的消融实验。</p></div>
+    <div class="arm-list">
+      <article><span class="arm-id">PLAIN</span><div><h3>裸 Codex</h3><p>使用 <code>codex app-server</code>，不启用 Goal 或 LoopX，按单次执行方式工作。</p></div><span class="arm-status">历史结果见上表</span></article>
+      <article><span class="arm-id">GOAL</span><div><h3>Codex 原生 Goal</h3><p>仍使用 app-server；原生 Goal 保持活跃时，由 app-server 继续推进。</p></div><span class="arm-status">历史结果见上表</span></article>
+      <article class="arm-featured"><span class="arm-id">HEARTBEAT</span><div><h3>LoopX + 外部监督</h3><p>首次调用 <code>codex exec</code>，取得会话标识后使用 <code>resume</code>；外部 supervisor 读取 LoopX 状态，分段推进并检查交付。</p></div><span class="arm-status">本文机制重点</span></article>
+      <article><span class="arm-id">CODEX-CLI</span><div><h3>LoopX 控制面驱动 CLI</h3><p>由外部调用 <code>loopx turn run-once --host codex-cli</code>，组织多段执行。</p></div><span class="arm-status withdrawn">成绩与结论已撤回</span></article>
+      <article><span class="arm-id">SSH-GOAL</span><div><h3>LoopX + 原生 Goal</h3><p>使用 app-server，在同一会话与 Goal 中处理 blocked 状态并重新启动 turn。</p></div><span class="arm-status withdrawn">成绩与结论已撤回</span></article>
+    </div>
+    <p class="caption">配置描述来自归档 README 与运行器源码，只说明历史实验怎样组织执行；不证明当前 LoopX 全部能力已经得到验证。</p>
+  </section>
+
+  <section class="study-section" id="continuation">
+    <div class="section-lead"><p class="eyebrow">03 / CONTINUATION</p><h2>Heartbeat 每轮都要重新检查交付。</h2><p>归档里的 supervisor 并非只重复一句“继续”。它取回任务提示，恢复已有会话，检查代码交付和工作项状态，再决定结束或进入下一轮。</p></div>
+    <ol class="execution-flow" aria-label="从源码提取的 Heartbeat 执行流程">
+      <li><span>01</span><h3>取回工作</h3><p><code>heartbeat-prompt --thin</code><br>取出当前任务，附加补丁交付要求。</p></li>
+      <li><span>02</span><h3>执行或恢复</h3><p><code>exec → exec resume</code><br>从事件中保留会话标识，限制单段运行。</p></li>
+      <li><span>03</span><h3>核对结果</h3><p><code>normalize_delivery</code><br>整理补丁，再读取 P0 工作项状态。</p></li>
+      <li><span>04</span><h3>收口或续跑</h3><p>交付与状态同时满足才收口；缺失交付时补修复工作项。</p></li>
+    </ol>
+    <div class="decision-rows">
+      <div><b>有效补丁 + 收口条件满足</b><p>supervisor 返回执行完成；功能正确性仍交给独立验证器。</p></div>
+      <div><b>状态已收口，但补丁无效</b><p>新增交付修复 Todo，在剩余预算内继续。</p></div>
+      <div><b>预算或唤醒次数耗尽</b><p>返回失败，不把已运行很久当作完成依据。</p></div>
+    </div>
+    <details><summary>源码细节：这里的“收口条件”具体检查什么？</summary><p>历史函数 <code>_goal_terminal</code> 实际检查 Todo 列表：至少存在一个 P0 项，且所有 P0 项处于 <code>done</code> 或 <code>deferred</code>。它没有直接证明整个业务目标完成，也不验证补丁功能。</p><p>默认最多唤醒 8 次，轮间间隔 5 秒，单段超时 7,200 秒、总窗口 14,400 秒；命令行可覆盖这些值。单段子进程超时后 supervisor 仍可继续判断。这些是源码中的默认配置，不是历史每个任务的实际唤醒数或耗时。</p><p><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/loopx_heartbeat_supervisor.py">阅读 Heartbeat supervisor 源码 ↗</a></p></details>
+    <p class="takeaway">继续执行需要判断依据，停止执行也需要。</p>
+  </section>
+
+  <section class="study-section" id="delivery">
+    <div class="section-lead"><p class="eyebrow">04 / DELIVERY &amp; VERIFICATION</p><h2>代码写好了，验证器却可能拿到空补丁。</h2><p>归档记录了一个具体的交付边界：Agent 可以在关联 worktree 中开发，但 DeepSWE 从主工作目录收集 <code>git diff &lt;base&gt; HEAD</code>。代码存在、提交存在，仍可能没有进入最终收集的产物。</p></div>
+    <figure class="delivery-figure">
+      <div class="delivery-path"><div><span>工作发生处</span><b>Agent worktree</b><p>修改与提交</p></div><span class="path-arrow" aria-hidden="true">→</span><div><span>交付整理</span><b>唯一补丁与哈希核对</b><p>可应用 · 非空 · 内容一致</p></div><span class="path-arrow" aria-hidden="true">→</span><div><span>验收入口</span><b>主目录的已提交补丁</b><p>交给独立验证器</p></div></div>
+      <figcaption>机制示意，依据 <code>workspace_delivery.py</code>；不代表每次历史运行都发生了 worktree 恢复。</figcaption>
+    </figure>
+    <div class="reading-pair">
+      <div><h3>交付整理器检查什么</h3><p>枚举工作树，收集相对任务基线的补丁，并按补丁哈希去重。没有改动时返回 <code>empty</code>；存在多个不同补丁时返回 <code>ambiguous</code>。只有唯一补丁才继续检查可应用性、恢复到主目录，并核对恢复前后的哈希。</p></div>
+      <div><h3>独立验证器检查什么</h3><p>交付整理器确认“补丁被交到了正确位置”。研究口径还要求无运行异常、任务校验和匹配、独立验证结果存在且一致。功能是否正确由验证器判断，不能用流程终态或非空补丁代替。</p></div>
+    </div>
+    <details><summary>为什么这属于 Harness，而不能都算成模型能力？</summary><p>历史整理器会提交未提交的改动，并在隔离实验工作区恢复补丁。这是运行器介入交付的行为。成功提交不一定完全由 Agent 自主完成；缺失交付也不一定意味着模型不会解题。比较时应把生成代码、运行器恢复和最终验证分开记录。</p><p>这份实现会对实验主目录执行重置与补丁恢复，依赖专用、隔离的任务环境。本文解释它的交付机制，不把原脚本当作日常仓库操作指南。</p><p><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/workspace_delivery.py">阅读补丁交付整理器源码 ↗</a></p></details>
+    <p class="takeaway">流程完成、产物交付、功能正确，是三个要分别验证的事实。</p>
+  </section>
+
+  <section class="study-section" id="limits">
+    <div class="section-lead"><p class="eyebrow">05 / SCOPE &amp; NEXT EXPERIMENT</p><h2>把观察变成结论，还缺哪些证据？</h2><p>这份贡献提供了可读的运行器和历史汇总。要进一步判断哪种机制有效，需要把计算预算、重复尝试和交付处理重新放到可对照的实验里。</p></div>
+    <div class="table-scroll" role="region" aria-label="研究口径与限制，可横向滚动" tabindex="0"><table class="limits-table"><thead><tr><th scope="col">维度</th><th scope="col">已公开的依据</th><th scope="col">对结论的影响</th></tr></thead><tbody>
+      <tr><th scope="row">模型与推理强度</th><td>两个启动脚本默认 <code>openai/gpt-5.6-sol</code> / <code>xhigh</code>。</td><td>逐次运行配置未公开，默认值不等于每次调用的证明。</td></tr>
+      <tr><th scope="row">时间与资源</th><td>remaining59 脚本给 LoopX 的 Goal 超时为 14,400 秒，plain / goal 为 3,600 秒；LoopX 另设 3.0 的 agent timeout multiplier。</td><td>不是等预算对比；超时上限也不是实际耗时。不能推导成本效率。</td></tr>
+      <tr><th scope="row">聚合与尝试</th><td>113 任务，逐任务选最佳有效结果；没有完整逐题尝试清单。</td><td>不是 pass@1，无法重建成败配对、方差或置信区间。</td></tr>
+      <tr><th scope="row">版本与复现</th><td>实验基于 <code>2cef51d</code>。原始 14 个文件归档；依赖外部任务定义、支持模块与运行环境。</td><td>不是独立可运行的发布包。文件身份、语法与导入检查不等于实验复现。</td></tr>
+      <tr><th scope="row">已知执行缺陷</th><td>归档说明保留了 59 任务启动器与 54 任务准入不匹配、profile 初始化竞争、启动和重试处理等问题。</td><td>不能把准入回执视为每次运行均有效的保证；需要在修复后的独立实验中验证。</td></tr>
+    </tbody></table></div>
+    <ol class="next-steps">
+      <li><span>01</span><div><h3>冻结总预算与尝试口径</h3><p>匹配任务、模型、运行环境、总时间与 token 预算；保留每次尝试及基础设施失败，先定义重试如何计入。</p></div></li>
+      <li><span>02</span><div><h3>拆开继续策略和交付恢复</h3><p>分别比较原生 Goal、外部续跑和补丁恢复；检查新完成的任务在哪个环节改变，避免多项机制同时变化。</p></div></li>
+      <li><span>03</span><div><h3>同时报告质量、成本和人工介入</h3><p>独立验证最终交付物，展示逐题转正与转负、回归、总成本和人的处理次数，再决定哪些机制值得保留。</p></div></li>
+    </ol>
+  </section>
+
+  <section class="study-section" id="sources">
+    <div class="section-lead"><p class="eyebrow">06 / SOURCES</p><h2>从研究汇总读到执行代码。</h2><p>本文只使用公开归档与源码，引用固定到读取修订。没有运行新实验，没有新增或恢复已撤回的成绩。</p></div>
+    <ol class="source-list">
+      <li><a href="https://github.com/huangruiteng/loopx/pull/4502"><b>研究贡献与合入说明</b><span>@gwh6669999 · #4502 · 保留原始 v1 文件及历史结果。</span></a></li>
+      <li><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/README.md"><b>v1 README</b><span>113 任务结果、五种配置与有效交付口径。</span></a></li>
+      <li><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-versions.md"><b>归档状态与修订说明</b><span>撤回范围、版本身份、外部依赖与已知缺陷。</span></a></li>
+      <li><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/run_five_arms_remaining59_20260910.sh"><b>remaining59 启动脚本</b><span>Sol / xhigh 默认值，plain / goal 与 LoopX 的时间窗口差异。</span></a></li>
+      <li><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/run_loopx_rerun_54_20260908.sh"><b>54 任务重跑启动脚本</b><span>三种 LoopX 配置的准入与执行组织。</span></a></li>
+      <li><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/loopx_heartbeat_supervisor.py"><b>Heartbeat supervisor</b><span>提示读取、会话恢复、状态检查、修复后继和停止条件。</span></a></li>
+      <li><a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe-gptxhigh-v1/workspace_delivery.py"><b>Workspace delivery</b><span>工作树枚举、补丁去重、恢复与交付哈希验证。</span></a></li>
+    </ol>
+    <div class="related"><h3>同系列研究</h3><a href="../swe-marathon/?lang=zh">SWE-Marathon：持续自我验证 <span>15 个匹配任务 · GPT-5.6 Sol / high</span></a><a href="../deepswe/behavior-discovery/">DeepSWE：从提示到行为 <span>DeepSeek V4 Flash · 领域提示与行为观察</span></a><p class="caption">三篇采用不同任务、模型设置或披露口径，分别阅读，不合并计算成绩。</p></div>
+  </section>
+</main>
+<footer class="research-footer shell"><span>LoopX / DeepSWE × Sol · 研究解读</span><a href="#main">回到顶部 ↑</a></footer>
+</body>
+</html>

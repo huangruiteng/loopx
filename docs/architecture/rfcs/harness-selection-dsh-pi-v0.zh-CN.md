@@ -202,11 +202,18 @@ tag：PyPI 上的 `deepseek-harness-sdk==0.1.5rc1` /
 
 依赖 dsh 的两个 LoopX 面并不一起移动：有界 Turn 宿主使用上文记录的 Python
 SDK/runtime 固定版本（`0.1.5rc1`，已发布通道）；而 dsh 侧插件
-（`packages/dsh-loopx-plugin`）的开发与客户端面仍构建在 `0.1.1-rc.2` 上，尽管其
-clean-Docker smoke 已断言 `dsh --version == 0.1.5-rc.1`。0.1.5 线不再发布
-`@deepseek-ai/dsh-client-runtime`（最后发布版本为 `0.1.1-rc.2`），客户端 runner 改为
-`@deepseek-ai/dsh-cordis-client-runner`。该升级作为独立的 pin 项跟踪，不改变上文的
-L1 observer 契约。
+（`packages/dsh-loopx-plugin`）的开发、宿主与客户端面现已统一构建在同一已发布的
+`0.1.5-rc.2` 线上，不再停留在 `0.1.1-rc.2`，其 npm peer 范围只接受
+`>=0.1.5-rc.1`。这是上游三处变化逼出来的，因此它是一条新的发布线而不是原地补丁：
+0.1.5 线不再发布 `@deepseek-ai/dsh-client-runtime`（最后发布版本为 `0.1.1-rc.2`），
+`slots` service 座位随之移到 `@deepseek-ai/dsh-client-ui-renderer`，也就是本 manifest
+现在写入 `dsh.client.inject` 的包；`Session.events` 变为 `Session.snapshotEvents()`，
+`Inbox.hasPending` 变为两个 pending 队列；共享 `/api` bridge 用
+`<namespace>/<method>` 寻址 Remote 方法，并只接受一个 `args` payload 字段。一份
+`dsh.client.inject` 无法同时为两代排序 boot row，所以插件不能同时声明两代。上文的
+L1 observer 契约不变：observer 仍只消费 `session/created`、`session/event`、
+`session/disposed`，只是把 token 级 `assistant/chunk` 行视为旧 durable 日志重放出来的
+已退场输入，而不是现存事件类型。
 
 ## 数据流与权限
 

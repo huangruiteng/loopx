@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {
+  ConnectionFetchRoute,
   ConnectionRpcHandler,
   HostConnectionHandle,
 } from '@deepseek-ai/dsh-client-connection'
@@ -44,68 +45,52 @@ function readResponse(): Extract<GoalBarResponseV1, { readonly op: 'read' }> {
 }
 
 function connectionCapture(): {
-  readonly connection: HostConnectionHandle
+  readonly connection: Pick<HostConnectionHandle, 'rpc'>
   readonly calls: Array<{
     channel: string
     handler: ConnectionRpcHandler
-    authority: string
   }>
   readonly disposed: () => number
 } {
   const calls: Array<{
     channel: string
     handler: ConnectionRpcHandler
-    authority: string
   }> = []
   let disposeCalls = 0
   const connection = {
     rpc: {
-      handle(channel, handler, options) {
-        calls.push({ channel, handler, authority: options.authority })
+      handle(channel: string, handler: ConnectionRpcHandler) {
+        calls.push({ channel, handler })
         return async () => { disposeCalls += 1 }
       },
       intercept() {
         throw new Error('not used')
       },
     },
-  } satisfies HostConnectionHandle
+  } satisfies Pick<HostConnectionHandle, 'rpc'>
   return { connection, calls, disposed: () => disposeCalls }
 }
 
 function sharedApiConnectionCapture(): {
-  readonly connection: HostConnectionHandle
-  readonly routes: Array<{
-    readonly path: string
-    readonly methods: readonly string[]
-    readonly requestBody: string
-    readonly fetch: (request: Request) => Promise<Response>
-  }>
+  readonly connection: Pick<HostConnectionHandle, 'fetch'>
+  readonly routes: ConnectionFetchRoute[]
   readonly disposed: () => number
 } {
-  const routes: Array<{
-    readonly path: string
-    readonly methods: readonly string[]
-    readonly requestBody: string
-    readonly fetch: (request: Request) => Promise<Response>
-  }> = []
+  const routes: ConnectionFetchRoute[] = []
   let disposeCalls = 0
   const connection = {
-    rpc: {
-      handle() { throw new Error('DSH 0.1.5 must use shared API Fetch routes') },
-      intercept() { throw new Error('not used') },
-    },
     fetch: {
-      register(route: typeof routes[number]) {
+      register(route: ConnectionFetchRoute) {
         routes.push(route)
         return async () => { disposeCalls += 1 }
       },
     },
-  } as unknown as HostConnectionHandle
+  } satisfies Pick<HostConnectionHandle, 'fetch'>
   return { connection, routes, disposed: () => disposeCalls }
 }
 
 describe('GoalBar Connection carrier', () => {
-  it('registers the real handler at loopback-only /loopx and returns its disposer', async () => {
+  it('registers the real handler at the authenticated /loopx channel and returns its disposer', async () => {
     const capture = connectionCapture()
     const service: GoalBarServiceHandle = {
       handle: async () => readResponse(),
@@ -116,7 +101,6 @@ describe('GoalBar Connection carrier', () => {
     expect(capture.calls).toHaveLength(1)
     expect(capture.calls[0]).toMatchObject({
       channel: '/loopx',
-      authority: 'loopback',
     })
     const result = await capture.calls[0]?.handler(
       'goalbar/read',
@@ -288,11 +272,11 @@ describe('package-root GoalBar Host', () => {
   })
 
   it('constructs one real service, registers authority, cancels watch, and disposes', async () => {
-    const capture = connectionCapture()
+    const capture = sharedApiConnectionCapture()
     const session = {
       id: sessionId,
       header: { version: 0, id: sessionId, createdAt: 1, cwd: '/fixture/project' },
-      events: [],
+      snapshotEvents: () => [],
       surface: { nodes: [] },
     }
     const agent = {
@@ -313,28 +297,24 @@ describe('package-root GoalBar Host', () => {
 
     expect(name).toBe('dsh-loopx-plugin')
     apply(ctx)
-    expect(capture.calls[0]).toMatchObject({
-      channel: '/loopx', authority: 'loopback',
-    })
+    expect(capture.routes[0]).toMatchObject({ path: '/api/loopx.goalbar' })
 
     const controller = new AbortController()
-    const call = capture.calls[0]?.handler(
-      'goalbar/watch',
-      {
-        v: 'loopx_goalbar_request_v2',
-        op: 'watch',
-        sessionId,
-        afterSessionEventSeq: null,
-        sourceRevision,
-        expected: null,
-        agentStatus: 'idle',
-      },
-      controller.signal,
-    )
+    const call = capture.routes[0]?.fetch(new Request('http://fixture/api/loopx.goalbar', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request', rpcId: 'watch-fixture', method: 'loopx.goalbar',
+        payload: {
+          v: 'loopx_goalbar_request_v2', op: 'watch', sessionId,
+          afterSessionEventSeq: null, sourceRevision, expected: null, agentStatus: 'idle',
+        },
+      }),
+      signal: controller.signal,
+    }))
     controller.abort()
-    expect(await call).toMatchObject({
-      ok: true,
-      value: { result: { kind: 'fault', code: 'session_unavailable' } },
+    expect(await (await call)?.json()).toMatchObject({
+      result: { ok: true, value: { result: { kind: 'fault', code: 'session_unavailable' } } },
     })
     await cleanup?.()
     expect(capture.disposed()).toBe(1)

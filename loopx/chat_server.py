@@ -1301,6 +1301,7 @@ class ChatRequestHandler(
             CHAT_GOAL_CHANNEL_TARGETS_PATH: self._goal_channel_targets,
             **self._configuration_get_routes(),
             DEFAULT_CHAT_STATUS_PATH: self._status,
+            "/api/chat/delivery-review": self._delivery_review,
             SSH_HOST_CATALOG_PATH: self._ssh_hosts,
         }
         if path in get_dispatch:

@@ -29,6 +29,7 @@ from loopx.control_plane.work_items.interaction_contract import (
     build_interaction_contract,
     interaction_next_cli_actions,
 )
+from loopx.control_plane.work_items.progress_observation import semantic_delta_from_writeback
 
 
 @pytest.mark.parametrize(
@@ -228,12 +229,13 @@ def _accepted_long_chain_ack(obligation: dict[str, object]) -> dict[str, object]
 def _derive_long_chain(
     source_items: list[dict[str, object]],
     *,
+    agent_todo_summary: dict[str, object] | None = None,
     latest_replan_ack: dict[str, object] | None = None,
     current_transition_replan_ack: dict[str, object] | None = None,
 ) -> dict[str, object] | None:
     return derive_goal_frontier_replan_obligation_from_summaries(
         user_todo_summary={"open_count": 0},
-        agent_todo_summary=_long_chain_summary(source_items),
+        agent_todo_summary=agent_todo_summary or _long_chain_summary(source_items),
         agent_todo_source_items=source_items,
         work_lane_contract={"lane": "advancement_task", "must_attempt_work": True},
         agent_id="current-agent",
@@ -269,6 +271,50 @@ def test_long_todo_chain_checkpoint_is_edge_triggered_and_rearms_on_change() -> 
     assert rearmed["triggers"][0]["frontier_revision"] != (
         original["triggers"][0]["frontier_revision"]
     )
+
+
+@pytest.mark.parametrize("change,rearms", [
+    ("peer_claim", False), ("unclaimed_priority", False),
+    ("owned_priority", True), ("maintenance_timestamp", False),
+])
+def test_writeback_ack_preserves_owned_material_basis(change: str, rearms: bool) -> None:
+    items = [*_long_chain_source_items(), {
+        **_advancement("todo_unclaimed", ""),
+        "updated_at": "2026-08-22T09:00:00+08:00",
+    }]
+
+    def derive(rows, ack=None):
+        owned = [row for row in rows if row.get("claimed_by") == "current-agent"]
+        unclaimed = [row for row in rows if not row.get("claimed_by")]
+        return _derive_long_chain(rows, latest_replan_ack=ack, agent_todo_summary={
+            "open_count": len(rows), "current_agent_claimed_open_count": len(owned),
+            "current_agent_claimed_advancement_count": len(owned),
+            "unclaimed_open_count": len(unclaimed),
+            "unclaimed_priority_open_items": unclaimed,
+            "executable_backlog_items": owned + unclaimed,
+            "claim_scope": {"other_agent_claimed_items": [
+                row for row in rows if row not in owned + unclaimed]},
+        })
+
+    original = derive(items)
+    assert original is not None
+    delta = semantic_delta_from_writeback(obligation=original, progress_observation={
+        "result_class": "advanced", "surface_id": "dependency-recovery",
+        "evidence_ids": ["evidence:independent-acceptance"],
+    })
+    assert delta["accepted"]
+    ack = {"recorded": True, "semantic_delta": delta}
+    assert derive(items, ack) is None
+    changed = deepcopy(items)
+    if change == "peer_claim":
+        changed[-1]["claimed_by"] = "peer-agent"
+    elif change == "unclaimed_priority":
+        changed[-1]["priority"] = "P0"
+    elif change == "owned_priority":
+        changed[0]["priority"] = "P0"
+    else:
+        changed[0]["updated_at"] = "2026-08-22T10:00:00+08:00"
+    assert (derive(changed, ack) is not None) is rearms
 
 
 def test_frontier_revision_index_preserves_complete_agent_lane_semantics() -> None:

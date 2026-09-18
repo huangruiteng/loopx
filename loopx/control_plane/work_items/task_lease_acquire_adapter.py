@@ -14,7 +14,8 @@ from ...paths import resolve_runtime_root
 from ..coordination.coordination_state_contract_generated import (
     LOCAL_AUTHORITY_SHADOW_BINDING_SCHEMA,
     TASK_LEASE_ACQUIRE_REQUEST_SCHEMA,
-    TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA,
+    TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA,
+    TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA,
     TASK_LEASE_LIFECYCLE_REQUEST_SCHEMA,
 )
 from ..coordination.runtime_shadow import resolve_coordination_runtime_shadow_config
@@ -336,7 +337,7 @@ def _require_native_acquire_shape(payload: object) -> dict[str, Any]:
     return payload
 
 
-def _canonical_renew_authority_facts(registry_path: Path, goal_id: str) -> dict[str, Any]:
+def _canonical_lease_authority_facts(registry_path: Path, goal_id: str) -> dict[str, Any]:
     """Only registration is external to the canonical head; bind its source."""
     for _attempt in range(TASK_LEASE_AUTHORITY_SNAPSHOT_ATTEMPTS):
         before = _authority_source_receipt("registry", registry_path)
@@ -345,7 +346,7 @@ def _canonical_renew_authority_facts(registry_path: Path, goal_id: str) -> dict[
         if before != after:
             continue
         if goal is None:
-            raise TaskLeaseError("canonical renewal goal is not registered", code="goal_not_found")
+            raise TaskLeaseError("canonical lease lifecycle goal is not registered", code="goal_not_found")
         return {
             # This neutral transport value never decides a canonical mode.
             "handoff_mode": HANDOFF_MODE_LEGACY,
@@ -354,7 +355,7 @@ def _canonical_renew_authority_facts(registry_path: Path, goal_id: str) -> dict[
             "todo_projection_error": None,
             "source_receipts": [after],
         }
-    raise TaskLeaseError("canonical renewal registry changed; retry", code="authority_source_changed")
+    raise TaskLeaseError("canonical lease lifecycle registry changed; retry", code="authority_source_changed")
 
 
 def _finalize_native_acquire_result(
@@ -410,14 +411,17 @@ def execute_native_task_lease_acquire(
 
     from ..effect_runtime import effect_runtime_result
 
+    from ..coordination.local_authority import local_authority_is_promoted
+
+    canonical = local_authority_is_promoted(runtime_root=runtime_root, goal_id=str(goal_id))
     for attempt in range(TASK_LEASE_AUTHORITY_SNAPSHOT_ATTEMPTS):
-        authority = task_lease_acquire_authority_facts(
+        authority = _canonical_lease_authority_facts(registry_path, str(goal_id)) if canonical else task_lease_acquire_authority_facts(
             registry_path=registry_path,
             goal_id=str(goal_id or ""),
             todo_id=str(todo_id or ""),
         )
         request = {
-            "schema_version": TASK_LEASE_ACQUIRE_NATIVE_SCHEMA_VERSION,
+            "schema_version": TASK_LEASE_CANONICAL_ACQUIRE_REQUEST_SCHEMA if canonical else TASK_LEASE_ACQUIRE_NATIVE_SCHEMA_VERSION,
             "runtime_root": str(runtime_root),
             "goal_id": goal_id,
             "todo_id": todo_id,
@@ -430,7 +434,7 @@ def execute_native_task_lease_acquire(
         }
         registry = load_registry(registry_path)
         goal = _registry_goal(registry, str(goal_id))
-        if resolve_coordination_runtime_shadow_config(goal).enabled:
+        if not canonical and resolve_coordination_runtime_shadow_config(goal).enabled:
             request["runtime_shadow"] = {
                 "schema_version": LOCAL_AUTHORITY_SHADOW_BINDING_SCHEMA,
                 "provider": "file_v0",
@@ -443,6 +447,14 @@ def execute_native_task_lease_acquire(
             and attempt + 1 < TASK_LEASE_AUTHORITY_SNAPSHOT_ATTEMPTS
         ):
             continue
+        if canonical:
+            if payload.get("ok") is True and (
+                payload.get("source_authority") not in ("file_v0", "sqlite_v0")
+                or payload.get("decision_read_from_provider") is not True
+                or payload.get("legacy_fallback_used") is not False
+            ):
+                raise RuntimeError("canonical acquire omitted valid provider evidence")
+            return payload
         return _finalize_native_acquire_result(
             payload,
             authority=authority,
@@ -614,16 +626,16 @@ def execute_native_task_lease_lifecycle(
         fence_operation_id = secrets.token_hex(32)
     for attempt in range(TASK_LEASE_AUTHORITY_SNAPSHOT_ATTEMPTS):
         authority: dict[str, Any] | None = None
-        canonical_renew = False
-        if normalized_operation == "renew":
+        canonical_lifecycle = False
+        if normalized_operation in {"renew", "transfer", "release"}:
             from ..coordination.local_authority import local_authority_is_promoted
 
-            canonical_renew = local_authority_is_promoted(
+            canonical_lifecycle = local_authority_is_promoted(
                 runtime_root=runtime_root, goal_id=goal_id
             )
-        if registry_path is not None and (needs_authority or normalized_operation == "release"):
+        if registry_path is not None and (needs_authority or (normalized_operation == "release" and not canonical_lifecycle)):
             try:
-                authority = _canonical_renew_authority_facts(registry_path, goal_id) if canonical_renew else task_lease_acquire_authority_facts(
+                authority = _canonical_lease_authority_facts(registry_path, goal_id) if canonical_lifecycle else task_lease_acquire_authority_facts(
                     registry_path=registry_path,
                     goal_id=str(goal_id or ""),
                     todo_id=str(todo_id or ""),
@@ -644,8 +656,8 @@ def execute_native_task_lease_lifecycle(
                 authority = None
         request: dict[str, Any] = {
             "schema_version": (
-                TASK_LEASE_CANONICAL_RENEW_REQUEST_SCHEMA
-                if canonical_renew else TASK_LEASE_LIFECYCLE_NATIVE_SCHEMA_VERSION
+                TASK_LEASE_CANONICAL_LIFECYCLE_REQUEST_SCHEMA
+                if canonical_lifecycle else TASK_LEASE_LIFECYCLE_NATIVE_SCHEMA_VERSION
             ),
             "operation": normalized_operation,
             "runtime_root": str(runtime_root),
@@ -685,12 +697,14 @@ def execute_native_task_lease_lifecycle(
             # CLI argument or persisted authority fact.
             "current_time": _now.isoformat() if _now is not None else None,
         }
-        if canonical_renew:
+        if canonical_lifecycle:
             request = {key: request[key] for key in (
                 "schema_version", "operation", "runtime_root", "goal_id", "todo_id",
                 "owner", "idempotency_key", "expected_version", "ttl_seconds", "authority", "current_time",
             )}
-        if registry_path is not None and not canonical_renew:
+            if normalized_operation == "transfer":
+                request.update(new_owner=new_owner, new_idempotency_key=new_idempotency_key)
+        if registry_path is not None and not canonical_lifecycle:
             registry = load_registry(registry_path)
             goal = _registry_goal(registry, str(goal_id))
             if resolve_coordination_runtime_shadow_config(goal).enabled:
@@ -707,7 +721,7 @@ def execute_native_task_lease_lifecycle(
                         registry_path=registry_path, goal_id=goal_id, todo_id=todo_id,
                     )
         compacted_todo = _compact_lifecycle_todo(todo, todo_id=str(todo_id))
-        if compacted_todo is not None and not canonical_renew:
+        if compacted_todo is not None and not canonical_lifecycle:
             request["todo"] = compacted_todo
         from ..effect_runtime import effect_runtime_result
 
@@ -732,11 +746,11 @@ def execute_native_task_lease_lifecycle(
                 owner=owner,
             )
         result = dict(payload)
-        if canonical_renew and "source_authority" not in result:
-            raise RuntimeError("canonical renewal omitted provider evidence")
+        if canonical_lifecycle and "source_authority" not in result:
+            raise RuntimeError("canonical lease lifecycle omitted provider evidence")
         if "source_authority" in result:
             if (
-                normalized_operation != "renew"
+                normalized_operation not in {"renew", "transfer", "release"}
                 or result.get("source_authority") not in ("file_v0", "sqlite_v0")
                 or result.get("decision_read_from_provider") is not True
                 or result.get("legacy_fallback_used") is not False

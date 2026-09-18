@@ -109,6 +109,24 @@ native creation, archival, receipt replay, and store reopen are tested without
 Markdown metadata. Python only adapts the typed read result to the compatibility
 summary. This is a contract checkpoint, not a completed CLI lifecycle cutover.
 
+### Lease acquisition and lifecycle convergence (2026-09-18)
+
+Standalone acquire/takeover and maintenance now share the local provider/source
+fence. `task_lease_acquire_decision.ts` owns acquire admission and materialization;
+legacy acquire and canonical atomic Todo claim reuse it. `task_lease_state.ts`
+provides full canonical facts, including archived-holder exclusion from scope
+conflicts. Python sends registration facts through one native request, without
+reconstructing the canonical Todo/lease head. Generation exhaustion fails closed.
+
+An acquire receipt alone is not current execution authority: exact create-CAS
+retry recovers the original decision and verifies the current owner/key/epoch;
+renewal returns current proof while expiry/release/transfer cannot revive it.
+Canonical completion can rebuild missing Markdown display through the existing
+outbox. Real CLI, scale/native/imported fixtures, process loss and four-arm
+read-only rehearsal cover the boundary. See [operation and compatibility](../../reference/canonical-lease-renew.md).
+Executor-held external-effect locks, remaining L2/L4/L5 consumers, D2/D3 and
+new-Goal defaults remain separate; this is not full L3 or T4 retirement.
+
 ### Local provider opening boundary (2026-09-13)
 
 The provider-first runtime now has one typed local opening seam. An absent
@@ -824,23 +842,41 @@ editors govern optional feature configuration, not host tool observations, so th
 configuration owner and fields are unchanged. See [operating semantics](../../quota-allocation.md).
 
 
-Advancement-frontier checkpoint closure: `todos/frontier_revision.ts` now owns
-agent selection, completeness, material hashing, long-chain thresholds and exact
-ACK/rearm classification. Python retains the v0 field manifest and legacy JSON/
-metadata codecs so unchanged legal frontiers retain their persisted fingerprints;
-the old Python revision builder, index selector and two-step long-chain decision
-are retired. Terminal advancement rows still affect material identity, while
-timestamp-only maintenance does not rearm it. Thresholds remain 15 advancement
-Todos or 20 selectable open Todos with advancement work. Excluded unclaimed work
-no longer changes that Agent's checkpoint, including Agents with no claimed rows;
-removing the exclusion makes that work relevant again. Duplicate identities in a
-selected frontier, duplicate matching index lanes and incomplete timestamps cannot
-provide a complete checkpoint or suppress replanning. These are explicit read
-corrections, not new execution permissions. The existing canonical source feeds
-the index before display truncation. Complex-fixture tests replay accepted ACKs,
-excluded/eligible edits and newly available work through a real provider with
-stale/missing display; a read-only private-snapshot comparison remains private.
-This closes one T3 rule group, not the remaining consumers or T1/T2/D1–D3.
+Advancement-frontier checkpoint closure: `todos/frontier_revision.ts` owns
+agent selection, completeness, material hashing, long-chain thresholds,
+checkpoint construction and ACK/rearm classification. Observation, semantic
+writeback and runnable-successor receipts now use the same typed checkpoint
+constructor. Successor projection resolves the complete source, owned identity
+and replacement checkpoint list in one request; Python no longer assembles
+receipts or fetches the same frontier separately for each identity field.
+Python retains the v0 field manifest, legacy JSON/metadata codecs, successor
+eligibility and the existing obligation-id derivation. TS owns timestamp
+ordering and reconstructs only a unique fresh successor insertion against the
+complete current source; Python verifies its predecessor obligation id.
+Compaction preserves the material `done` field, and history retains successor
+lineage. Ambiguous, stale, truncated or unrelated material changes cannot close
+the current obligation. This closes one T3 rule group, not
+the remaining consumers or T1/T2/D1–D3.
+
+Thresholds remain 15 advancement Todos or 20 selectable open Todos with
+advancement work. Full material revisions include terminal advancement rows;
+timestamp-only maintenance does not rearm them. A complete agent-owned identity
+also keeps an accepted long-chain ACK valid when peers change shared unclaimed
+work. Owned material edits still rearm; an entirely unclaimed chain cannot use
+that exemption. Historical revision-only ACKs keep exact-revision matching.
+Intentional corrections: semantic writeback now preserves the owned identity;
+an identity without a revision or an explicitly incomplete checkpoint cannot
+suppress replanning. Other trigger kinds cannot borrow long-chain identity
+matching. No threshold, write authority or obligation-id rule changes.
+
+The canonical index is built before display truncation. Exclusions, duplicate
+ids/index lanes, incomplete timestamps and authoritative incomplete indexes
+retain fail-closed behavior. Real CLI tests cover both ACK routes through
+persisted run/history readback, a peer claim and an owned material edit. The
+complex fixture also exercises revision-only and owned ACKs through the real
+File provider with stale/missing display. Frontend/Lark configuration is
+unchanged: this is the shared quota/recovery checkpoint path, not a new control
+or user confirmation. No provider promotion is implied.
 
 Large source facts use lossless deflate/base64 transport above 512 KiB, retaining
 the exact v0 material bytes and the shared 2 MiB request boundary. The TS decoder

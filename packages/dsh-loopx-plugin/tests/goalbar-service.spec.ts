@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import {
   LoopXCliError,
@@ -35,7 +36,7 @@ const command: LoopXCommand = {
 function turnEnd(seq: number): SessionEvent<'turn/end'> {
   return {
     type: 'turn/end',
-    seq,
+    seq: SessionSeq(seq),
     time: 1,
     data: { turn: 0, reason: { kind: 'completed' } },
   }
@@ -62,14 +63,14 @@ function agentFixture(
   const session = {
     id,
     header: { version: 0, id, createdAt: 1, cwd },
-    get events() { return eventSource?.() ?? events },
+    snapshotEvents: () => eventSource?.() ?? events,
     surface: { nodes: [] },
   }
   const agent = {
     id,
     options: {},
     session,
-    inbox: { nextTurn: [], nextStep: [], hasPending: false },
+    inbox: { nextTurn: [], nextStep: [] },
     ctx: {},
     get status() { return status },
     cancel() {},

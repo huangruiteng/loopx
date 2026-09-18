@@ -16,10 +16,10 @@ from ...work_items.progress_observation import (
     replan_obligation_trigger_kinds,
     required_semantic_outcomes,
 )
+from ...work_items.autonomous_replan_obligation import ensure_replan_novelty_policy
 from .long_todo_chain import (
     LONG_TODO_CHAIN_TRIGGER,
-    long_todo_chain_source_checkpoint,
-    long_todo_chain_transition_is_fresh,
+    long_todo_chain_successor_checkpoints,
 )
 
 
@@ -101,48 +101,45 @@ def replan_successor_transition_ack(
             item for item in agent_todo_items if isinstance(item, dict)
         ]
     trigger_kinds = replan_obligation_trigger_kinds(replan_obligation or {})
-    long_chain_checkpoint: dict[str, str] | None = None
-    long_chain_frontier_updated_at: str | None = None
+    candidates = [item for item in source_items
+        if todo_item_is_actionable_open(item)
+        and todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        and normalize_todo_claimed_by(item.get("claimed_by")) == safe_agent_id
+        and normalize_todo_replan_obligation_id(item.get("replan_obligation_id"))
+        and normalize_todo_id(item.get("todo_id"))
+        and replan_successor_semantic_binding(action_kind=item.get("action_kind"),
+            target_key=item.get("target_key"), explore_result_node_refs=item.get("explore_result_node_refs"))]
+    if not candidates:
+        return None
+    trigger_checkpoints: list[dict[str, str]] | None = None
+    eligible_ids = {item["todo_id"] for item in candidates if item["replan_obligation_id"] == obligation_id}
     if LONG_TODO_CHAIN_TRIGGER in trigger_kinds:
-        source_checkpoint = long_todo_chain_source_checkpoint(
+        source_checkpoint = long_todo_chain_successor_checkpoints(
             source_items,
             agent_id=safe_agent_id,
+            triggers=(replan_obligation or {}).get("triggers") or [],
+            obligation_id=obligation_id,
+            candidates=[{"todo_id": item["todo_id"], "updated_at": item.get("updated_at"),
+                "origin_obligation_id": item["replan_obligation_id"]} for item in candidates],
             frontier_revision_index=(agent_todo_summary or {}).get(
                 "advancement_frontier_revision_index"
             ),
         )
         if source_checkpoint is None:
             return None
-        long_chain_checkpoint, long_chain_frontier_updated_at = source_checkpoint
-    successor = next(
-        (
-            item
-            for item in source_items
-            if isinstance(item, dict)
-            and todo_item_is_actionable_open(item)
-            and todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-            and normalize_todo_claimed_by(item.get("claimed_by"))
-            == safe_agent_id
-            and normalize_todo_replan_obligation_id(
-                item.get("replan_obligation_id")
-            )
-            == obligation_id
-            and normalize_todo_id(item.get("todo_id"))
-            and replan_successor_semantic_binding(
-                action_kind=item.get("action_kind"),
-                target_key=item.get("target_key"),
-                explore_result_node_refs=item.get("explore_result_node_refs"),
-            )
-            and (
-                LONG_TODO_CHAIN_TRIGGER not in trigger_kinds
-                or long_todo_chain_transition_is_fresh(
-                    frontier_updated_at=long_chain_frontier_updated_at,
-                    transition_generated_at=item.get("updated_at"),
-                )
-            )
-        ),
-        None,
-    )
+        trigger_checkpoints = source_checkpoint["trigger_checkpoints"]
+        eligible_ids = set()
+        origins = {item["todo_id"]: item["replan_obligation_id"] for item in candidates}
+        for binding in source_checkpoint["bindings"]:
+            if binding["kind"] == "exact":
+                eligible_ids.add(binding["todo_id"])
+            elif binding["kind"] == "predecessor":
+                prior = ensure_replan_novelty_policy({**(replan_obligation or {}), "triggers": [
+                    {**trigger, "frontier_revision": binding["frontier_revision"]}
+                    for trigger in (replan_obligation or {}).get("triggers") or []]})
+                if prior["obligation_id"] == origins[binding["todo_id"]]:
+                    eligible_ids.add(binding["todo_id"])
+    successor = next((item for item in candidates if item["todo_id"] in eligible_ids), None)
     if successor is None:
         return None
     successor_todo_id = normalize_todo_id(successor.get("todo_id"))
@@ -153,16 +150,8 @@ def replan_successor_transition_ack(
     )
     if successor_binding is None:
         return None
-    trigger_checkpoints = replan_obligation_trigger_checkpoints(
-        replan_obligation or {}
-    )
-    if LONG_TODO_CHAIN_TRIGGER in trigger_kinds:
-        assert long_chain_checkpoint is not None
-        trigger_checkpoints = [
-            checkpoint
-            for checkpoint in trigger_checkpoints
-            if checkpoint.get("kind") != LONG_TODO_CHAIN_TRIGGER
-        ] + [long_chain_checkpoint]
+    if trigger_checkpoints is None:
+        trigger_checkpoints = replan_obligation_trigger_checkpoints(replan_obligation or {})
     semantic_delta = {
         "schema_version": "replan_semantic_delta_v0",
         "accepted": True,
@@ -173,9 +162,10 @@ def replan_successor_transition_ack(
         "trigger_checkpoints": trigger_checkpoints,
         "obligation_id": obligation_id,
         "successor_todo_id": successor_todo_id,
+        "successor_origin_obligation_id": successor["replan_obligation_id"],
         "successor_binding": successor_binding,
         "reason": (
-            "an exact current-obligation Todo transition created a runnable "
+            "an exact or source-proven predecessor Todo transition created a runnable "
             "successor"
         ),
     }

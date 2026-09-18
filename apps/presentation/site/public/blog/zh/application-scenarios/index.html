@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafafa">
+  <title>LoopX 用在哪里：复杂任务、开放探索与持续交付</title>
+  <meta name="description" content="沿三个工作场景，理解长程 Agent 为什么需要持续的目标、证据、反馈与交付责任。">
+  <link rel="canonical" href="https://huangruiteng.github.io/loopx/blog/zh/application-scenarios/">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="LoopX 用在哪里：复杂任务、开放探索与持续交付">
+  <meta property="og:url" content="https://huangruiteng.github.io/loopx/blog/zh/application-scenarios/">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../blog.css">
+  <style>
+    [hidden]{display:none!important}
+    button{font:inherit;cursor:pointer;min-height:44px;padding:10px 16px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink)}
+    button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}button[aria-pressed=true]{background:var(--ink);color:#fff}
+    .site-header{padding:0 24px}.article-heading{padding-top:64px}.article-heading .eyebrow{margin-top:0}
+    .chapter-line{display:flex;flex-wrap:wrap;gap:16px;align-items:center;color:var(--body);font-size:12px;margin-top:28px}
+    .scenario-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:32px 0}
+    .scenario{padding:24px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+    .scenario .number{font:500 12px var(--font-mono);color:var(--blue)}.scenario h3{margin:16px 0 12px;font-size:20px}.scenario p{font-size:14px;margin:0}.scenario small{display:block;border-top:1px solid var(--border);padding-top:16px;margin-top:20px;font-size:12px}
+    .takeaway{font-size:22px!important;line-height:1.65;color:var(--ink);letter-spacing:-.02em}
+    .loop-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:24px 0}.loop-row>div{padding:16px;border:1px solid var(--border);background:var(--surface);border-radius:6px;font-size:14px}.loop-row b{display:block;color:var(--ink)}.loop-row span{display:block;font-size:12px;margin-top:8px}
+    .comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}.comparison>div{border:1px solid var(--border);border-radius:12px;padding:24px;background:var(--surface)}.comparison strong{display:block;font-size:32px;letter-spacing:-.04em;margin:12px 0}.comparison p{font-size:14px;margin:0}
+    .study-signal{margin:32px 0;padding:28px 0 4px;border-top:1px solid var(--border);scroll-margin-top:24px}.study-signal h3{margin:0 0 12px}.study-signal .study-setting{font-size:12px;margin-bottom:16px}.study-signal p{margin-bottom:16px}.study-signal .signal-boundary{font-size:14px}.study-signal .study-link{font-size:14px;margin-bottom:0}.presenting .study-signal .study-setting{font-size:14px}.presenting .study-signal .signal-boundary,.presenting .study-signal .study-link{font-size:17px}
+    .stage-buttons{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.state-demo{border:1px solid var(--border);border-radius:12px;padding:24px;background:var(--surface)}.state-demo dl{display:grid;grid-template-columns:110px 1fr;gap:12px 20px;margin:0}.state-demo dt{font-size:12px;color:var(--body);padding-top:3px}.state-demo dd{margin:0;font-size:15px;color:var(--ink)}
+    .small-note{font-size:12px!important;color:var(--body)}.layers{margin:24px 0;border-top:1px solid var(--border)}.layer{display:grid;grid-template-columns:150px 1fr;gap:24px;border-bottom:1px solid var(--border);padding:18px 0;font-size:14px}.layer b{color:var(--ink)}
+    .evolution{counter-reset:step;list-style:none!important;padding:0!important}.evolution li{counter-increment:step;display:grid;grid-template-columns:40px 1fr;gap:16px;padding:20px 0;border-bottom:1px solid var(--border);margin:0}.evolution li::before{content:"0" counter(step);font:500 14px var(--font-mono);color:var(--blue);padding-top:4px}.evolution b{display:block}.evolution span{display:block;font-size:14px;margin-top:6px}
+    .source-list{font-size:13px}.site-footer{padding:32px 24px;border-top:1px solid var(--border);font-size:12px}.site-footer a{margin-left:auto}
+    .presenting .article-layout{max-width:1200px;grid-template-columns:180px minmax(0,960px);gap:40px}.presenting .prose{font-size:21px}.presenting .prose h2{font-size:36px}.presenting .takeaway{font-size:28px!important}.presenting .prose section{padding-bottom:40px;scroll-margin-top:24px}.presenting table{font-size:17px}.presenting .scenario p,.presenting .loop-row>div,.presenting .layer,.presenting .state-demo dd{font-size:17px}.presenting .toc{font-size:13px}.presenting .toc details{top:20px}
+    @media(max-width:1100px){.article-heading,.article-layout{margin-left:24px;margin-right:24px}.presenting .article-layout{grid-template-columns:160px minmax(0,1fr)}}
+    @media(max-width:760px){.scenario-grid,.comparison{grid-template-columns:1fr}.loop-row{grid-template-columns:1fr 1fr}.article-layout,.presenting .article-layout{display:block}.toc{margin-bottom:40px}.toc details{position:static}.site-header{gap:12px;flex-wrap:wrap;padding:12px 20px}.site-header nav{gap:16px}.header-actions{gap:8px}.article-heading{padding-top:40px}.state-demo dl,.layer{grid-template-columns:1fr;gap:8px}.state-demo dd{margin-bottom:16px}.scenario small{margin-top:12px;padding-top:12px}.presenting .prose{font-size:18px}}
+    @media print{.site-header,.toc,.stage-buttons,.chapter-line,.site-footer{display:none!important}.article-layout,.presenting .article-layout{display:block;max-width:none;padding:24px 0}.article-heading{padding:0 0 24px}.prose h2{break-after:avoid}.diagram,.comparison,.state-demo,.scenario{break-inside:avoid}body{background:#fff}}
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-header">
+  <a class="brand" href="../../../?lang=zh" aria-label="LoopX 首页"><span class="product-mark" aria-hidden="true"><i></i><i></i></span>LoopX</a>
+  <nav aria-label="主导航"><a href="../from-one-shot-agents-to-long-horizon-control/#objective">总览</a><a href="../agent-facing-kanban/#walkthrough">Kanban</a></nav>
+  <div class="header-actions"><button id="presentation" type="button" hidden aria-pressed="false">演讲模式</button></div>
+</header>
+<main id="main">
+  <div class="article-heading">
+    <p class="eyebrow">场景与实践 · 长程 Agent</p>
+    <h1>LoopX 用在哪里？<br>复杂任务、开放探索与持续交付</h1>
+    <p class="lead">有些工作需要把一件事做完，有些需要找到下一条值得走的路，还有些需要长期对结果负责。它们需要不同的领域能力，也需要跨会话保留下来的目标、证据与约束。</p>
+    <div class="chapter-line"><a href="https://github.com/huangruiteng">Ruiteng Huang</a><time datetime="2026-09-18">2026 年 9 月 18 日</time><span>三个场景 · 一套长程控制面</span></div>
+  </div>
+  <div class="article-layout">
+    <aside class="toc"><details open><summary>本文目录</summary><nav aria-label="文章目录">
+      <a href="#map">三类工作</a><a href="#complex">01 把复杂任务做完</a><a href="#benchmark">Benchmark 给的提醒</a><a href="#exploration">02 在探索中找路</a><a href="#employee">03 持续承担交付</a><a href="#layers">状态与能力怎样分工</a><a href="#evolution">下一步怎样演进</a><a href="#sources">公开依据</a>
+    </nav></details></aside>
+    <article class="prose">
+      <section id="map">
+        <h2>先看工作，再看抽象</h2>
+        <div class="scenario-grid">
+          <div class="scenario"><span class="number">01 / COMPLETION</span><h3>验收明确的复杂任务</h3><p>重构、迁移、协议实现。终点比较明确，执行路线仍有不确定性。</p><small>保留：验收缺口、版本、修复证据<br>关注：完成率与成本</small></div>
+          <div class="scenario"><span class="number">02 / DISCOVERY</span><h3>开放探索类任务</h3><p>调研、算法实验、系统优化。下一条路线由新证据不断改变。</p><small>保留：假设、反证、候选方向<br>关注：有效发现与验证</small></div>
+          <div class="scenario"><span class="number">03 / DELIVERY</span><h3>持续交付的数字员工</h3><p>接收 issue、修复、跟进评审，处理新反馈，并对结果持续负责。</p><small>保留：职责、外部状态、等待条件<br>关注：交付质量与人的投入</small></div>
+        </div>
+        <p>这三类可以嵌套。一个长期维护仓库的 Agent，可能先探索性能问题，再完成一项验收明确的修复，最后持续跟进 PR。前两类主要描述工作如何求解，第三类还增加了持续的职责与到达的新任务。</p>
+        <p class="takeaway">真正延续下来的，应当是工作及其判断依据。</p>
+      </section>
+
+      <section id="complex">
+        <h2>01 / 把复杂任务做完</h2>
+        <p>“实现一个符合规范的解码器”听起来很确定。但可见样例通过之后，仍可能遗漏边界输入、内存安全和兼容性；重开一个会话，又可能丢掉此前确认的失败条件。</p>
+        <div class="loop-row" aria-label="复杂任务的工作闭环">
+          <div><b>定义验收</b><span>规范、基线、预算</span></div><div><b>实现并验证</b><span>产物绑定具体版本</span></div><div><b>找出缺口</b><span>测试之外还缺什么</span></div><div><b>继续或停止</b><span>补缺口，或明确收口</span></div>
+        </div>
+        <p>LoopX 的作用，是让目标和验收缺口跨轮次保持连续，让新证据进入下一步决策。模型负责实现与判断，领域验证器负责检验结果；控制面记录哪些结果被接受、哪些工作仍未完成。</p>
+        <p>适合它的任务，通常会经历多轮验证、等待或交接。短小、一次会话就能验收的工作，现有 Agent 可能已经足够，新增控制面需要证明自身开销值得。</p>
+      </section>
+
+      <section id="benchmark">
+        <h2>Benchmark：三项研究，三个值得追查的信号</h2>
+        <p>三项研究分别观察续跑、交付和验证行为。任务、模型设置与统计口径不同，应分别理解；现有结果还不足以概括 LoopX 的普遍增益。</p>
+
+        <div class="study-signal" id="benchmark-marathon">
+          <h3>SWE-Marathon：续跑要补上真实缺口</h3>
+          <p class="study-setting">GPT-5.6 Sol / high · 15 个匹配任务 · 3 个保留模式，每格运行 1 次 · 超时系数 0.3</p>
+          <p><strong>观察：</strong>原生 Goal 完成 4/15，Heartbeat 完成 5/15；两组总成本从 $533 增至 $830，约多 56%。</p>
+          <p><strong>Insight：</strong>zstd 个案中，续跑补充了可见测试之外的验收；excel 个案多次续跑仍未完成。值得追查的是下一轮补了什么缺口，以及这份收益是否值得新增成本。</p>
+          <p class="signal-boundary"><strong>范围：</strong>每格只有一次运行，多项机制同时变化。已有个案收益，也有无效续跑；尚不能确认稳定增益或成本优势。</p>
+          <p class="study-link"><a href="../../../benchmarks/swe-marathon/?lang=zh">研究全文：结果、成本与正反个案 →</a></p>
+        </div>
+
+        <div class="study-signal" id="benchmark-sol">
+          <h3>DeepSWE × Sol：完成差异要拆开看</h3>
+          <p class="study-setting">脚本默认 GPT-5.6 Sol / xhigh · 113 个任务 · 历史 best-valid 汇总</p>
+          <p><strong>观察：</strong>裸 Codex、原生 Goal、Heartbeat 分别完成 54、60、70 题。Heartbeat 比 Goal 多 10 题，但默认时间窗口也更长。</p>
+          <p><strong>Insight：</strong>源码把“继续执行”与“有效交付”分开处理：worktree 中有代码，收集器仍可能拿到空补丁。应分别检查恢复、补丁交付与独立验收，再追查它们对完成差异的贡献。</p>
+          <p class="signal-boundary"><strong>范围：</strong>每任务取最佳有效结果，非单次通过率；预算不同，尝试次数和成本未完整披露。合入未复验成绩，不能视为同预算净增益。</p>
+          <p class="study-link"><a href="../../../benchmarks/deepswe-sol/">研究全文：历史结果、恢复与交付机制 →</a></p>
+        </div>
+
+        <div class="study-signal" id="benchmark-flash">
+          <h3>DeepSWE × V4 Flash max：让反例改变实现</h3>
+          <p class="study-setting">DeepSeek V4 Flash / max + Codex · 冻结 113 题 · 按相同 hint 条件比较 Goal 与 LoopX</p>
+          <p><strong>观察：</strong>LoopX 的按题平均 feature 覆盖高约 2 个百分点。两组均有 hint 的事后长时切片中，完成数从 12/29 增至 14/29，累计耗时少 16.4%。</p>
+          <p><strong>Insight：</strong>精选案例里的差别在于，失败反例是否被保留，外部契约能否推翻实现假设。验证的价值要体现在修复与复验上，而不只是增加检查次数。</p>
+          <p class="signal-boundary"><strong>范围：</strong>覆盖不等于成功率；长时切片为事后分组，耗时包含成功与失败运行。局部发现不能外推为总体提升或等质量加速。</p>
+          <p class="study-link"><a href="../../../benchmarks/deepswe/behavior-discovery/">研究全文：需求覆盖、行为案例与长时切片 →</a></p>
+        </div>
+
+        <p class="takeaway">当前的信号是：有效续跑、可靠交付和反例驱动的修复值得继续研究。</p>
+        <p>三项研究提供了局部正向观察，也暴露了成本、失败与归因问题。下一步需要在匹配预算和重复实验中，判断哪些收益能够稳定复现。</p>
+        <p class="small-note">SWE-Marathon 与 DeepSWE × Sol 已撤回的 SSH Goal、Codex CLI 成绩和结论均不用于这里的比较。</p>
+      </section>
+
+      <section id="exploration">
+        <h2>02 / 在开放探索中找路</h2>
+        <p>“找到一个更好的算法方案”没有预先写好的完整任务链。真正的进展可能是验证一个假设，也可能是排除一条看似有希望的路线。只保留成功结论，下一轮就容易重试已被否定的想法。</p>
+        <div class="loop-row" aria-label="探索中的证据闭环">
+          <div><b>提出问题</b><span>约束与待验证假设</span></div><div><b>尝试多条路线</b><span>隔离实验，控制预算</span></div><div><b>记录正反证据</b><span>支持、反驳、引出新问题</span></div><div><b>更新探索方向</b><span>继续、合并、淘汰或暂停</span></div>
+        </div>
+        <p><strong>Explore</strong> 已有可选的证据图和有界分支规划：节点表示问题与发现，关系表达 <code>supports</code>、<code>refutes</code>、<code>leads_to</code>。规划建议需要经过正常执行边界，图本身不启动 Worker，也不授予花费权限。</p>
+        <p><strong>Auto Research</strong> 把这一思路组织成研究工作：选题、提出假设、执行实验、独立评价、形成报告。现有协议与命令提供了基础，公开 showcase 文档仍包含蓝图和待验证项；实际效果需要在具体任务中证明。</p>
+
+        <h3>RSI 放在这里，但收紧含义</h3>
+        <p>如果改进对象变成 Agent 自己的工具、策略或 Harness，就进入自改进研究。<strong>能修改自身代码，只是能够提出候选版本；持续变强还需要独立评价、跨任务泛化、回归检查和回滚。</strong></p>
+        <p>把历史经验用于下一次决策、自动生成实验、修改 Harness，是不同层次。这里可以讨论通往递归自改进（RSI）的实验路径，不能把“自动迭代”直接说成已经实现开放式自我提升。</p>
+      </section>
+
+      <section id="employee">
+        <h2>03 / 持续承担交付责任</h2>
+        <p>一个 PR / issue fix 数字员工，工作的起点是“这件事是否值得修”，交付后还要面对 CI、评审意见、分支变化和合并结果。任务不断到来，外部事实也不断变化。</p>
+        <p class="takeaway">生成补丁之后，责任还没有结束。</p>
+        <p>下面用一个构造场景说明：修复已提交，CI 和评审仍在进行。点击外部状态，看下一步如何改变。</p>
+        <div class="stage-buttons" hidden role="group" aria-label="选择 PR 的外部状态">
+          <button type="button" data-state="pending" aria-pressed="true">CI 等待中</button><button type="button" data-state="failed" aria-pressed="false">CI 失败</button><button type="button" data-state="changed" aria-pressed="false">提交版本变化</button><button type="button" data-state="merged" aria-pressed="false">PR 已合并</button>
+        </div>
+        <div class="state-demo" aria-live="polite" aria-atomic="true"><dl>
+          <dt>外部事实</dt><dd id="fact">GitHub 返回当前修订的 checks pending。</dd>
+          <dt>领域状态</dt><dd id="domain">记录 PR、修订与检查状态；相同观察无需制造新进展。</dd>
+          <dt>能力提出下一步</dt><dd id="proposal">保留监控和恢复条件，等待结果。</dd>
+          <dt>控制面检查</dt><dd id="kernel">按授权、预算和执行资格准入；等待范围之外的工作仍可推进。</dd>
+          <dt>对人的意义</dt><dd id="meaning">没有重要变化时保持安静，避免把轮询变成催促。</dd>
+        </dl></div>
+        <noscript><p class="small-note">当前展示 CI 等待中的静态示例；启用 JavaScript 后可以切换状态。</p></noscript>
+        <p class="small-note">交互图为设计说明，不连接真实仓库，也不执行任何 GitHub 操作。</p>
+        <p>“数字员工”在这里意味着有持续职责、边界、记忆与反馈闭环。是否值得使用，要看被接受的修复、重开与回归、处理时延、每次交付成本，以及需要人反复盯守多少次。PR 数量和在线时长只是过程信号。</p>
+      </section>
+
+      <section id="layers">
+        <h2>领域越丰富，分工越要清楚</h2>
+        <div class="layers">
+          <div class="layer"><b>Kernel<br>控制权与通用生命周期</b><span>哪个目标与工作项有效，谁可执行，哪些授权和预算适用，怎样交接、等待与提交状态。</span></div>
+          <div class="layer"><b>Domain State<br>领域连续性</b><span>这个 issue 是否可修，PR 对应哪个修订，CI 和评审到了哪一步，哪些结论仍然有效。</span></div>
+          <div class="layer"><b>Capability<br>结果契约与判断</b><span>把领域事实翻译成可验证的下一步：修复、等待、交给人判断或收口，并定义这个场景怎样验收。</span></div>
+          <div class="layer"><b>Provider / Runtime<br>外部读写与实际执行</b><span>调用代码仓库、测试和工具，执行已授权动作并回读结果。GitHub 仍拥有代码、CI 和评审的外部事实。</span></div>
+        </div>
+        <p>以 <code>checks failing</code> 为例：领域能力可以提出一个修 CI 的后继任务；它不能因“需要修”就自行得到写仓库或合并权限。换成实验任务，CI 状态变成指标和留出集结论，通用的认领、授权、恢复规则仍应保持一致。</p>
+        <p>这也是 Capability 的价值：把一个场景中反复出现的判断与结果契约沉淀下来。它并不要求把所有业务阶段都写进 Kernel。</p>
+      </section>
+
+      <section id="evolution">
+        <h2>演进：每一步增加一种可验证的能力</h2>
+        <ol class="evolution">
+          <li><div><b>单次执行 → 可恢复的长程任务</b><span>换会话、进程中断后，仍能恢复目标、证据与下一步。先证明一件事能可靠做完。</span></div></li>
+          <li><div><b>通用任务 → 垂域交付与探索</b><span>用 issue-fix 和研究任务承接真实工作，保留领域状态，定义有价值的结果。</span></div></li>
+          <li><div><b>单个 Agent → 小团队协作</b><span>先让 2–3 个 Worker 完成两轮依赖交付：接收产物、独立验收、吸收纠偏，并把结果送回。</span></div></li>
+          <li><div><b>本地协作 → 跨 Host 的持续工作</b><span>验证共享状态、权限撤回、旧执行者隔离、网络故障和共同预算；注册成功不等于协作成立。</span></div></li>
+          <li><div><b>可持续运行 → 可衡量地改进</b><span>用结果反馈改善选择、记忆与策略；用对照实验、留出验证和回滚证明收益。规模扩张另行验收。</span></div></li>
+        </ol>
+        <p class="small-note">以上是建设顺序与验证目标，不是完成清单。现有基础、局部实现、蓝图和端到端资格应分别理解。</p>
+        <p class="takeaway">我希望交给 Agent 的，逐渐从一条指令变成一份可以持续履行的工作约定。</p>
+        <p>这份约定要让人看得懂、改得动，让 Agent 接得住，也让失败之后仍有证据可查。</p>
+      </section>
+
+      <section id="sources">
+        <h2>公开依据与延伸阅读</h2>
+        <p class="small-note">技术内容仅据公开仓库材料整理。源码与数据引用固定到本次读取修订；历史实验使用其自身版本。本页没有新增实验结果。</p>
+        <ol class="source-list">
+          <li><a href="../../../benchmarks/swe-marathon/?lang=zh">SWE-Marathon：持续自我验证</a>；<a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/swe-marathon/README.md">设置、正反个案与局限</a>；<a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/swe-marathon/data.json">公开聚合数据</a>。贡献者与案例来源见研究原文。</li>
+          <li><a href="../../../benchmarks/deepswe-sol/">DeepSWE × Sol：从继续执行到有效交付</a>。独立研究简报，含 113 任务历史结果、机制图与固定修订的一手来源；研究归档贡献：<a href="https://github.com/huangruiteng/loopx/pull/4502">@gwh6669999，#4502</a>。</li>
+          <li><a href="../../../benchmarks/deepswe/behavior-discovery/">DeepSWE × V4 Flash max：从提示到行为</a>；<a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe/behavior-discovery/README.md">披露范围</a>；<a href="https://github.com/huangruiteng/loopx/blob/56fa3f11b5bbe108e1bf4de254fcbdf74a84a505/benchmark/deepswe/behavior-discovery/index.html">固定修订的图表、案例与指标</a>。</li>
+          <li><a href="https://github.com/huangruiteng/loopx/blob/ed1a8269ef2f12ad8863a04254d5d17021fa8100/loopx/capabilities/explore/README.md">Explore：证据图、规划与权限边界</a>。</li>
+          <li><a href="https://github.com/huangruiteng/loopx/blob/ed1a8269ef2f12ad8863a04254d5d17021fa8100/docs/product/use-cases/auto-research/decentralized-auto-research-showcase.md">Auto Research：公开蓝图与命令路径</a>。</li>
+          <li><a href="https://github.com/huangruiteng/loopx/blob/ed1a8269ef2f12ad8863a04254d5d17021fa8100/loopx/capabilities/issue_fix/docs/state-kernel-domain-state-case-study.zh-CN.md">PR / Issue Fix：State Kernel 与领域状态如何协同</a>。</li>
+          <li><a href="https://github.com/huangruiteng/loopx/blob/ed1a8269ef2f12ad8863a04254d5d17021fa8100/docs/architecture/rfcs/loopx-overall-roadmap-v0.md">整体路线图：产品目标与独立验收里程碑</a>。</li>
+          <li><a href="../from-one-shot-agents-to-long-horizon-control/">从一次性 Agent 到长程控制面</a>；<a href="../agent-facing-kanban/">LoopX：长程 Agent 的原生 Kanban</a>。</li>
+        </ol>
+      </section>
+    </article>
+  </div>
+</main>
+<footer class="site-footer"><span>LoopX · 长程工作的工程实践</span><a href="#main">返回开头 ↑</a></footer>
+<script src="presentation.js" defer></script>
+</body>
+</html>

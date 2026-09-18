@@ -3,7 +3,7 @@
 ## Status
 
 - Product surface: personal Goal and Agent workspace
-- Primary interaction: channel-style Chat
+- Primary interaction: cross-Goal Manager and direct Goal workspace views
 - Default Agent: Codex when healthy and compatible
 - Audience: one owner managing personal Goals, Todos, Agent work, and recurring execution
 - Implementation target: `apps/presentation/dashboard`
@@ -74,9 +74,10 @@ LoopX Personal Workspace
 │   └── natural-language action proposals
 ├── Goals
 │   └── Goal Channel
-│       ├── Chat
-│       ├── Tasks
-│       └── Files
+│       ├── Overview: progress, attention, execution, delivery and acceptance
+│       ├── Tasks: the existing board/list task inventory
+│       ├── Chat: conversation and correction
+│       └── Files: outputs and reports
 ├── Context Drawer
 │   ├── user decision
 │   ├── Todo detail
@@ -135,9 +136,25 @@ The central surface remains conversational in both contexts:
 - Goal Channel: Goal-scoped conversation, Todo progress, executions, gates,
   and outputs.
 
-When a Goal is selected, compact `Chat`, `Tasks`, and `Files` tabs may appear
-under the header. They are navigation, so they use text-tab treatment and do
-not compete with actions.
+A selected Goal has direct `Overview`, `Tasks`, `Chat`, and `Files` navigation
+below the title. Chinese labels are 概览、任务、对话、成果. Selecting a Goal from
+the directory still opens Tasks. Overview answers status, pending decisions,
+execution and delivery evidence without entering settings. Settings opens the
+existing capability editor directly; operational review is not a configuration.
+
+Visited views stay mounted within the selected Goal and source. Switching views
+retains task filters, completed history and each view's scroll position. Hidden
+views are not focusable; delivery graph reads stop while Overview is inactive.
+Settings also preserves the workspace and restores focus on return. A Goal or
+source switch discards the old view session so similarly named Goals cannot
+share local data. Object rows open the existing contextual drawer; Overview
+does not introduce a second modal stack.
+
+The Goal title/actions and view navigation use separate header rows. All four
+views and the settings control remain available on narrow screens. Runtime
+selection shares the view row; its redundant prefix is omitted on phones.
+Mobile quick prompts use one horizontally scrollable row so long translations
+do not displace the main workspace.
 
 ### Context drawer
 

@@ -5,7 +5,8 @@ import {projectAdvancementFrontier, evaluateLongTodoChain} from "../../loopx/con
 
 function row(id: string, claim: string | null = null, excluded: string[] = []) {
   return {id, claim, excluded, advancement: true, updated: "2026-09-01T00:00:00.000001Z",
-    serialized: JSON.stringify({task_class: "advancement_task", todo_id: id})};
+    serialized: JSON.stringify({task_class: "advancement_task", todo_id: id,
+      ...(claim ? {claimed_by: claim} : {})})};
 }
 function project(rows: ReturnType<typeof row>[], agent_id: string | null = null) {
   return projectAdvancementFrontier({schema_version: "todo_frontier_revision_request_v0",
@@ -123,10 +124,91 @@ test("another lane taking over an unclaimed row does not re-arm this lane's ACK"
     row("todo_c", "worker-a")]});
   assert.deepEqual(ownChange.decision,
     {acknowledged: false, rearmed_after_obligation_id: "replan-0123456789abcdef"});
+  assert.equal((observe({ack, rows: [row("todo_a"), row("todo_b")]}).decision as
+    Record<string, unknown>).acknowledged, false);
 
   // An ACK recorded before the owned identity existed still matches on revision.
   const legacy = {...ack, semantic_delta: {...ack.semantic_delta, trigger_checkpoints: [
     {kind: "long_todo_chain", frontier_revision: observation.frontier_revision}]}};
   assert.deepEqual(observe({ack: legacy, rows: before}).decision,
     {acknowledged: true, rearmed_after_obligation_id: null});
+});
+
+test("observation, source and writeback preserve one complete checkpoint", () => {
+  const rows = [row("todo_a", "worker-a"), row("todo_shared")];
+  const result = observe({rows}).observation as Record<string, unknown>;
+  const request = {schema_version: "todo_frontier_revision_request_v0", agent_id: "worker-a"};
+  const source = projectAdvancementFrontier({...request, operation: "successor_checkpoints", rows})
+    .source_checkpoint as Record<string, unknown>;
+  const writeback = projectAdvancementFrontier({...request, operation: "trigger_checkpoints",
+    triggers: [result.trigger]}).trigger_checkpoints;
+  assert.deepEqual(writeback, source.trigger_checkpoints);
+  const replaced = projectAdvancementFrontier({...request, operation: "successor_checkpoints", rows,
+    triggers: [{kind: "other", frontier_revision: "r"},
+      {kind: "long_todo_chain", frontier_revision: "old"}, result.trigger]}).source_checkpoint as
+        Record<string, unknown>;
+  assert.deepEqual(replaced.trigger_checkpoints, [
+    {kind: "other", frontier_revision: "r"}, ...(source.trigger_checkpoints as object[])]);
+  assert.equal((source.trigger_checkpoints as Record<string, unknown>[])[0].frontier_owned_identity,
+    result.frontier_owned_identity);
+  const index = projectAdvancementFrontier({...request, operation: "index", rows}).index;
+  assert.deepEqual(projectAdvancementFrontier({...request, operation: "successor_checkpoints", index})
+    .source_checkpoint, source);
+  // A present incomplete index is authoritative; a valid fallback cannot heal it.
+  assert.equal(projectAdvancementFrontier({...request, operation: "successor_checkpoints", rows,
+    index: {schema_version: "invalid"}}).source_checkpoint, null);
+});
+
+test("checkpoint transport preserves legacy revisions and rejects incomplete identity authority", () => {
+  const checkpoints = projectAdvancementFrontier({schema_version: "todo_frontier_revision_request_v0",
+    operation: "trigger_checkpoints", triggers: [null, {},
+      {kind: "long_todo_chain", frontier_owned_identity: "owned"},
+      {kind: "long_todo_chain", frontier_revision: "r", frontier_revision_complete: false,
+        frontier_owned_identity: "owned"},
+      {kind: " long_todo_chain ", frontier_revision: " r ", frontier_owned_identity: " owned "},
+      {kind: "long_todo_chain", frontier_revision: "legacy"},
+      {kind: "other", frontier_revision: "other-revision", frontier_owned_identity: "owned"},
+    ]}).trigger_checkpoints;
+  assert.deepEqual(checkpoints, [
+    {kind: "long_todo_chain", frontier_revision: "r", frontier_owned_identity: "owned"},
+    {kind: "long_todo_chain", frontier_revision: "legacy"},
+    {kind: "other", frontier_revision: "other-revision"},
+  ]);
+  const observation = observe().observation as Record<string, unknown>;
+  const ack = {recorded: true, semantic_delta: {accepted: true, obligation_id: "replan-0123456789abcdef",
+    trigger_kinds: ["long_todo_chain"], trigger_checkpoints: [{kind: "long_todo_chain",
+      frontier_owned_identity: observation.frontier_owned_identity}]}};
+  assert.equal((observe({ack}).decision as Record<string, unknown>).acknowledged, false);
+  const incomplete = observe({rows: null}).observation as Record<string, unknown>;
+  assert.equal((incomplete.trigger as Record<string, unknown>).frontier_owned_identity, undefined);
+  assert.equal((incomplete.trigger as Record<string, unknown>).frontier_revision, undefined);
+});
+
+test("an entirely unclaimed chain cannot borrow the owned-work exemption", () => {
+  const observation = observe({rows: [row("todo_unclaimed")]}).observation as Record<string, unknown>;
+  const ack = {recorded: true, semantic_delta: {accepted: true, obligation_id: "replan-0123456789abcdef",
+    trigger_kinds: ["long_todo_chain"], trigger_checkpoints: [observation.trigger]}};
+  assert.equal(observation.frontier_owned_identity, null);
+  assert.equal((observe({ack, rows: [row("todo_replacement")]}).decision as Record<string, unknown>)
+    .acknowledged, false);
+});
+
+test("successor reconstruction requires a complete matching source and an already-long predecessor", () => {
+  const rows = Array.from({length: 16}, (_, i) => row(`todo_${i}`, "worker-a"));
+  rows[15].updated = "2026-09-02T00:00:00Z";
+  const current = project(rows, "worker-a");
+  const request = {schema_version: "todo_frontier_revision_request_v0", operation: "successor_checkpoints",
+    agent_id: "worker-a", rows, obligation_id: "replan-current",
+    candidates: [{todo_id: "todo_15", updated_at: rows[15].updated, origin_obligation_id: "replan-prior"}],
+    triggers: [{kind: "long_todo_chain", ...current, selectable_advancement_count: 16, selectable_open_count: 16}]};
+  const result = projectAdvancementFrontier(request).source_checkpoint as Record<string, unknown>;
+  assert.deepEqual(result.bindings, [{kind: "predecessor", todo_id: "todo_15",
+    frontier_revision: project(rows.slice(0, 15), "worker-a").frontier_revision}]);
+  for (const triggers of [
+    [{...request.triggers[0], selectable_advancement_count: 15, selectable_open_count: 15}],
+    [{...request.triggers[0], frontier_revision: "different-current-source"}],
+    [...request.triggers, {kind: "periodic_review"}],
+  ]) {
+    assert.deepEqual((projectAdvancementFrontier({...request, triggers}).source_checkpoint as Record<string, unknown>).bindings, []);
+  }
 });

@@ -32,6 +32,8 @@ import { ChannelTimeline } from "./channel-timeline";
 import { ContextDrawer } from "./context-drawer";
 import { GoalSidebar } from "./goal-sidebar";
 import { GoalTasksView } from "./goal-tasks-view";
+import { GoalOverview } from "./goal-overview";
+import { GoalWorkspacePanels } from "./goal-workspace-panels";
 import { localizedGoalState, localizedSessionStatus, useWorkspaceI18n, type WorkspaceTranslate } from "./i18n";
 import { MarkdownText } from "./markdown";
 import { ReturnDeliveryStatus } from "./return-delivery-status";
@@ -830,6 +832,7 @@ export function PersonalWorkspacePage({
   const digestSinceRef = useRef(Number.NaN);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const channelScrollRef = useRef<HTMLDivElement>(null);
+  const settingsReturnFocusRef = useRef<HTMLElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const lifecyclePendingGoalIdsRef = useRef(new Set<string>());
   const quickCompletingTodoIdsRef = useRef(new Set<string>());
@@ -896,6 +899,19 @@ export function PersonalWorkspacePage({
     [workspaceGoals],
   );
   const selectedGoal = workspaceGoals.find((goal) => goal.goalId === selectedGoalId) ?? null;
+  function openSettings(target: Extract<WorkspaceDrawerSelection, { kind: "settings" }>) {
+    settingsReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setMobileSidebarOpen(false);
+    setSelection(target);
+  }
+  function closeSettings() {
+    setSelection(null);
+    window.requestAnimationFrame(() => {
+      const target = settingsReturnFocusRef.current;
+      if (target?.isConnected && target.getClientRects().length) target.focus({ preventScroll: true });
+      else document.querySelector<HTMLElement>(".personal-mobile-menu")?.focus({ preventScroll: true });
+    });
+  }
   const settingsOpen = selection?.kind === "settings";
   const managerProjectionId = selectedGoalId;
   const items = useMemo(() => {
@@ -1548,7 +1564,7 @@ export function PersonalWorkspacePage({
     },
     onPreviewAction: createPreview,
     onRequestScheduleConfig: (kind, goalId) => prepareScheduleDraft(kind, goalId),
-    onOpenNotificationSettings: (goalId) => setSelection({ goalId, kind: "settings", tab: "lark" }),
+    onOpenNotificationSettings: (goalId) => openSettings({ goalId, kind: "settings", tab: "lark" }),
     onFetchNotificationTargets: () => fetchGoalChannelTargets(),
     onSetupGoalChannel: (options) => setupGoalChannel(options),
     onToggleGoalAutoNotify: (options) => configureGoalChannelAutoNotify(options),
@@ -1833,8 +1849,7 @@ export function PersonalWorkspacePage({
     window.setTimeout(() => setRefreshState("idle"), 1800);
   }
 
-  if (settingsOpen) {
-    return (
+  const settingsPage = settingsOpen ? (
       <WorkspaceSettingsPage
         callbacks={effectiveDrawerCallbacks}
         focusGoalConnection={Boolean(selection?.kind === "settings" && selection.goalId)}
@@ -1843,14 +1858,15 @@ export function PersonalWorkspacePage({
         initialGoalId={selection?.kind === "settings" ? selection.goalId ?? selectedGoalId : selectedGoalId}
         initialTab={selection?.kind === "settings" ? selection.tab ?? "lark" : "lark"}
         onChanged={() => void refreshSettingsState()}
-        onClose={() => setSelection(null)}
+        onClose={closeSettings}
         onThemeChange={updateTheme}
         theme={theme}
       />
-    );
-  }
+  ) : null;
 
   return (
+    <>
+    <div hidden={settingsOpen}>
     <WorkspaceShell
       drawer={drawerSelection ? <ContextDrawer agents={agents} attentionHistory={model.attentionHistory ?? model.userTodos} onSelectAttention={(item) => setSelection({ kind: "attention", item })} callbacks={effectiveDrawerCallbacks} goalNotifications={model.goalNotifications ?? []} goals={workspaceGoals} inspectorExpanded={taskInspectorExpanded} larkConnections={readOnly ? [] : larkConnections} onClose={() => {
         if (drawerSelection.kind === "proposal"
@@ -1878,8 +1894,7 @@ export function PersonalWorkspacePage({
             managerChannelBinding={managerChannelBinding}
             managerRuntime={managerRuntime}
             mobileNavigationOpen={mobileSidebarOpen}
-            onOpenGoalCapabilities={selectedGoal ? () => setSelection({ goalId: selectedGoal.goalId, kind: "settings", tab: "capabilities" }) : undefined}
-            onOpenGoalDetail={selectedGoal && !selectedGoal.loadState ? () => setSelection({ item: selectedGoal, kind: "goal" }) : undefined}
+            onOpenGoalCapabilities={selectedGoal && !readOnly ? () => openSettings({ goalId: selectedGoal.goalId, kind: "settings", tab: "capabilities" }) : undefined}
             onRefresh={callbacks.onRefresh ? () => void refreshWorkspace() : undefined}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
             onOpenManagerChat={() => {
@@ -1905,7 +1920,7 @@ export function PersonalWorkspacePage({
             selectedGoal={selectedGoal}
             selectedGoalTab={selectedGoalTab}
           />
-          <div className="personal-channel-scroll" ref={channelScrollRef}>
+          <div className="personal-channel-scroll" data-active-goal-view={selectedGoal ? selectedGoalTab : undefined} ref={channelScrollRef}>
             {!selectedGoal && !managerChatOpen && digest && (digest.done + digest.failed + digest.attention) > 0 ? (
               <section className="personal-digest-card" aria-label={t("digest.away")}>
                 <strong>{t("digest.away")}</strong>
@@ -1928,45 +1943,48 @@ export function PersonalWorkspacePage({
                 <p>{t(selectedGoal.loadError ? `startup.error.${selectedGoal.loadError}` : "startup.independent")}</p>
                 {selectedGoal.loadState === "error" ? <button className="min-h-11 rounded-md border px-3 py-2 text-sm" type="button" onClick={() => void callbacks.onRefresh?.()}>{t("startup.retry")}</button> : null}</div>
               </section>
-            ) : selectedGoal && selectedGoalTab === "tasks" ? (
-              <GoalTasksView
-                historyEnabled={!readOnly}
-                goal={selectedGoal}
-                items={items}
-                onDraftTaskFromMessage={readOnly ? undefined : (reply) => {
-                  const taskDraft = sanitizeTaskDraftFromReply(reply);
-                  setComposer(`创建一个 Task：${taskDraft}`);
-                  setActionFeedback(t("feedback.taskDraftCreated"));
-                  window.requestAnimationFrame(() => composerRef.current?.focus());
-                }}
-                onOpenChat={() => setSelectedGoalTab("chat")}
-                onQuickComplete={readOnly ? undefined : requestQuickTodoCompletion}
-                onSelect={setSelection}
-                quickCompletingTodoIds={quickCompletingTodoIds}
-                selectedTodoId={drawerSelection?.kind === "todo" ? drawerSelection.item.todoId : null}
-                userTodos={model.userTodos}
-              />
-            ) : selectedGoal && selectedGoalTab === "files" ? (
-              <GoalOutputsView
-                items={items.filter((item): item is Extract<WorkspaceTimelineItem, { kind: "output" }> => item.kind === "output")}
-                onSelect={setSelection}
-                reportState={model.periodicReports}
-              />
-            ) : !selectedGoal && !managerChatOpen ? (
+            ) : selectedGoal ? (
+              <GoalWorkspacePanels key={`${statusSourceControl?.activeSource.statusUrl ?? "/status.json"}:${selectedGoal.goalId}`}
+                activeTab={selectedGoalTab} scrollRef={channelScrollRef} panels={{
+                  overview: <GoalOverview active={!settingsOpen && selectedGoalTab === "overview"} goal={selectedGoal} items={items} userTodos={model.userTodos} readOnly={readOnly}
+                    onOpenDetails={() => setSelection({ kind: "goal", item: selectedGoal })} onSelect={setSelection} onView={setSelectedGoalTab} />,
+                  tasks: (<GoalTasksView
+                    historyEnabled={!readOnly}
+                    goal={selectedGoal}
+                    items={items}
+                    onDraftTaskFromMessage={readOnly ? undefined : (reply) => {
+                      const taskDraft = sanitizeTaskDraftFromReply(reply);
+                      setComposer(`创建一个 Task：${taskDraft}`);
+                      setActionFeedback(t("feedback.taskDraftCreated"));
+                      window.requestAnimationFrame(() => composerRef.current?.focus());
+                    }}
+                    onOpenChat={() => setSelectedGoalTab("chat")}
+                    onQuickComplete={readOnly ? undefined : requestQuickTodoCompletion}
+                    onSelect={setSelection}
+                    quickCompletingTodoIds={quickCompletingTodoIds}
+                    selectedTodoId={drawerSelection?.kind === "todo" ? drawerSelection.item.todoId : null}
+                    userTodos={model.userTodos}
+                  />),
+                  files: (<GoalOutputsView
+                    items={items.filter((item): item is Extract<WorkspaceTimelineItem, { kind: "output" }> => item.kind === "output")}
+                    onSelect={setSelection}
+                    reportState={model.periodicReports}
+                  />),
+                  chat: (<>
+                    {selectedGoal && activeSessionRun?.goalId === selectedGoal.goalId ? (
+                      <SessionRecordHeader
+                        onClose={() => setActiveSessionRun(null)}
+                        onOpenDetails={() => setSelection({ item: activeSessionRun, kind: "run" })}
+                        run={activeSessionRun}
+                      />
+                    ) : null}
+                    <ChannelTimeline items={visibleTimelineItems} onSelect={setSelection} selectedGoal={selectedGoal} />
+                  </>),
+                }} />
+            ) : !managerChatOpen ? (
               <ManagerHomeBoard goals={workspaceGoals} onRetry={() => void callbacks.onRefresh?.()} onSelectGoal={selectGoal} systemHealth={model.systemHealth} />
-            ) : !selectedGoal ? (
-              <ChannelTimeline items={managerChatItems} onSelect={setSelection} selectedGoal={null} />
             ) : (
-              <>
-                {selectedGoal && activeSessionRun?.goalId === selectedGoal.goalId ? (
-                  <SessionRecordHeader
-                    onClose={() => setActiveSessionRun(null)}
-                    onOpenDetails={() => setSelection({ item: activeSessionRun, kind: "run" })}
-                    run={activeSessionRun}
-                  />
-                ) : null}
-                <ChannelTimeline items={visibleTimelineItems} onSelect={setSelection} selectedGoal={selectedGoal} />
-              </>
+              <ChannelTimeline items={managerChatItems} onSelect={setSelection} selectedGoal={null} />
             )}
           </div>
           <div className="personal-composer-wrap">
@@ -2098,12 +2116,15 @@ export function PersonalWorkspacePage({
           onRetryGoalArchive={callbacks.onRetryGoalArchive || callbacks.onRefresh
             ? () => void (callbacks.onRetryGoalArchive ?? callbacks.onRefresh)?.()
             : undefined}
-          onOpenSettings={readOnly ? undefined : () => setSelection({ kind: "settings" })}
+          onOpenSettings={readOnly ? undefined : () => openSettings({ kind: "settings" })}
           onSelectGoal={selectGoal}
           selectedGoalId={selectedGoalId}
           statusSourceControl={statusSourceControl}
         />
       )}
     />
+    </div>
+    {settingsPage}
+    </>
   );
 }

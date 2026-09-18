@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ...turn_identity import normalize_turn_instance_id
+from ..effect_runtime import effect_runtime_result
 from ..goals.goal_vision_state import normalize_goal_vision_state
 from ..todos.contract import (
     normalize_todo_task_domain,
@@ -396,20 +397,15 @@ def replan_obligation_trigger_checkpoints(
 ) -> list[dict[str, str]]:
     """Bind an ACK to typed trigger revisions supplied by the obligation."""
 
-    checkpoints: list[dict[str, str]] = []
-    for trigger in obligation.get("triggers") or []:
-        if not isinstance(trigger, Mapping):
-            continue
-        kind = str(trigger.get("kind") or "").strip()
-        frontier_revision = str(trigger.get("frontier_revision") or "").strip()
-        if not kind or not frontier_revision:
-            continue
-        checkpoints.append(
-            {
-                "kind": kind,
-                "frontier_revision": frontier_revision,
-            }
-        )
+    triggers = obligation.get("triggers")
+    if not triggers:
+        return []
+    checkpoints = effect_runtime_result("todo.frontier_revision.project", {
+        "schema_version": "todo_frontier_revision_request_v0",
+        "operation": "trigger_checkpoints", "triggers": triggers,
+    })["trigger_checkpoints"]
+    if not isinstance(checkpoints, list):
+        raise TypeError("typed frontier checkpoint response must be a list")
     return checkpoints
 
 

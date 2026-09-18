@@ -235,7 +235,7 @@ try {
       await page.locator("#explore").waitFor();
       assert.equal(await page.locator("html").getAttribute("lang"), lang === "zh" ? "zh-CN" : "en");
       assert.equal(await page.locator('a[href*="deprecated"], a[href*="frontstage/"]').count(), 0);
-      const expected = ["docs/guides/personal-workspace-user-guide/", `benchmarks/swe-marathon/${lang === "zh" ? "?lang=zh" : ""}`, "benchmarks/deepswe/behavior-discovery/", `docs/showcases/index${lang === "en" ? ".en" : ""}.html`];
+      const expected = ["docs/guides/personal-workspace-user-guide/", `benchmarks/swe-marathon/${lang === "zh" ? "?lang=zh" : ""}`, "benchmarks/deepswe/behavior-discovery/", "benchmarks/deepswe-sol/", `docs/showcases/index${lang === "en" ? ".en" : ""}.html`];
       assert.deepEqual(await page.locator("#explore .resource-card").evaluateAll((links) => links.map((a) => a.getAttribute("href"))), expected.map((path) => `/loopx/${path}`));
       if (width === 390) {
         await page.getByRole("button", { name: "Open navigation" }).click();
@@ -260,7 +260,7 @@ try {
   if (process.env.LOOPX_PUBLIC_SITE_DIR) {
     // Check the assembled publication, including the separately built books.
     const checked = new Set();
-    for (const path of ["", "?lang=zh", "benchmarks/swe-marathon/", "benchmarks/deepswe/behavior-discovery/", "docs/showcases/index.html", "docs/showcases/index.en.html", "docs/guides/personal-workspace-user-guide/", "docs/book/", "docs/book/en/", "blog/", "blog/zh/"]) {
+    for (const path of ["", "?lang=zh", "benchmarks/swe-marathon/", "benchmarks/deepswe/behavior-discovery/", "benchmarks/deepswe-sol/", "docs/showcases/index.html", "docs/showcases/index.en.html", "docs/guides/personal-workspace-user-guide/", "docs/book/", "docs/book/en/", "blog/", "blog/zh/"]) {
       await page.goto(`${publicOrigin}/loopx/${path}`);
       await page.locator("h1").first().waitFor();
       const links = await page.locator("a[href]").evaluateAll((links) => links.map((link) => link.href));
