@@ -72,6 +72,7 @@ def project_quota_planning(
                 "user_gate_scope": filter_user_gate_blocks_agent,
                 "monitor_supported": todo_summary_monitor_writeback_supported(value),
                 "source_open_count": source_open_count,
+                "source_complete": (value.get("work_counts") or {}).get("complete", True),
                 "diagnostic_limit": 3, "backlog_limit": 8, "visibility_limit": 16,
             },
         })

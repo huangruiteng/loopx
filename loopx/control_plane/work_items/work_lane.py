@@ -540,6 +540,7 @@ def build_work_lane_contract(
     has_monitor_todos = monitor_count > 0
     monitor_only_schedule = (
         has_agent_todos and has_monitor_todos and not has_advancement_todos
+        and todo_counts.get("complete", True) is True
     )
     non_runnable_non_monitor_count = max(0, open_count - monitor_count)
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None

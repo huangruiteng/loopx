@@ -11,8 +11,6 @@ from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
-    TODO_TASK_CLASS_BLOCKER,
-    TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_ACTION,
     build_todo_id,
     normalize_required_capabilities,
@@ -962,106 +960,6 @@ def _structured_resume_source_items(
     ]
 
 
-def _todo_group_lanes(
-    items: list[dict[str, Any]],
-    *,
-    preferred_todo_ids: set[str] | None,
-) -> _TodoGroupLanes:
-    open_items = [item for item in items if not item.get("done")]
-    terminal_items = [item for item in items if item.get("done")]
-    deferred_items = [item for item in terminal_items if todo_item_is_deferred(item)]
-    done_items = [item for item in terminal_items if not todo_item_is_deferred(item)]
-    projected_open_items = sorted(open_items, key=projection_todo_presentation_sort_key)
-    projected_deferred_items = sorted(
-        deferred_items,
-        key=projection_todo_presentation_sort_key,
-    )
-    budgeted_items = [
-        *projected_open_items,
-        *projected_deferred_items,
-        *done_items,
-    ]
-    claimed_open_items = [item for item in projected_open_items if item.get("claimed_by")]
-    unclaimed_open_items = [item for item in projected_open_items if not item.get("claimed_by")]
-    executable_items = [
-        item
-        for item in projected_open_items
-        if todo_item_is_actionable_open(item)
-        if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    ]
-    blocker_items = [
-        item
-        for item in projected_open_items
-        if normalize_todo_status(item.get("status")) == "blocked"
-        if todo_item_task_class(item) == TODO_TASK_CLASS_BLOCKER
-    ]
-    resume_blocked_items = [
-        item
-        for item in projected_open_items
-        if normalize_todo_resume_when(item.get("resume_when"))
-        if item.get("resume_ready") is False
-    ]
-    monitor_items = [
-        item
-        for item in projected_open_items
-        if todo_item_is_actionable_open(item)
-        if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
-    ]
-    monitor_due_items = [item for item in monitor_items if todo_item_is_due_monitor(item)]
-    monitor_schedule_gap_items = [
-        item
-        for item in monitor_items
-        if todo_item_missing_monitor_schedule(item)
-    ]
-    claimed_advancement_items = [
-        item
-        for item in claimed_open_items
-        if todo_item_is_actionable_open(item)
-        if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    ]
-    claimed_monitor_items = [
-        item
-        for item in claimed_open_items
-        if todo_item_is_actionable_open(item)
-        if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
-    ]
-    preferred_ids = {
-        todo_id
-        for todo_id in (preferred_todo_ids or set())
-        if normalize_todo_id(todo_id)
-    }
-    active_next_action_items = [
-        item
-        for item in projected_open_items
-        if normalize_todo_id(item.get("todo_id")) in preferred_ids
-    ]
-    active_next_action_executable_items = [
-        item
-        for item in executable_items
-        if normalize_todo_id(item.get("todo_id")) in preferred_ids
-    ]
-    return _TodoGroupLanes(
-        open_items=open_items,
-        terminal_items=terminal_items,
-        deferred_items=deferred_items,
-        done_items=done_items,
-        projected_open_items=projected_open_items,
-        projected_deferred_items=projected_deferred_items,
-        budgeted_items=budgeted_items,
-        claimed_open_items=claimed_open_items,
-        unclaimed_open_items=unclaimed_open_items,
-        executable_items=executable_items,
-        blocker_items=blocker_items,
-        resume_blocked_items=resume_blocked_items,
-        monitor_items=monitor_items,
-        monitor_due_items=monitor_due_items,
-        monitor_schedule_gap_items=monitor_schedule_gap_items,
-        claimed_advancement_items=claimed_advancement_items,
-        claimed_monitor_items=claimed_monitor_items,
-        active_next_action_items=active_next_action_items,
-        active_next_action_executable_items=active_next_action_executable_items,
-    )
-
 
 def compact_todo_group(
     items: list[dict[str, Any]],
@@ -1103,19 +1001,6 @@ def compact_todo_group(
     )
 
 
-def _require_full_source_resume_evaluations(items: list[dict[str, Any]]) -> None:
-    for item in items:
-        resume_when = normalize_todo_resume_when(item.get("resume_when"))
-        if not resume_when:
-            continue
-        condition = item.get("resume_condition")
-        if (not isinstance(condition, dict)
-            or condition.get("schema_version") != "todo_resume_condition_v0"
-            or condition.get("resume_when") != resume_when
-            or not isinstance(condition.get("satisfied"), bool)
-            or item.get("resume_ready") is not condition.get("satisfied")):
-            raise ValueError("Todo display requires a matching full-source resume evaluation")
-
 
 def compact_evaluated_todo_group(
     items: list[dict[str, Any]],
@@ -1136,8 +1021,10 @@ def compact_evaluated_todo_group(
     """
     if not items and not include_empty_source:
         return None
-    _require_full_source_resume_evaluations(items)
-    lanes = _todo_group_lanes(items, preferred_todo_ids=preferred_todo_ids)
+    from .summary_lanes import project_summary_lanes
+
+    projected = project_summary_lanes(items, preferred_todo_ids)
+    lanes = _TodoGroupLanes(**projected["lanes"])
     source_valid = role in {"user", "agent"} and bool(str(source_section or "").strip())
     no_followup_items = [
         item
@@ -1193,6 +1080,7 @@ def compact_evaluated_todo_group(
         "schema_version": "todo_summary_v0",
         "source_section": source_section,
         "total_count": len(items),
+        "work_counts": projected["work_counts"],
         "open_count": len(lanes.open_items),
         "done_count": len(lanes.terminal_items),
         "advancement_done_count": count_advancement_todos(lanes.done_items),

@@ -112,7 +112,8 @@ def scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> 
         return False
     if not todo_summary_monitor_items(summary):
         return False
-    return todo_summary_open_task_counts(summary).get("advancement", 0) <= 0
+    counts = todo_summary_open_task_counts(summary)
+    return counts["complete"] is True and counts["advancement"] == 0
 
 
 def _monitor_item_matches_handle(

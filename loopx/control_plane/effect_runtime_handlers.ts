@@ -1,3 +1,4 @@
+import {projectTodoSummaryLanes, projectLegacyTodoWorkCounts} from "./todos/summary_lanes.ts";
 import {selectDelegationBinding, transitionDelegationObservation} from "./collaboration/delegation.ts";
 import {resolveConversationScope} from "./collaboration/conversation_scope.ts";
 import {previewTeamPlan, planTeamTransaction, teamTransactionIdentity} from "./work_items/team_plan.ts";
@@ -408,6 +409,8 @@ export function createEffectRuntimeHandlers(
     ["todo.field_update.plan", planTodoFieldUpdate],
     ["todo.public_update.plan", planPublicTodoUpdate],
     ["todo.standing_decision.project", evaluateStandingDecisionProjection],
+    ["todo.summary_lanes.project", projectTodoSummaryLanes],
+    ["todo.work_counts.project", projectLegacyTodoWorkCounts],
     ["todo.decision_scope.evaluate", evaluateDecisionScope],
     ["agent.capability_gate.evaluate", evaluateCapabilityGate],
     ["agent.capability_memory", agentCapabilityMemory],

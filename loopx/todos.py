@@ -216,6 +216,8 @@ def list_goal_todos(
             fields=canonical_todo_summary_fields(
                 canonical_read["todos"],
                 rollout_events=rollout_events,
+                goal_acceptance_contract=canonical_read.get("goal_acceptance_contract"),
+                goal_acceptance_work_guards=canonical_read.get("goal_acceptance_work_guards"),
             ),
             source="file_authority",
             projection_fields={},

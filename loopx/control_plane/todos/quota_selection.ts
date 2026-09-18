@@ -1,3 +1,4 @@
+import {countTodoWork} from "./summary_lanes.ts";
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { requireJsonObject, requireBoolean, requireInteger, requireStringArray,
@@ -158,7 +159,12 @@ export function projectQuotaSelection(value: unknown): JsonObject {
     policy: "user actions bound to another agent remain diagnostic-only and must not enter this agent's reminder channel",
     current_agent_user_action_open_count: actions.length, other_agent_bound_user_action_open_count: otherActions.length,
   } : null;
-  return {lanes: {
+  const displayed = userMode ? [...open, ...actions] : open;
+  const sourceComplete = request.source_open_count === source.length &&
+    (request.source_complete === undefined || requireBoolean(request.source_complete, "source_complete"));
+  const countOpen = !agent && !userMode && Number.isSafeInteger(request.source_open_count)
+    ? Math.max(Number(request.source_open_count), displayed.length) : displayed.length;
+  return {work_counts: countTodoWork(displayed, countOpen, sourceComplete, agent && !userMode ? agent : null), lanes: {
     all_open_items: payloads(source), blocking_open_items: payloads(blocking),
     user_action_open_items: payloads(actions), other_agent_bound_user_action_items: payloads(otherActions),
     user_action_agent_scope_filter: actionFilter, other_agent_scoped_items: payloads(otherGates),

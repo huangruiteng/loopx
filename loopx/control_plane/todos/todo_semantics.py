@@ -768,80 +768,41 @@ def todo_summary_open_count(summary: dict[str, Any] | None) -> int:
         return 0
 
 
-def todo_summary_open_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
-    open_count = todo_summary_open_count(summary)
-    classified_items: list[dict[str, Any]] = []
-    seen: set[tuple[Any, str]] = set()
-    executable_backlog_items: list[dict[str, Any]] | None = None
-    monitor_open_items: list[dict[str, Any]] | None = None
-    if isinstance(summary, dict):
-        raw_executable_backlog = summary.get("executable_backlog_items")
-        if isinstance(raw_executable_backlog, list):
-            executable_backlog_items = [
-                item
-                for item in raw_executable_backlog
-                if isinstance(item, dict)
-                if todo_item_is_actionable_open(item)
-                if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-            ]
-        raw_monitor_open = summary.get("monitor_open_items")
-        if isinstance(raw_monitor_open, list):
-            monitor_open_items = [
-                item
-                for item in raw_monitor_open
-                if isinstance(item, dict)
-                if todo_item_is_actionable_open(item)
-                if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
-            ]
-        for key in (
-            "first_executable_items",
-            "first_open_items",
-            "monitor_open_items",
-        ):
-            source_items = summary.get(key)
-            if not isinstance(source_items, list):
-                continue
-            for item in source_items:
-                if not isinstance(item, dict):
+def todo_summary_open_task_counts(summary: dict[str, Any] | None) -> dict[str, Any]:
+    """Consume pre-limit counts; old display-only summaries provide lower bounds."""
+    from ..effect_runtime import effect_runtime_result
+
+    summary = summary if isinstance(summary, dict) else {}
+    counts = summary.get("work_counts")
+    if counts is None:
+        rows = []
+        for key in ("items", "executable_backlog_items", "first_executable_items", "first_open_items", "monitor_open_items"):
+            for item in summary.get(key) or []:
+                if not isinstance(item, dict) or item.get("done") is True:
                     continue
                 text = str(item.get("text") or "").strip()
                 if not text:
                     continue
-                identity = (item.get("index"), text)
-                if identity in seen:
-                    continue
-                seen.add(identity)
-                classified_items.append(item)
-    if executable_backlog_items is not None:
-        advancement_count = len(executable_backlog_items)
-    else:
-        visible_open = min(open_count, len(classified_items))
-        advancement_visible_count = sum(
-            1
-            for item in classified_items[:visible_open]
-            if todo_item_is_actionable_open(item)
-            and todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-        )
-        hidden_count = max(0, open_count - visible_open)
-        advancement_count = advancement_visible_count + hidden_count
-    if monitor_open_items is not None:
-        monitor_visible_count = len(monitor_open_items)
-    else:
-        visible_open = min(open_count, len(classified_items))
-        monitor_visible_count = sum(
-            1
-            for item in classified_items[:visible_open]
-            if todo_item_is_actionable_open(item)
-            and todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
-        )
-    hidden_count = max(0, open_count - len(classified_items))
-    return {
-        "open": open_count,
-        "advancement": advancement_count,
-        "monitor": monitor_visible_count,
+                rows.append({"identity": str(item.get("todo_id") or (str(item.get("index")) + ":" + text)),
+                    "actionable": todo_item_is_actionable_open(item), "task_class": todo_item_task_class(item)})
+        counts = effect_runtime_result("todo.work_counts.project", {
+            "schema_version": "todo_work_counts_request_v0", "rows": rows,
+            "source_open_count": summary.get("open_count"),
+            "agent_id": todo_summary_claim_scope_agent_id(summary),
+        })
+    if (not isinstance(counts, dict) or counts.get("schema_version") != "todo_work_counts_v0"
+        or not isinstance(counts.get("complete"), bool)
+        or any(type(counts.get(key)) is not int or counts[key] < 0
+               for key in ("open", "advancement", "monitor", "observed_open_count", "hidden"))
+        or counts.get("agent_id") != todo_summary_claim_scope_agent_id(summary)):
+        raise ValueError("invalid or differently scoped Todo work counts")
+    if (counts["open"] != counts["observed_open_count"] + counts["hidden"]
+        or counts["advancement"] + counts["monitor"] > counts["observed_open_count"]
+        or (counts["complete"] and counts["hidden"] != 0)):
+        raise ValueError("inconsistent Todo work count envelope")
+    return {key: counts[key] for key in ("open", "advancement", "monitor", "hidden", "complete")} | {
         "monitor_due": todo_summary_monitor_due_count(summary),
         "monitor_schedule_gap": todo_summary_monitor_schedule_gap_count(summary),
-        "hidden": hidden_count,
     }
 
 

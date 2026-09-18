@@ -391,6 +391,7 @@ def summarize_user_todos_for_quota(
         "source_section": value.get("source_section"),
         "total_count": value.get("total_count"),
         "open_count": lanes.open_count,
+        "work_counts": planning["work_counts"],
         "done_count": value.get("done_count"),
         "deferred_count": value.get("deferred_count"),
         "source_completeness": source_completeness,
@@ -668,7 +669,7 @@ def _compact_agent_lane_status_todo_summary(
                 }
             continue
         if isinstance(value, dict):
-            if key == "monitor_writeback":
+            if key in {"monitor_writeback", "work_counts"}:
                 compact[key] = _compact_quota_payload_nested_warning(value)
             continue
         compact[key] = value
@@ -813,6 +814,7 @@ def summarize_project_asset_todos_for_quota(
         "source_section": value.get("source_section") or "project_asset",
         "total_count": value.get("total", value.get("total_count")),
         "open_count": lanes.open_count,
+        "work_counts": planning["work_counts"],
         "done_count": value.get("done", value.get("done_count")),
         "first_open_items": lanes.display_open_items[:3],
         "first_executable_items": lanes.executable_items[:3],
