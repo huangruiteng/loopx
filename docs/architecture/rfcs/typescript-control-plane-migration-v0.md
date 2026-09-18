@@ -738,6 +738,15 @@ all T2 commands or authorize whole-Goal promotion.
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+Todo summary lanes and pre-limit work counts now share `todos/summary_lanes.ts`.
+Python's lane classification and hidden-work inference loops are removed; quota
+recomputes counts after scope selection and carries incomplete source knowledge
+through compaction/reprojection. Public canonical Todo lists retain the same
+revision's acceptance guard. See [count semantics](../../reference/todo-work-counts.md).
+This closes the summary-to-work-lane count consumer, not every T3 source or D1
+projection delivery; legacy codecs/renderers and other summary policies remain.
+
+
 Goal Channel ownership observation now reads a complete canonical Todo/lease revision and shares one TS batch policy with the legacy adapter. It retires display-layer lease time/generation/conflict decisions and local-file reads after promotion. Empty, unavailable and truncated observations remain distinct; see [coordination observation](../../reference/coordination-observation.md). This closes the Goal Channel ownership reader, not other channel panels or whole-Goal promotion.
 
 The D1 document-ownership slice gives readers, editors and projection one visible-region

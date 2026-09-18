@@ -577,6 +577,13 @@ delivery pending；这不代表全部 T2 命令或整 Goal promotion 已完成�
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+Todo 摘要 lane 与裁剪前工作计数现共用 `todos/summary_lanes.ts`，删除 Python 的
+lane 分类和隐藏任务推断循环。quota 在作用域筛选后重新计数，不完整来源状态贯穿
+压缩与重复投影；公开 canonical Todo 列表保留同版本 acceptance 限制。见
+[计数语义](../../reference/todo-work-counts.md)。本切片闭合摘要到 work-lane 的计数
+消费者，不代表所有 T3 来源或 D1 展示交付完成；旧格式解码、renderer 及其他摘要策略仍保留。
+
+
 Goal Channel 所有权观察现从完整 canonical Todo／lease revision 读取，并与 legacy adapter 共用 TS 批量规则；删除展示层的时间／代数／冲突判断和晋升后的本地文件读路径。空值、不可用与截断分别披露，见 [coordination observation](../../reference/coordination-observation.md)。这只闭合所有权观察 reader，不宣称其余面板或整 Goal 晋升完成。
 
 D1 的文档归属切片把读取、编辑与投影放到同一可见区域／Todo 行解码边界，修复
