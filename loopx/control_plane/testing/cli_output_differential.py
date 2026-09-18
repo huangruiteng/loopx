@@ -565,6 +565,28 @@ def _schema_migration_state(
     )
 
 
+def _schema_migration_growth_allowance(
+    migration: _SchemaMigrationState,
+    metric: Metric,
+) -> int:
+    allowances: list[int] = []
+    if migration.portfolio_growth_migration:
+        allowances.append(_ACTION_PORTFOLIO_V0_MIGRATION_GROWTH_ALLOWANCE[metric])
+    if migration.horizon_growth_migration:
+        allowances.append(_PLANNING_HORIZON_V0_MIGRATION_GROWTH_ALLOWANCE[metric])
+    if migration.agent_context_growth_migration:
+        allowances.append(_AGENT_CONTEXT_V4_MIGRATION_GROWTH_ALLOWANCE[metric])
+    if migration.inventory_detail_growth_migration:
+        allowances.append(
+            _PLANNING_INVENTORY_DETAIL_V0_MIGRATION_GROWTH_ALLOWANCE[metric]
+        )
+    if migration.guided_todo_delta_growth_migration:
+        allowances.append(_GUIDED_TODO_DELTA_V0_MIGRATION_GROWTH_ALLOWANCE[metric])
+    if migration.todo_work_counts_growth_migration:
+        allowances.append(_TODO_WORK_COUNTS_V0_MIGRATION_GROWTH_ALLOWANCE[metric])
+    return max(allowances, default=0)
+
+
 def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     row_id = str(base["row_id"])
     failures: list[str] = []
@@ -628,6 +650,7 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
                 candidate,
                 metric,
             ),
+            _schema_migration_growth_allowance(migration, metric),
         )
         # Thin installed prompts contain bilingual lifecycle instructions. A
         # small character-level clarification can cost three bytes per CJK
@@ -661,35 +684,6 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
                     "lines": 5,
                     "compact_payload_chars": 512,
                 }[metric],
-            )
-        if migration.portfolio_growth_migration:
-            allowance = max(
-                allowance,
-                _ACTION_PORTFOLIO_V0_MIGRATION_GROWTH_ALLOWANCE[metric],
-            )
-        if migration.horizon_growth_migration:
-            allowance = max(
-                allowance,
-                _PLANNING_HORIZON_V0_MIGRATION_GROWTH_ALLOWANCE[metric],
-            )
-        if migration.agent_context_growth_migration:
-            allowance = max(
-                allowance, _AGENT_CONTEXT_V4_MIGRATION_GROWTH_ALLOWANCE[metric]
-            )
-        if migration.inventory_detail_growth_migration:
-            allowance = max(
-                allowance,
-                _PLANNING_INVENTORY_DETAIL_V0_MIGRATION_GROWTH_ALLOWANCE[metric],
-            )
-        if migration.guided_todo_delta_growth_migration:
-            allowance = max(
-                allowance,
-                _GUIDED_TODO_DELTA_V0_MIGRATION_GROWTH_ALLOWANCE[metric],
-            )
-        if migration.todo_work_counts_growth_migration:
-            allowance = max(
-                allowance,
-                _TODO_WORK_COUNTS_V0_MIGRATION_GROWTH_ALLOWANCE[metric],
             )
         if runtime_root_route_allowances:
             allowance = max(
