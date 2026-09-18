@@ -4,6 +4,8 @@ import shlex
 from collections.abc import Mapping
 from typing import Any
 
+from ..agents.capability_gate import runtime_capabilities_for_cli_projection
+
 
 def render_cli_command_prefix(*, runtime_root: str | None = None) -> str:
     return (
@@ -153,3 +155,44 @@ def delivery_spend_allowed(
     return spend_after_validation and not action_portfolio_requires_explicit_selection(
         payload
     )
+
+
+def apply_action_selection_recovery(
+    payload: dict[str, Any],
+    *,
+    registry_path: str,
+    runtime_root: str,
+    goal_id: str,
+    agent_id: str,
+    turn_instance_id: str | None,
+    scheduler_args: str,
+    available_capabilities: Any = None,
+) -> None:
+    """Render typed selection recovery before offering any settlement effects."""
+    qualification = payload.get("action_selection_qualification") or {}
+    if qualification.get("recovery_action") != "reenter_guard_without_selection":
+        raise RuntimeError("rejected action selection omitted its typed recovery action")
+    argv = ["loopx", "--registry", registry_path, "--runtime-root", runtime_root,
+            "--format", "json", "quota", "should-run", "--goal-id", goal_id,
+            "--agent-id", agent_id]
+    if turn_instance_id:
+        argv.extend(["--turn-instance-id", turn_instance_id])
+    for capability in runtime_capabilities_for_cli_projection(available_capabilities):
+        argv.extend(["--available-capability", capability])
+    command = shlex.join(argv) + scheduler_args
+    payload["spend_allowed_now"] = False
+    payload["spend_after_validation"] = False
+    # The current replan has not been admitted for this turn. Keeping its
+    # action packet would replace recovery in the compact TurnEnvelope.
+    payload.pop("replan_action_packet", None)
+    interaction = payload.get("interaction_contract") or {}
+    agent = interaction.get("agent_channel") or {}
+    agent.update(must_attempt=False, delivery_allowed=False, primary_action=command)
+    cli = interaction.get("cli_channel") or {}
+    for field in ("settlement_plan", "replan_settlement_contract", "selection_command", "selection_policy_ref"):
+        cli.pop(field, None)
+    cli.update(next_cli_actions=[command], selection_required=False,
+               spend_allowed_now=False, spend_after_validation=False,
+               spend_policy="rerun this turn's guard before delivery or settlement")
+    interaction.update(agent_channel=agent, cli_channel=cli)
+    payload["interaction_contract"] = interaction

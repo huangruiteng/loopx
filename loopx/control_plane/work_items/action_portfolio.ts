@@ -330,7 +330,12 @@ export function projectQuotaActionPortfolio(value: unknown): JsonObject | null {
  * reducer alone decides whether that pending choice may become the settlement
  * candidate.  Committed receipt replay remains a separate state.
  */
-export function qualifyActionSelection(value: unknown): JsonObject {
+type ActionSelectionQualification = JsonObject & (
+  | {state: "qualified"; selected_todo: JsonObject; recovery_action?: never}
+  | {state: "deferred" | "rejected"; recovery_action: "reenter_guard_without_selection"; selected_todo?: never}
+);
+
+export function qualifyActionSelection(value: unknown): ActionSelectionQualification {
   const request = requireJsonObject(value, "action_selection_qualification_request");
   if (
     request.schema_version !==
@@ -366,6 +371,7 @@ export function qualifyActionSelection(value: unknown): JsonObject {
     return {
       schema_version: ACTION_SELECTION_QUALIFICATION_SCHEMA_VERSION,
       state: "rejected",
+      recovery_action: "reenter_guard_without_selection",
       requested_todo_id: requestedTodoId,
       reason: requestedTaskClass === "continuous_monitor"
         ? "auxiliary_monitor_not_selectable_in_advancement_lane"
@@ -389,6 +395,7 @@ export function qualifyActionSelection(value: unknown): JsonObject {
     return {
       schema_version: ACTION_SELECTION_QUALIFICATION_SCHEMA_VERSION,
       state: "deferred",
+      recovery_action: "reenter_guard_without_selection",
       requested_todo_id: requestedTodoId,
       reason: preemptions[0] ?? "current_delivery_gate",
       delivery_preemptions: preemptions,

@@ -351,6 +351,7 @@ test("pending selection qualifies only after current hard-lane arbitration", () 
   assert.deepEqual(deferred, {
     schema_version: "action_selection_qualification_v0",
     state: "deferred",
+    recovery_action: "reenter_guard_without_selection",
     requested_todo_id: successor.todo_id,
     reason: "blocking_work_lane",
     delivery_preemptions: ["blocking_work_lane"],
@@ -368,6 +369,7 @@ test("pending selection rejects a Todo absent from the current eligible set", ()
   }), {
     schema_version: "action_selection_qualification_v0",
     state: "rejected",
+    recovery_action: "reenter_guard_without_selection",
     requested_todo_id: "todo_missing001",
     reason: "candidate_not_currently_eligible",
   });
@@ -385,6 +387,7 @@ test("pending selection explains an auxiliary monitor outside the advancement la
   }), {
     schema_version: "action_selection_qualification_v0",
     state: "rejected",
+    recovery_action: "reenter_guard_without_selection",
     requested_todo_id: "todo_monitor001",
     reason: "auxiliary_monitor_not_selectable_in_advancement_lane",
   });

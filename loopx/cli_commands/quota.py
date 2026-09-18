@@ -46,8 +46,10 @@ from ..control_plane.quota.settlement_cli import (
 from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.scheduler.execution_context import (
     GUIDED_START_TURN_RUNTIME_PROFILES,
+    render_scheduler_execution_args,
 )
 from ..control_plane.todos.contract import normalize_todo_id
+from ..control_plane.work_items.action_selection_contract import apply_action_selection_recovery
 from ..presentation.renderers.quota_event_markdown import (
     render_quota_monitor_poll_markdown,
     render_quota_slot_preview_markdown,
@@ -331,6 +333,36 @@ def _apply_requested_quota_action_selection_preflight(
     return True
 
 
+def _reconcile_requested_quota_action_selection(
+    payload: dict[str, object],
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    context: QuotaCommandContext,
+    receipt_bound_todo_id: str | None,
+    receipt_bound_replan_obligation_id: str | None,
+) -> bool:
+    rejected = _apply_requested_quota_action_selection_preflight(
+        payload, requested_todo_id=_requested_quota_action_todo_id(args),
+        receipt_bound_todo_id=receipt_bound_todo_id,
+        receipt_bound_replan_obligation_id=receipt_bound_replan_obligation_id,
+    )
+    if rejected:
+        apply_action_selection_recovery(
+            payload, registry_path=str(registry_path), runtime_root=str(context.runtime_root),
+            goal_id=args.goal_id, agent_id=args.agent_id,
+            turn_instance_id=context.heartbeat_turn_id,
+            available_capabilities=args.available_capabilities,
+            scheduler_args=render_scheduler_execution_args(
+                scheduler_execution_context=context.scheduler_context),
+        )
+        obligation = payload.get("execution_obligation")
+        if isinstance(obligation, dict):
+            obligation.update(must_attempt_work=False, delivery_allowed=False,
+                              reason=payload["recommended_action"])
+    return rejected
+
+
 def _attach_uncommitted_action_selection_receipt(
     payload: dict[str, object],
     *,
@@ -552,15 +584,10 @@ def handle_quota_command(
                 turn_start_hook_dispatch=turn_start_hook_dispatch,
             )
             _attach_turn_start_hook_dispatch(payload, turn_start_hook_dispatch)
-            action_selection_preflight_failed = (
-                _apply_requested_quota_action_selection_preflight(
-                    payload,
-                    requested_todo_id=_requested_quota_action_todo_id(args),
-                    receipt_bound_todo_id=receipt_bound_todo_id,
-                    receipt_bound_replan_obligation_id=(
-                        receipt_bound_replan_obligation_id
-                    ),
-                )
+            action_selection_preflight_failed = _reconcile_requested_quota_action_selection(
+                payload, args, registry_path=registry_path, context=context,
+                receipt_bound_todo_id=receipt_bound_todo_id,
+                receipt_bound_replan_obligation_id=receipt_bound_replan_obligation_id,
             )
             if heartbeat_turn_id:
                 if action_selection_preflight_failed:

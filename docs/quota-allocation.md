@@ -486,7 +486,15 @@ bounded suggestions. That request is only a pending selection: the second guard
 re-runs current lane arbitration and eligibility checks before upgrading the
 receipt. A newly due hard-priority monitor, blocking user gate, or other current
 preemption defers the request and leaves the receipt identity-less. Delivery and
-quota spend remain disabled until binding succeeds. A single-candidate response
+quota spend remain disabled until binding succeeds. Deferred/rejected selections
+return the TS-owned `recovery_action=reenter_guard_without_selection`: execute
+the single command in `interaction_contract.cli_channel.next_cli_actions`, with
+the same turn id and no Todo/replan argument. That guard either binds the current
+hard lane or returns a refreshed portfolio. No settlement plan is exposed before
+reentry, and a previously bound receipt cannot be retargeted. `recommended_action`
+retains the human-readable rejection or deferral guidance; the executable recovery
+command lives in `next_cli_actions` and `agent_channel.primary_action`.
+A single-candidate response
 keeps the direct execution path and does not add an extra selection round trip.
 
 When the selected Todo has meaningful strategic context, the same default

@@ -3020,6 +3020,7 @@ def test_agent_selection_rejects_unprojected_todo(tmp_path: Path) -> None:
     assert invalid["action_selection_qualification"] == {
         "schema_version": "action_selection_qualification_v0",
         "state": "rejected",
+        "recovery_action": "reenter_guard_without_selection",
         "requested_todo_id": "todo_not_projected",
         "reason": "candidate_not_currently_eligible",
     }
@@ -3508,6 +3509,7 @@ def test_pending_action_selection_reports_autonomous_replan_preemption(
     assert selected["action_selection_qualification"] == {
         "schema_version": "action_selection_qualification_v0",
         "state": "deferred",
+        "recovery_action": "reenter_guard_without_selection",
         "requested_todo_id": ALTERNATIVE_TODO_ID,
         "reason": "autonomous_replan",
         "delivery_preemptions": ["autonomous_replan", "delivery_not_allowed"],
