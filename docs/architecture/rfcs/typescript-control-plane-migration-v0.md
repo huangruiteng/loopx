@@ -22,6 +22,22 @@ Retain T0 caller/parity inventory, T1/T2 transaction/effect convergence, T3 comp
 
 ## Current implementation checkpoint
 
+Linked User completion now has one typed owner, `todos/user_completion.ts`.
+The terminal transaction commits exact-target scope consumption, reject/cancel
+outcomes and conditional resume with its own completion/receipt; the Markdown
+adapter invokes the same plan once instead of applying Python rules and making
+per-scope RPCs. This repairs a reproduced native-provider omission rather than
+assuming a migrated terminal serializer closes the caller. The shared mixed
+fixture covers concurrent CAS loss, lost response, replay and a remaining User
+blocker across File/SQLite/PostgreSQL. See [semantics, callers and compatibility](../../reference/canonical-todo-completion-update.md#linked-user-completion-effects).
+T1/T2's linked User completion slice is closed; the remaining L2–L9 program and
+whole-Goal default remain unqualified.
+
+关联 User 完成的决策消解、拒绝/取消和条件恢复统一归属 TS，并与完成回执原子提交；
+旧 Markdown 适配器只传一次完整快照并执行计划，删除重复 Python 规则及逐 scope RPC。
+这修复了原生 provider 漏掉联动的真实缺口，仅关闭 T1/T2 中这一完整调用链，不能据此
+宣布 L2–L9、整 Goal 默认切换或全部 Python 删除完成。
+
 Canonical create/claim/update/Monitor poll/terminal transactions now share
 `coordination/authority_source.ts`; Python adapters bracket registration/grant
 projection through `authority_registry_source`. The original witness survives

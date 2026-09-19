@@ -1,3 +1,4 @@
+import {planUserCompletion} from "../todos/user_completion.ts";
 import {AUTHORITY_SOURCE_CHANGED, uncheckedAuthoritySource, type AuthoritySourceCheck} from "./authority_source.ts";
 import {normalizeTodoUpdateInput, prepareUpdatedTodo, type CoordinationTodoUpdateInput, type TodoCompletionEdit} from "./todo_update_intent.ts";
 import {todoUpdateAdmissionRejection} from "./todo_update_admission.ts";
@@ -1169,11 +1170,18 @@ export async function executeCoordinationTodoTerminalLifecycle(
   const released = releasedLease(currentLease, authority, input);
   const target = terminalTarget(todo, input, completion, successorIds);
   if (edit !== null) target.clear_fields = [...new Set([...edit.clearFields, ...target.clear_fields])];
+  const followthrough = input.command === "complete" && todo.role === "user"
+    ? planUserCompletion(todo, [...projection.todos.values()], input.decision_outcome) : null;
+  const dependent = followthrough && Object.keys(followthrough.updates).length
+    ? projection.todos.get(String(todo.unblocks_todo_id)) : undefined;
   const changed = authority.outcome === "apply" || edit?.changed === true;
   const result: JsonObject = {
     todo_id: input.todo_id,
     command: input.command,
     changed,
+    ...(input.decision_outcome === null ? {} : {decision_outcome: input.decision_outcome}),
+    ...(followthrough?.unblock_resume ? {unblock_resume: followthrough.unblock_resume} : {}),
+    ...(followthrough?.decision_scope_resolution ? {decision_scope_resolution: followthrough.decision_scope_resolution} : {}),
     terminal_decision: authority,
     successor_todo_ids: successorIds,
     generated_successor_todo_ids: generatedSuccessorIds,
@@ -1198,6 +1206,8 @@ export async function executeCoordinationTodoTerminalLifecycle(
   };
   const mutations: CoordinationProjectionMutation[] = changed ? [
     {kind: "todo_upsert", todo: target.todo, clear_fields: target.clear_fields},
+    ...(dependent && followthrough ? [{kind: "todo_upsert" as const,
+      todo: {...dependent, ...followthrough.updates, updated_at: target.todo.updated_at}}] : []),
     ...successorCandidates.map((successor) => ({kind: "todo_upsert" as const, todo: successor})),
     ...(released === null ? [] : [{kind: "lease_upsert" as const, lease: released}]),
   ] : [];
