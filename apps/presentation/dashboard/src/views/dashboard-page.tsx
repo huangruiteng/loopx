@@ -90,6 +90,7 @@ import {
   runEvidenceCopy,
 } from "../features/personal-workspace/projection-localization";
 import {
+  goalHasExecutionSummary,
   normalizePersonalHomeModel,
   type WorkspaceAgentOption,
   type WorkspaceAttention,
@@ -2620,7 +2621,10 @@ function PersonalGoalHome({
         },
       };
     }) : []),
-    ...(selectedGoal ? [{
+    // A persistent chat session is not itself waiting work. Only surface a
+    // Goal-level execution row when there is execution, evidence, or a wait/fault.
+    ...(selectedGoal && (runtimeBindings[selectedGoal.goalId]?.turnId
+      || selectedGoal.runEvidence || goalHasExecutionSummary(selectedGoal)) ? [{
       id: `run:${selectedGoal.goalId}`,
       kind: "run" as const,
       run: {

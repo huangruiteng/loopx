@@ -5,14 +5,14 @@ type Member = {id: string; agent_id: string; todo_id: string};
 
 /** On-demand observations share the caller/config pin of this Goal conversation. */
 export function GoalTeamWork({sessionId, members, zh}: {sessionId: string; members: Member[]; zh: boolean}) {
-  const [open, setOpen] = useState(false);
   const [page, setPage] = useState<DelegationInventory | null>(null);
   const [checks, setChecks] = useState<Record<string, DelegationPreflight>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const generation = useRef(0);
   useEffect(() => {
-    generation.current++; setOpen(false); setPage(null); setChecks({}); setError(""); setBusy(false);
+    generation.current++; setPage(null); setChecks({}); setError(""); setBusy(false);
+    void read();
     return () => {generation.current++;};
   }, [sessionId]);
   async function read(cursor?: string) {
@@ -51,17 +51,16 @@ export function GoalTeamWork({sessionId, members, zh}: {sessionId: string; membe
     return zh ? "已派发，等待执行回读" : "Dispatched; awaiting execution readback";
   };
   return <div className="goal-team-work">
-    <button type="button" aria-expanded={open} onClick={() => {setOpen(!open); if (!open) void read();}}>
-      {zh ? "团队执行情况" : "Team execution"}
-    </button>
-    {open ? <section aria-label={zh ? "团队执行详情" : "Team execution details"}>
-      <p>{zh ? "检查按需读取，不会启动成员。结果属于本次回读；暂停协调员不会停止已派发工作。" : "Checks run on demand and start no members. Results are observations; pausing the coordinator retains delegated work."}</p>
+    <section aria-label={zh ? "团队执行详情" : "Team execution details"}>
+      <p>{zh ? "检查不会启动成员。暂停协调员后，已派发的工作仍会继续。" : "Inspection starts no members. Dispatched work continues when the coordinator is paused."}</p>
+      <h3>{zh ? "已绑定成员" : "Bound members"}</h3>
       <ul className="goal-team-bindings">{members.map(member => <li key={member.id}>
-        <div><strong>{member.agent_id}</strong><span>{member.todo_id}</span>
+        <div><strong>{member.agent_id}</strong>
           <button type="button" disabled={busy} onClick={() => void inspect(member.id)}>{zh ? "检查启动条件" : "Check prerequisites"}</button></div>
+        <details><summary>{zh ? "任务与执行配置" : "Task and execution details"}</summary><code>{member.todo_id}</code>{checks[member.id]?.executor.profile ? <code>{checks[member.id].executor.profile}</code> : null}</details>
         {checks[member.id] ? <p role="status">{labels[checks[member.id].state] ?? (zh ? "状态未知" : "Unknown")}
           {" · "}{checks[member.id].executor.host}{checks[member.id].executor.reason ? ` · ${checks[member.id].executor.reason}` : ""}
-          {checks[member.id].executor.profile ? ` · ${checks[member.id].executor.profile}` : ""}
+
           {" · "}{zh ? "不代表正在执行" : "Does not mean executing"}</p> : null}
       </li>)}</ul>
       <div className="goal-team-work-actions"><strong>{zh ? "此协调身份的持久工作" : "Durable work for this coordinator"}</strong>
@@ -74,11 +73,11 @@ export function GoalTeamWork({sessionId, members, zh}: {sessionId: string; membe
         {!page.items.length ? <p>{zh ? "此页没有委派记录；不代表整个团队没有工作或 Goal 已完成。" : "No records on this page; this does not establish an idle team or a completed Goal."}</p> : null}
         <ul className="goal-team-operations">{page.items.map(row => <li key={row.record_id}>
           <strong>{row.agent_id ?? (zh ? "记录不可读" : "Unreadable record")} · {stateLabel(row)}</strong>
-          <span>{row.operation_id ?? row.record_id}</span>
+          <details><summary>{zh ? "执行标识" : "Execution identifier"}</summary><code>{row.operation_id ?? row.record_id}</code></details>
           {row.artifacts?.map(artifact => <details key={artifact.ref}><summary>{artifact.ref}</summary><code>{artifact.sha256}</code></details>)}
         </li>)}</ul>
         <p>{zh ? "仅限当前协调身份；分页不是团队快照。" : "Scoped to this coordinator; paging is not a team snapshot."}{page.has_more ? (zh ? " 还有下一页。" : " More pages remain.") : ""}</p>
       </> : null}
-    </section> : null}
+    </section>
   </div>;
 }

@@ -468,9 +468,14 @@ export function workspaceSessionStatusLabel(status?: string): string {
   } as Record<string, string>)[status] ?? status;
 }
 
+/** A quiet persistent conversation must not masquerade as waiting work. */
+export function goalHasExecutionSummary(goal: Pick<WorkspaceGoal, "state">): boolean {
+  return ["推进中", "需修复", "等待条件"].includes(goal.state);
+}
+
 /**
  * Project the detailed Goal lifecycle onto the five manager-home buckets.
- * The home keeps four active lanes visible and collapses terminal work into history.
+ * The home shows populated active lanes and collapses terminal work into history.
  */
 export function workspaceHomeLaneForGoal(goal: WorkspaceGoal): WorkspaceHomeLane {
   if (goal.activationState === "stopped" || goal.state === "已停止") return "stopped";
