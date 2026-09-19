@@ -30,7 +30,8 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def assert_contains(text: str, needle: str, label: str) -> None:
-    if needle not in text:
+    # Help wrapping can split words at hyphens; only whitespace is incidental here.
+    if "".join(needle.split()) not in "".join(text.split()):
         raise AssertionError(f"{label} missing {needle!r}")
 
 
