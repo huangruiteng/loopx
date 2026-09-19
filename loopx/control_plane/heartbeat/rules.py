@@ -22,7 +22,8 @@ HEARTBEAT_NOTIFICATION_RULE_SHORT = (
     "具体user todo未投影，需修复LoopX状态投影；静默时内部修复。"
 )
 HEARTBEAT_VISION_WRITEBACK_RULE_SHORT = (
-    "writeback: no-change=`surface_only`/no spend；material=实际outcome+vision决定；"
+    "writeback: exact committed monitor-poll=本Turn已结算，不refresh/spend；"
+    "其他no-change=`surface_only`/no spend；material=实际outcome+vision决定；"
     "缺则同turn按返回命令补齐再terminal；unchanged→真实`--vision-unchanged-reason`。"
 )
 REWARD_MEMORY_OUTCOME_RULE = (

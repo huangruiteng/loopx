@@ -17,10 +17,13 @@ export function receiptBoundMonitorPhase(
   state: ReceiptBoundMonitorSettlementState,
 ): ReceiptBoundMonitorPhase {
   if (!state.poll_present) return "poll_due";
-  if (!state.material_change) return "settled";
-  return state.durable_writeback_present && state.quota_spend_present
-    ? "settled"
-    : "settlement_pending";
+  // The committed monitor-poll is the durable no-spend closeout for this
+  // monitor Turn. A material observation may atomically release an independent
+  // successor, but it never upgrades the observe-only monitor into an
+  // accountable delivery or quota-spend identity. Keep the extra inputs in the
+  // cross-runtime request for compatibility with older callers; they no longer
+  // decide this phase.
+  return "settled";
 }
 
 export const RECEIPT_BOUND_REPLAY_PHASES = [

@@ -266,7 +266,7 @@ test("reads the complete receipt chain and workspace causality once", async () =
   });
 });
 
-test("keeps partial settlement fail-closed without losing durable facts", async () => {
+test("keeps ordinary partial settlement fail-closed while the monitor poll is closed", async () => {
   const runtimeRoot = await fixture({ writeback: true, monitor: true });
 
   const result = await readQuotaSettlement(request(runtimeRoot));
@@ -274,7 +274,7 @@ test("keeps partial settlement fail-closed without losing durable facts", async 
   assert.equal((result.writeback as any).payload.ok, true);
   assert.equal((result.spend as any).payload.ok, false);
   assert.equal((result.settlement as any).result.failure.kind, "receipt_missing");
-  assert.equal(result.monitor_phase, "settlement_pending");
+  assert.equal(result.monitor_phase, "settled");
   assert.equal(result.replay_phase, "open");
   assert.equal((result.writeback_run as any).delivery_outcome, "outcome_progress");
 });
