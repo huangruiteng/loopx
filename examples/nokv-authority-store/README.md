@@ -53,9 +53,19 @@ run is Stage 2A single-node storage conformance evidence only.
 ## Inputs
 
 Use a current NoKV Python environment. Keep the client configuration in an
-ignored local file; do not commit credentials. Static routing is valid for a
-single-node NoKV deployment—etcd is not required by this probe. The following
-shape is illustrative:
+ignored local file; do not commit credentials. The helper accepts three routing
+kinds and passes each to the matching `RoutingConfig` constructor of the
+installed SDK: `etcd` and `static` (the 0.11.0 release wheel) and `seeds`
+(`{"kind": "seeds", "endpoints": ["IP:PORT", ...]}`, the NoKV
+metadata-runtimes line, which names serving owners directly and drops the etcd
+constructor). Static routing is valid for a single-node NoKV deployment; etcd
+is not required by this probe. A routing kind the installed wheel cannot build
+fails the open handshake with `nokv_sdk_capability_mismatch` before any client
+is constructed, so a seeds configuration against a 0.11.0 wheel (or an etcd
+configuration against a metadata-runtimes wheel) is reported as the wrong
+wheel, not as an outage. The `ready` handshake echoes `nokv_protocol_schema`:
+the SDK's `WORKSPACE_PROTOCOL_SCHEMA` when the wheel exports one, otherwise
+`null` (the 0.11.0 release does not). The following shape is illustrative:
 
 ```json
 {

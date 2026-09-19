@@ -282,6 +282,8 @@ sessions, generic Agent creation, dynamic governed work derivation, complete
 inbox/queue/steer, authenticated remote authority and packaged frontend/Lark
 companion work remain R2/R3/R4/R6 boundaries. Existing Goals are not promoted.
 
+An existing shell-capable coordinator can now use `delegation list/start/read/wait/resume` without replacing its session or loading new MCP tools. The synthetic example's `prepare` path creates only isolated operator bindings; the existing Agent chooses and starts the work. This completes the attached-caller entrypoint over the existing execution owner. Dynamic identity/profile provisioning, unattended lead wakeup and full inbox/queue/steer remain separate R2/R3 requirements; fixed binding readback is not fleet readiness.
+
 ### R3: Semantic Requests and Automatic Return
 
 - **Owner:** manager RFC M2/M3; migrate existing `manager_context` request/tracking/return into one typed collaboration transaction, incorporating the #4094 adapter.

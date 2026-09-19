@@ -8,6 +8,7 @@ from .cli_commands.agent_directory import register_agent_directory, handle_agent
 from .cli_commands.agent_context import register_agent_context, handle_agent_context
 from .cli_commands.todo_continuation import register_todo_continuation, handle_todo_continuation
 from .cli_commands.manager_inbox import register_manager_inbox, handle_manager_inbox
+from .cli_commands.delegation import register_delegation, handle_delegation
 from .capabilities.content_ops.cli import (
     handle_content_ops_command,
     register_content_ops_commands,
@@ -332,6 +333,7 @@ def build_parser() -> LoopXArgumentParser:
     register_project_lifecycle_commands(sub, add_subcommand_format)
     register_goal_channel_commands(sub, add_subcommand_format)
     register_manager_inbox(sub, add_subcommand_format)
+    register_delegation(sub, add_subcommand_format)
     register_agent_capabilities(sub, add_subcommand_format)
     register_agent_context(sub, add_subcommand_format)
     register_agent_directory(sub, add_subcommand_format)
@@ -783,6 +785,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "manager-inbox":
         return handle_manager_inbox(args, registry_path, effective_runtime_root(registry_path, args.runtime_root))
+    if args.command == "delegation":
+        return handle_delegation(args, registry_path, effective_runtime_root(registry_path, args.runtime_root))
 
     lark_inbox_result = handle_lark_inbox_command(
         args,

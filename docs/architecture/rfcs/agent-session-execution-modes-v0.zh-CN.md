@@ -141,6 +141,7 @@ LoopX 启动，另一种已经属于其他宿主。当绑定没有说明自己�
 | 挂接 broker | [`loopx/attached_session.py`](../../../loopx/attached_session.py) 在 `loopx_attached_agent_session_broker_v0` 下实现 bind/claim/complete，适配器类型 `attached_host_session`，上游模式 `host_broker`，claim 等待上限 1800 秒，claim 与完成回执去重，并按绑定加文件锁。 |
 | 运行时围栏 | [`loopx/chat_runtime.py`](../../../loopx/chat_runtime.py) 绝不为挂接会话启动托管适配器，并以类型化错误失败关闭，例如 `attached_session_live_steering_unavailable`、`live_steering_requires_active_turn`、`live_steering_session_not_attached`。 |
 | CLI 面 | `loopx worker-bridge attached-session-bind`、`-list`、`-claim`、`-complete` 存在于 [`loopx/cli_commands/worker_bridge.py`](../../../loopx/cli_commands/worker_bridge.py)，并在 [broker 指南](../../integrations/attached-agent-session-broker.md) 与 [worker-bridge 安装契约](../../integrations/worker-bridge-install-contract.md) 中记录。 |
+| 原会话委派 | [`loopx delegation`](../../reference/local-delegation.md#use-an-existing-agent-conversation-through-its-shell) 让有 shell 能力的原 Agent 使用与 MCP 相同的显式执行绑定；重连保留原对话和操作身份，不创建 Agent、不迁移宿主，也不安装自动唤醒策略。 |
 | 聚焦测试 | [`tests/test_attached_session_cli.py`](../../../tests/test_attached_session_cli.py) 与 `tests/test_chat_codex_home.py::test_attached_session_uses_existing_host_not_managed_adapter` 覆盖 bind/claim/complete 与"不启动托管适配器"的围栏。 |
 | 产品级提案 | [桌面执行前端 RFC](desktop-execution-frontends-v0.zh-CN.md) 拥有 Mode A/Mode B 的产品对比、连接器与事件源正交性，以及桌面端非目标。 |
 | 宿主侧循环指引 | [Codex CLI TUI loop](../../product/runtimes/codex-cli/codex-cli-tui-loop.md) 记录了一个可见宿主的会话挂接自动化与恢复选项。 |

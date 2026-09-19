@@ -34,6 +34,72 @@ select `generic-cli`, `fresh`, and the optional adapter's `--config` invocation.
 Profiles, executables, workspace isolation and credential custody remain the
 operator's responsibility. No model tool accepts those values.
 
+## Use an existing Agent conversation through its shell
+
+An attached Codex or other shell-capable Agent can use the same execution
+bindings without opening a replacement conversation or adding MCP tools to a
+running session. Use its registered requester identity and the exact registry,
+runtime and operator configuration; this trusted local CLI is not a remote
+authentication boundary.
+
+```bash
+delegate() {
+  loopx --registry "$REGISTRY" --runtime-root "$RUNTIME_ROOT" --format json \
+    delegation "$@" --goal-id "$GOAL_ID" --agent-id "$AGENT_ID" \
+    --execution-config "$DELEGATION_CONFIG"
+}
+
+delegate list
+delegate start --binding-id independent-review --operation-id review-round-1 \
+  --brief-file request.json --execute
+delegate read --operation-id review-round-1
+delegate wait --operation-id review-round-1
+```
+
+`request.json` contains the same `collaboration_brief_v0` used by MCP:
+
+```json
+{
+  "schema_version": "collaboration_brief_v0",
+  "purpose": "Independently check the current analysis",
+  "context": "Reconcile the corrected source with the earlier conclusion.",
+  "constraints": ["Use only the supplied material; no external actions"],
+  "inputs": [],
+  "acceptance": ["Satisfy the task's pinned independent acceptance"],
+  "return_requirement": "Return evidence, uncertainty and the checked artifact"
+}
+```
+
+The Agent chooses questions, sequencing and synthesis. After `start` returns,
+it can continue its own investigation; closing that CLI process does not stop
+the worker. Another invocation reads the original operation. `wait` observes
+for a bounded interval and does not start, resume or accept work. `ok: true`
+means the command succeeded; inspect `status`, `recovery_required`, `error` and
+the independently checked artifacts to determine the work result. Neither a
+`running` result nor a saved peer opinion means accepted completion.
+
+After a lost start response, repeat the same start with the same operation id
+and brief. If readback reports `recovery_required`, use:
+
+```bash
+delegate resume --operation-id review-round-1 --execute
+```
+
+Resume keeps the original operation and Turn; it cannot silently retarget
+work. A new scope or repair round requires a new operation, still subject to
+the configured task, quota and acceptance owners. A member coordinating its
+own authorized peers supplies `--parent-request-id` on start. CLI and MCP
+share grant validation, detached execution, wait/readback and recovery rather
+than maintaining separate rules.
+
+This entrypoint does not create Agents, grant bindings or wake an idle Codex
+conversation. The existing host/LoopX continuation policy owns the next lead
+turn. The conversation remains persistent independently of whether autonomous
+LoopX mode is enabled. Current Dashboard/Lark setup is unchanged; those surfaces
+keep their existing conversation and runtime owners.
+
+## Use the same bindings through MCP
+
 Start the existing stdio server with the explicit opt-in:
 
 ```bash

@@ -61,6 +61,40 @@ uv run --no-sync --extra test python -m loopx.cli \
 
 ## Collaboration path
 
+### Keep an existing Codex or other local lead
+
+Use `prepare` instead of `run` to provision only the disposable fixture and
+operator bindings. It makes no model call and does not start another lead
+session. Keep the provider setup above, including the existing Environment:
+
+```bash
+uv run --no-sync --extra test python examples/managed-research-team/research_team.py \
+  prepare "$DEMO_ROOT" --model "$ARK_MODEL_ID" --environment-id "$ARK_ENVIRONMENT_ID"
+export LOOPX_RESEARCH_DEMO_ROOT="$DEMO_ROOT"
+
+uv run --no-sync --extra test loopx --registry "$DEMO_ROOT/registry.json" \
+  --runtime-root "$DEMO_ROOT/runtime" --format json delegation list \
+  --goal-id synthetic-managed-research --agent-id lead \
+  --execution-config "$DEMO_ROOT/delegation-config.json"
+```
+
+The existing Agent then uses [delegation start/read/wait/resume](../../docs/reference/local-delegation.md#use-an-existing-agent-conversation-through-its-shell)
+for the listed bindings, writing its own briefs. It reads the synthetic
+`input.json` files and returned artifacts, chooses the work order and continues
+its own analysis while members run. The nested cloud analyst still requests
+its local reviewer through the same service. No business phase argument is
+introduced.
+
+After reading all four canonical completions and exact artifact hashes, the
+lead writes `lead/report.json` with the fields described by `scenario.py` and
+the acceptance table below. Run `validate-report`, then complete the report
+through ordinary `todo complete --todo-id todo_lead-report --agent-id lead
+--no-follow-up` against this disposable registry/runtime. That command reruns
+the bound validator. Retain the original conversation; preparation does not
+attach, resume, migrate or impersonate any existing production Agent.
+
+### Member relationships
+
 The primary `local-led` profile has four independently accepted member tasks:
 
 - The local lead delegates initial-filing analysis to local DSH `local-analyst`.

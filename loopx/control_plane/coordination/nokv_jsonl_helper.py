@@ -36,6 +36,13 @@ _CONFIG_KEYS = frozenset(
     }
 )
 _ETCD_ROUTING_KEYS = frozenset({"kind", "endpoints", "key_prefix", "lease_ttl_seconds"})
+# Seed routing names one or more serving NoKV owners directly (numeric IP:port);
+# the SDK rejects hostnames, empty lists and unspecified ports itself.
+_SEEDS_ROUTING_KEYS = frozenset({"kind", "endpoints"})
+# Every routing kind this helper can express. A kind outside this set is a
+# configuration error; a kind inside it that the installed SDK cannot build is
+# a capability mismatch between the wheel and the configuration.
+_ROUTING_KINDS = frozenset({"etcd", "seeds", "static"})
 _STATIC_ROUTING_KEYS = frozenset(
     {
         "kind",
@@ -65,6 +72,14 @@ _S3_OBJECT_STORE_KEYS = frozenset(
 
 class RequestError(ValueError):
     """The JSON-lines caller violated the raw storage protocol."""
+
+
+class SdkCapabilityMismatch(RequestError):
+    """The installed NoKV SDK lacks the constructor this configuration needs.
+
+    Raised only after the configuration itself validated, so the caller can
+    tell "wrong wheel for this routing kind" apart from "invalid config".
+    """
 
 
 class ProviderProtocolError(RuntimeError):
@@ -420,6 +435,8 @@ def build_client(config_value: object) -> Any:
     _require_exact_keys(config, _CONFIG_KEYS, "config")
     routing_value = _mapping(config.get("routing"), "routing")
     routing_kind = _required_string(routing_value, "kind")
+    if routing_kind not in _ROUTING_KINDS:
+        raise RequestError(f"unsupported routing kind {routing_kind!r}")
     if routing_kind == "etcd":
         _require_exact_keys(routing_value, _ETCD_ROUTING_KEYS, "routing")
         routing_arguments: tuple[object, ...] = (
@@ -443,7 +460,8 @@ def build_client(config_value: object) -> Any:
             _generation(routing_value.get("owner_epoch"), "owner_epoch"),
         )
     else:
-        raise RequestError(f"unsupported routing kind {routing_kind!r}")
+        _require_exact_keys(routing_value, _SEEDS_ROUTING_KEYS, "routing")
+        routing_arguments = (_string_list(routing_value, "endpoints"),)
 
     object_value = _mapping(config.get("object_store"), "object_store")
     object_kind = _required_string(object_value, "kind")
@@ -516,12 +534,17 @@ def build_client(config_value: object) -> Any:
     except AttributeError as error:
         raise RequestError("the NoKV Python SDK surface is incomplete") from error
 
-    try:
-        routing = (
-            RoutingConfig.etcd(*routing_arguments)
-            if routing_kind == "etcd"
-            else RoutingConfig.static(*routing_arguments)
+    # The kind was checked against _ROUTING_KINDS above, so this attribute
+    # lookup never reaches an arbitrary caller-chosen name. The 0.11.0 release
+    # wheel provides etcd/static; the metadata-runtimes line provides seeds.
+    routing_constructor = getattr(RoutingConfig, routing_kind, None)
+    if not callable(routing_constructor):
+        raise SdkCapabilityMismatch(
+            "the installed NoKV Python SDK does not provide "
+            f"RoutingConfig.{routing_kind}"
         )
+    try:
+        routing = routing_constructor(*routing_arguments)
     except (TypeError, ValueError) as error:
         raise RequestError("NoKV routing configuration is invalid") from error
     try:
@@ -550,6 +573,19 @@ def build_client(config_value: object) -> Any:
         raise RequestError("NoKV client configuration is invalid") from error
 
 
+def _sdk_protocol_schema() -> str | None:
+    """Return the wire schema the imported SDK declares, if it declares one.
+
+    The 0.11.0 release wheel has no such attribute; newer wheels export
+    ``WORKSPACE_PROTOCOL_SCHEMA`` so a deployment can compare it against the
+    server before trusting a nominally equal ``__version__``.
+    """
+    schema = getattr(sys.modules.get("nokv"), "WORKSPACE_PROTOCOL_SCHEMA", None)
+    if isinstance(schema, str) and schema and schema.strip() == schema:
+        return schema
+    return None
+
+
 def main() -> int:
     first = sys.stdin.readline()
     try:
@@ -561,6 +597,15 @@ def main() -> int:
         client = build_client(values.get("config"))
     except json.JSONDecodeError as error:
         result = _failure(None, "failed", "invalid_json", error)
+    except SdkCapabilityMismatch as error:
+        result = _failure(
+            _request_id(value.get("request_id"))
+            if isinstance(value, Mapping)
+            else None,
+            "failed",
+            "nokv_sdk_capability_mismatch",
+            error,
+        )
     except RequestError as error:
         result = _failure(
             _request_id(value.get("request_id"))
@@ -592,6 +637,7 @@ def main() -> int:
                     "ready",
                     nokv_sdk_version=QUALIFIED_NOKV_SDK_VERSION,
                     nokv_api_version=QUALIFIED_NOKV_API_VERSION,
+                    nokv_protocol_schema=_sdk_protocol_schema(),
                 ),
                 sort_keys=True,
                 separators=(",", ":"),

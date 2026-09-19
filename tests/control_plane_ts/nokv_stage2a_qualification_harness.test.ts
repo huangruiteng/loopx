@@ -51,6 +51,10 @@ class RoutingConfig:
         return ("etcd", values)
 
     @staticmethod
+    def seeds(*values):
+        return ("seeds", values)
+
+    @staticmethod
     def static(*values):
         return ("static", values)
 
