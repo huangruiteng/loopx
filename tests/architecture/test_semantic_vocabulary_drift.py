@@ -505,12 +505,16 @@ def test_f1_f2_domain_names_exactly_the_vocabularies_the_producer_check_walks() 
     registry = smoke["load_registry"]()
     vocabularies = registry["vocabularies"]
     walked = {name for name, entry in vocabularies.items() if "producers" in entry}
-    assert walked == {name for name, entry in vocabularies.items() if entry["tier"] == "kernel"}
+    # The domain was the kernel tier while that happened to be the set the
+    # check walked. It is no longer: a cross-runtime vocabulary carrying
+    # executed production evidence is walked too, so the selector names the
+    # predicate rather than a tier it no longer matches.
+    assert walked >= {name for name, entry in vocabularies.items() if entry["tier"] == "kernel"}
     skipped = {entry["tier"] for name, entry in vocabularies.items() if name not in walked}
     assert skipped == {"cross_runtime"}
     for invariant_id in ("F1_producer_closedness", "F2_canonical_value_liveness"):
         domain = _invariant(registry, invariant_id)["domain"]
-        assert domain["quantifies_over"] == "vocabularies[tier=kernel].producers"
+        assert domain["quantifies_over"] == "vocabularies[producers].producers"
         assert domain["verified"] == len(walked)
         assert domain["registered"] == len(vocabularies)
         assert domain["evidence_bound"] == "producer_scan_reach"

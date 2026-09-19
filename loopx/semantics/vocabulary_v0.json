@@ -77,8 +77,8 @@
         "enforcement": "m0_5",
         "evidence": "bounded production-form AST scan over the PRODUCER_ROOTS/PRODUCER_FILES reach in loopx/semantics/production.py; check_producers visits only vocabularies that declare producers, and validate_production claims no whole-program closedness; unresolved dynamic sites are reported, not treated as proven safe",
         "domain": {
-          "quantifies_over": "vocabularies[tier=kernel].producers",
-          "verified": 6,
+          "quantifies_over": "vocabularies[producers].producers",
+          "verified": 7,
           "registered": 26,
           "evidence_bound": "producer_scan_reach"
         }
@@ -89,8 +89,8 @@
         "enforcement": "m0_5",
         "evidence": "every kernel value has a producer recognised inside the scan reach, an executable input witness, or an explicit compatibility-only reason; a value whose only producer lies outside the reach would be reported as dead, not silently accepted",
         "domain": {
-          "quantifies_over": "vocabularies[tier=kernel].producers",
-          "verified": 6,
+          "quantifies_over": "vocabularies[producers].producers",
+          "verified": 7,
           "registered": 26,
           "evidence_bound": "producer_scan_reach"
         }
@@ -557,6 +557,10 @@
         "todo",
         "autonomous_replan",
         "unbound"
+      ],
+      "input_producer": "loopx/control_plane/effect_program.ts::settlementIdentity",
+      "producers": [
+        "loopx/control_plane/effect_program.ts::settlementIdentity"
       ],
       "value_notes": {
         "todo": "Chosen by settlementIdentity when the todo id is non-blank after trimming; supplying both a todo id and a replan obligation id throws before this point. It fixes the effect id to the goal, agent, todo and turn instance form, and is re-derived when a persisted identity payload is decoded.",
