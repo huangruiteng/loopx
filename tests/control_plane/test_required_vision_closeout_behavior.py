@@ -307,6 +307,42 @@ def test_narrow_semantic_action_keeps_seven_call_budget(tmp_path: Path) -> None:
     assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 7
 
 
+@pytest.mark.parametrize("rejection", ["suffix", "outside", "invalid_json", "overwrite"])
+def test_authoring_rejection_is_recoverable_but_has_no_file_or_suffix_effect(rejection: str, tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    root = tmp_path / "actor" / "project"
+    def rejected_authoring(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        command = heredoc_action(request).command
+        if rejection == "suffix":
+            command += "\ntouch injected"
+        elif rejection == "outside":
+            command = command.replace("decision.json", "../outside.json")
+        elif rejection == "invalid_json":
+            command = "cat > decision.json <<'JSON'\n{broken\nJSON"
+        else:
+            command = command.replace("decision.json", "fixture/permission-config.json")
+        return ScriptedExecToolAction(command)
+    def recover(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        error = json.loads(request["messages"][-1]["content"])
+        assert error["exit_code"] != 0 and "not executed" in error["output"]
+        assert not (root / "decision.json").exists()
+        assert not list(tmp_path.rglob("injected"))
+        assert not list(tmp_path.rglob("outside.json"))
+        assert (root / "fixture/permission-config.json").read_bytes() == fixture.work_source_target.read_bytes()
+        return heredoc_action(request)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json"),
+        rejected_authoring, recover, projected_refresh, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="authoring-error-recovery", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is True
+    assert receipt["vision_closeout"]["spend_count"] == 1
+    assert receipt["tool_call_count"] == 6
+
+
 def test_help_host_extension_does_not_change_narrow_actor_contract(tmp_path: Path) -> None:
     fixture = _build_fixture(tmp_path)
     assert _bounded_workspace_read_plan("loopx --help", fixture=fixture) is None

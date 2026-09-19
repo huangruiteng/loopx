@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 # its resource bound is independent of the narrower single-action qualifier.
 REQUIRED_VISION_CLOSEOUT_MAX_CALLS = 16
 
+
+class VisionAuthoringRejected(ValueError):
+    """Pre-execution file admission failure; no file or CLI effect has run."""
+
+
 VISION_HOST_INSTRUCTION = (
     "You are Codex operating a hermetic LoopX project. Follow the heartbeat and "
     "the live control-plane packet, including its semantic writeback and settlement. "
@@ -46,8 +51,9 @@ VISION_EXEC_TOOL_DESCRIPTION = (
     "newlines or &&. Other LoopX commands must be separate single invocations. "
     "Returns stdout on success; nonzero workspace reads and unsupported command "
     "shapes return exit_code and output for correction within the same call "
-    "budget. Unsupported programs or syntax are never executed. Semantic, "
-    "identity and write-boundary errors fail qualification. No external network "
+    "budget. Rejected file-authoring operations also return errors without "
+    "creating a file or executing any suffix. Unsupported programs never run; "
+    "semantic and identity errors fail qualification. No external network "
     "or outside-fixture writes."
 )
 
@@ -103,22 +109,26 @@ def _authored_file(command: str, project: Path) -> str:
         r"(.*?)\n\*\*\* End Patch\n\1", command.strip(), re.DOTALL,
     )
     if not match:
-        raise ValueError("vision_authoring_requires_single_add_file_patch")
+        raise VisionAuthoringRejected("vision_authoring_requires_single_add_file_patch")
     lines = match[3].splitlines()
     if not lines or any(not line.startswith("+") for line in lines):
-        raise ValueError("vision_authoring_requires_added_lines")
+        raise VisionAuthoringRejected("vision_authoring_requires_added_lines")
     return _write_json_file(project, match[2], "\n".join(line[1:] for line in lines) + "\n")
 
 
 def _write_json_file(project: Path, name: str, content: str) -> str:
     relative = Path(name)
     if relative.is_absolute() or relative.suffix != ".json" or ".." in relative.parts:
-        raise ValueError("vision_authoring_path_outside_fixture")
+        raise VisionAuthoringRejected("vision_authoring_path_outside_fixture")
     target = (project / relative).resolve()
     if not target.is_relative_to(project.resolve()) or target.exists():
-        raise ValueError("vision_authoring_path_outside_fixture")
-    if not isinstance(json.loads(content), dict):
-        raise ValueError("vision_authoring_requires_json_object")
+        raise VisionAuthoringRejected("vision_authoring_path_outside_fixture")
+    try:
+        value = json.loads(content)
+    except json.JSONDecodeError:
+        raise VisionAuthoringRejected("vision_authoring_requires_json_object") from None
+    if not isinstance(value, dict):
+        raise VisionAuthoringRejected("vision_authoring_requires_json_object")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return json.dumps({"ok": True, "path": relative.as_posix()})
@@ -134,36 +144,43 @@ def _json_heredoc(command: str) -> tuple[str, str, list[str]] | None:
         return None
     lexer = shlex.shlex(header, posix=True, punctuation_chars="<>&;|")
     lexer.whitespace_split = True
-    tokens = list(lexer)
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc") from None
     if len(tokens) != 5 or tokens[0] != "cat" or set(tokens[1::2]) != {">", "<<"}:
-        raise ValueError("vision_authoring_requires_literal_json_heredoc")
+        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc")
     name = tokens[tokens.index(">") + 1]
     delimiter = tokens[tokens.index("<<") + 1]
     if delimiter != quoted[2]:
-        raise ValueError("vision_authoring_requires_literal_json_heredoc")
+        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc")
     lines = rest.splitlines(keepends=True)
     end = next((index for index, line in enumerate(lines) if line.rstrip("\r\n") == delimiter), None)
     if end is None:
-        raise ValueError("vision_authoring_requires_literal_json_heredoc")
+        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc")
     suffix = "".join(lines[end + 1:]).strip()
     lexer = shlex.shlex(suffix, posix=True, punctuation_chars=";&|\n")
     lexer.whitespace = " \t\r"
     lexer.whitespace_split = True
     commands: list[str] = []
     argv: list[str] = []
-    for token in [*lexer, "\n"]:
+    try:
+        suffix_tokens = list(lexer)
+    except ValueError:
+        raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx") from None
+    for token in [*suffix_tokens, "\n"]:
         if token == "&&" or token.strip("\n") == "":
             if argv:
                 if Path(argv[0]).name != "loopx":
-                    raise ValueError("vision_authoring_suffix_requires_loopx")
+                    raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx")
                 commands.append(shlex.join(argv))
                 argv = []
         elif token in {";", "|", "||", "&"}:
-            raise ValueError("vision_authoring_suffix_requires_loopx")
+            raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx")
         else:
             argv.append(token)
     if len(commands) > 2:
-        raise ValueError("vision_authoring_suffix_requires_loopx")
+        raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx")
     return name, "".join(lines[:end]), commands
 
 
