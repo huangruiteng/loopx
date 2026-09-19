@@ -81,7 +81,7 @@ def render_loopx_turn_execution_markdown(payload: dict[str, object]) -> str:
                 [f"- host_failure_kind: {host_failure.get('kind')}",
                  f"- host_failure_retryable: {host_failure.get('retryable')}",
                  f"- failure_reason: {payload.get('reason')}"]
-                if host_failure else []
+                if host_failure.get("kind") == "output_budget_exhausted" else []
             ),
             f"- validation: {validation.get('status')}",
             f"- recovery_kind: {validation.get('recovery_kind')}",

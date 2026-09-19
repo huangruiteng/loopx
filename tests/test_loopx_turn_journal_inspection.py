@@ -141,6 +141,21 @@ def test_existing_run_once_markdown_renderer_remains_intact() -> None:
     assert "- failure_reason: dsh_output_budget_exhausted_no_final" in rendered
 
 
+def test_non_budget_failure_keeps_the_existing_compact_rendering() -> None:
+    from loopx.cli_commands.turn_rendering import render_loopx_turn_execution_markdown
+
+    rendered = render_loopx_turn_execution_markdown({
+        "status": "failed", "result_kind": "host_failure",
+        "reason": "provider_failed",
+        "host_failure": {"kind": "auth_failed", "retryable": False},
+    })
+    assert rendered == "\n".join([
+        "# LoopX Turn Run Once", "- status: failed", "- result_kind: host_failure",
+        "- validation: None", "- recovery_kind: None", "- next_phase: None",
+        "- host_invoked: None", "- state_written: None", "- quota_spent: None",
+    ])
+
+
 def test_inspection_markdown_distinguishes_current_plan_from_last_result() -> None:
     rendered = turn_rendering.render_loopx_turn_journal_inspection_markdown(
         {
