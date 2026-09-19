@@ -110,6 +110,18 @@ def test_existing_run_once_markdown_renderer_remains_intact() -> None:
             "result_kind": "validated_progress",
             "validation": {"status": "passed", "recovery_kind": None},
             "receipt": {"next_phase": None},
+            "reason": "dsh_output_budget_exhausted_no_final",
+            "host_failure": {
+                "kind": "output_budget_exhausted",
+                "retryable": False,
+            },
+            "managed_executor": {
+                "execution_profile": "deepseek-v4-flash@high",
+                "output_token_budget": {
+                    "max_tokens": 16_384,
+                    "scope": "per_model_request",
+                },
+            },
             "effects": {
                 "host_invoked": True,
                 "state_written": True,
@@ -121,6 +133,12 @@ def test_existing_run_once_markdown_renderer_remains_intact() -> None:
     assert rendered.startswith("# LoopX Turn Run Once\n")
     assert "- validation: passed" in rendered
     assert "- quota_spent: True" in rendered
+    assert "- execution_profile: deepseek-v4-flash@high" in rendered
+    assert "- output_token_limit: 16384" in rendered
+    assert "- output_token_limit_scope: per_model_request" in rendered
+    assert "- host_failure_kind: output_budget_exhausted" in rendered
+    assert "- host_failure_retryable: False" in rendered
+    assert "- failure_reason: dsh_output_budget_exhausted_no_final" in rendered
 
 
 def test_inspection_markdown_distinguishes_current_plan_from_last_result() -> None:

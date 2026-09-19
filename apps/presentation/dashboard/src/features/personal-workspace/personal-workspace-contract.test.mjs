@@ -67,6 +67,9 @@ assert.doesNotMatch(drawer, /agentLabel\} · \{selection\.item\.status\}/, "Run 
 assert.match(page, /activeSessionRun/, "Opening a Session preserves the selected run in Goal state");
 assert.match(page, /personal-session-record/, "Goal chat visibly identifies the loaded Session record");
 assert.match(header, /personal-goal-tabs/, "Goal Chat, Tasks, and Files stay one click away in the header");
+assert.match(chatData, /output_token_budget:[\s\S]*scope: z\.literal\("per_model_request"\)/, "Manager binding keeps the typed per-request output budget");
+assert.match(header, /managerOutputTokenBudgetLabel/, "Manager header renders the shared output-budget projection");
+assert.equal((i18n.match(/"header\.managerOutputTokenBudget"/g) ?? []).length, 2, "Output budget has English and Simplified Chinese product copy");
 for (const view of ["Chat", "Tasks", "Files"]) {
   assert.match(header, new RegExp(`\"${view.toLowerCase()}\"|>${view}<`), `Goal header exposes ${view}`);
 }
