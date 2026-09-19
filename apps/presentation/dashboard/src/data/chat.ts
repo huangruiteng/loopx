@@ -4,6 +4,7 @@ import {
   todoApplyResultMatchesRequest,
   todoPreviewMatchesRequest,
   type CollaborationReadback,
+  type LoopXModeSettings,
   type TodoApplyResult,
   type TodoPreview,
 } from "./chat-model.js";
@@ -43,6 +44,7 @@ export {
   todoReceiptProjected,
 } from "./chat-model.js";
 export type {
+  LoopXModeSettings,
   AgentResponse,
   ChatCapabilities,
   CollaborationReadback,
@@ -850,7 +852,6 @@ export async function interruptChatTurn(sessionId: string, turnId: string) {
   );
 }
 
-export type LoopXModeSettings = { agent_id: string; token_budget: number };
 export type LoopXModeSnapshot = {
   ok: true; session_id: string; enabled: boolean; active_turn_id: string | null; conversation_busy: boolean;
   settings: Partial<LoopXModeSettings> & { execution_config?: string };
