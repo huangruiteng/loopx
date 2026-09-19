@@ -179,6 +179,23 @@ def main() -> int:
     assert "password:" not in workflow
     assert "--clobber" not in workflow
 
+    official_repository = "github.repository == 'loopx-project/loopx'"
+    owner_gated_workflows = (
+        "release-artifacts.yml",
+        "desktop-release-artifacts.yml",
+        "desktop-updater.yml",
+        "full-public-smokes.yml",
+        "update-notes.yml",
+    )
+    for workflow_name in owner_gated_workflows:
+        owner_gated_workflow = (
+            ROOT / ".github" / "workflows" / workflow_name
+        ).read_text(encoding="utf-8")
+        assert official_repository in owner_gated_workflow, workflow_name
+        assert "github.repository == 'huangruiteng/loopx'" not in owner_gated_workflow, (
+            workflow_name
+        )
+
     print("release-artifacts-smoke ok")
     return 0
 
