@@ -534,7 +534,7 @@ def execute_loopx_cli(
         else os.pathsep.join((str(source_root), existing_pythonpath))
     )
     completed = subprocess.run(
-        [sys.executable, "-m", "loopx.cli", *argv],
+        [sys.executable, "-P", "-m", "loopx.cli", *argv],
         cwd=project_root,
         env=env,
         check=False,
