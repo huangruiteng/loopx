@@ -274,6 +274,7 @@
       "producers": [
         "loopx/control_plane/turn_driver/driver.py::_typed_route",
         "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan",
+        "loopx/control_plane/turn_driver/driver.py::compatibility_route",
         "loopx/control_plane/turn_driver/loop_controller.py::_envelope_route"
       ],
       "return_producers": [
