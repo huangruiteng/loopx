@@ -808,34 +808,34 @@ it does not authorize more effects or weaken the checkpoint/readback oracle.
 Each receipt records `tool_call_limit` beside actual usage. Earlier seven- and sixteen-call
 failures remain failures; the revised budget defines a new qualification, not
 a retrospective pass. Limit exhaustion after refresh but before spend still
-fails. The tool description declares the actual
-bounded host grammar, not unrestricted shell access: workspace reads may compose
-with root/refresh-state CLI help, and JSON authoring uses `apply_patch` or a quoted
-heredoc, optionally followed by bound CLI closeout. The shared read parser admits
-the entire plan before execution. Ordinary nonzero reads return an exit code and
-bounded output to the model; recovery consumes the same call budget and a failed
-read supplies no evidence. Unadmitted commands likewise return a no-execution
-error instead of ending the conversation; their grammar limits are not raised.
-Workspace access before quota admission is also rejected without execution and
-returned as tool feedback; it supplies no evidence and consumes a call.
-Unsupported programs and rejected file-authoring operations never execute.
-Pre-execution path, overwrite, JSON or authoring-syntax rejection returns tool
-feedback without creating the file or running a suffix, with the rejected
-operation and applicable restriction. An actor may revise only its own JSON
-drafts; original fixture inputs stay immutable. A rejected evidence reference
-returns the already-observed references before refresh executes, so the actor
-can correct its draft. Real CLI nonzero results return their exit code and
-bounded diagnostic; this does not imply rollback or waive original-Turn recovery
-and settlement fences. Identity and durable-verification failures remain
-terminal. The host does not add missing
-semantic fields or execute arbitrary model shell programs. These host semantics
-are explicit for required-vision qualification; other actors retain their current
-contracts. Receipts distinguish tool execution errors, accepted writeback and
-settled closeout without persisting raw conversations. A host grammar rejection
-before writeback is not evidence of a core semantic-admission failure.
-Shell assignment prefixes are rejected before CLI identity checks, not silently
-discarded. An observed evidence item's id and declared source reference both
-identify that same evidence; arbitrary or unread sources do not qualify it.
+fails.
+
+Required-vision qualification runs a normal shell in an OS-isolated fixture,
+using `sandbox-exec` on macOS or `bubblewrap` on Linux. These are execution
+prerequisites: missing isolation fails explicitly rather than falling back to an
+unrestricted host. Shell variables, pipelines, compound commands, Python/JSON
+validation, and draft rewrites are ordinary operations, not an allowlisted
+command language. Read-only inspection may precede quota; writeback still needs
+the current quota-derived binding. The source must be observed in returned
+tool data, but no particular read command or metadata-read sequence is required.
+
+The shell may write project drafts and its private `$TMPDIR`. Original inputs,
+authority stores, host-private data and external network access are protected
+by the execution boundary. A fixture-local `loopx` command forwards expanded
+argv to the existing real CLI executor; only the task's quota, help, vision
+refresh and settlement operations have authority. The shell cannot forge run
+history or receipts by writing the store directly. Turn identity is supplied
+as normal host context, never inferred from a model's incorrect binding.
+
+Shell and real CLI failures return output and exit status for correction within
+the same call budget. Returning an error is not semantic acceptance or rollback.
+The model authors its own decision; the host does not fill semantic fields or
+change evidence. An observed source's evidence id and exact source reference
+identify the same evidence. Checkpoint, one-spend and following-Turn verification
+remain independent of shell success. Receipts disclose native-shell execution
+without persisting raw conversations. Other actors retain their existing host
+and seven-call contracts. Earlier bounded-grammar failures remain failed
+qualifications and are not evidence of core semantic rejection.
 The other turn cases remain
 bounded packet-interpretation checks. Nine core-contract scenarios cover
 onboarding, agent identity and goal selection, selected todo, peer identity
