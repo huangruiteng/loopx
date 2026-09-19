@@ -40,13 +40,6 @@ REPLAN_ACTIONS = {
     "autonomous_replan_required",
     "successor_replan_required",
 }
-REPAIR_ACTIONS = {
-    "capability_repair",
-    "projection_repair",
-    "self_repair",
-    "state_projection_repair",
-    "workspace_repair",
-}
 
 
 
@@ -97,9 +90,7 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
             return LoopXTurnRoute.CAPABILITY_ACTION_REQUIRED
         if effective_action in REPLAN_ACTIONS:
             return LoopXTurnRoute.REPLAN_REQUIRED
-        if effective_action in REPAIR_ACTIONS or effective_action.endswith(
-            ("_repair", "_repair_required")
-        ):
+        if effective_action.endswith(("_repair", "_repair_required")):
             return LoopXTurnRoute.REPAIR_REQUIRED
         return LoopXTurnRoute.READY_FOR_HOST
     if user.get("action_required") is True:
