@@ -12,7 +12,6 @@ from loopx.cli_commands.quota_request import validate_quota_command_request
 from loopx.cli_commands.todo_argument_validation import (
     validate_todo_add_options,
     validate_todo_archive_completed_options,
-    validate_todo_capture_followups_options,
     validate_todo_claim_options,
     validate_todo_complete_options,
     validate_todo_list_options,
@@ -288,8 +287,6 @@ def test_todo_list_validation_accepts_read_filters() -> None:
                 "Continue.",
                 "--decision-outcome",
                 "approve",
-                "--follow-up",
-                "Later.",
             ],
             "todo add does not accept --decision-outcome; record it on completion",
         ),
@@ -944,11 +941,6 @@ def test_todo_supersede_validation_accepts_successor_creation() -> None:
             "todo archive-completed does not support --no-follow-up",
         ),
         (
-            ["--follow-up", "Continue."],
-            "todo archive-completed does not support --follow-up; "
-            "use `todo capture-followups`",
-        ),
-        (
             ["--successor-todo-id", "todo_successor"],
             "todo archive-completed does not support --successor-todo-id",
         ),
@@ -1033,72 +1025,18 @@ def test_todo_suggest_validation_accepts_suggestion_scope_options() -> None:
     validate_todo_suggest_options(args)
 
 
-@pytest.mark.parametrize(
-    ("extra_args", "expected"),
-    [
-        (
-            ["--role", "agent"],
-            "todo capture-followups always records agent todos; do not pass --role",
-        ),
-        (
-            ["--claimed-by", "codex-example"],
-            "todo capture-followups writes unclaimed todos; do not pass --claimed-by",
-        ),
-        (
-            ["--todo-id", "todo_example", "--note", "not accepted"],
-            "todo capture-followups only accepts --goal-id, --follow-up, optional "
-            "--text shorthand, --evidence, routing metadata, --project, --state-file, "
-            "and --dry-run; unsupported: --todo-id, --note",
-        ),
-    ],
-)
-def test_todo_capture_followups_validation_preserves_exact_diagnostics(
-    extra_args: list[str],
-    expected: str,
+def test_todo_capture_followups_is_not_a_registered_command(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    args = build_parser().parse_args(
-        ["todo", "capture-followups", "--goal-id", "example-goal", *extra_args]
-    )
+    with pytest.raises(SystemExit) as exc_info:
+        build_parser().parse_args(
+            ["todo", "capture-followups", "--goal-id", "example-goal"]
+        )
 
-    with pytest.raises(ValueError) as exc_info:
-        validate_todo_capture_followups_options(args)
-
-    assert str(exc_info.value) == expected
-
-
-def test_todo_capture_followups_validation_accepts_routing_options() -> None:
-    args = build_parser().parse_args(
-        [
-            "todo",
-            "capture-followups",
-            "--goal-id",
-            "example-goal",
-            "--follow-up",
-            "Continue.",
-            "--text",
-            "Then validate.",
-            "--evidence",
-            "tests/test_cli_argument_diagnostics.py",
-            "--task-class",
-            "advancement_task",
-            "--action-kind",
-            "implement",
-            "--continuation-policy",
-            "same_agent_non_delivery",
-            "--required-write-scope",
-            "tests/**",
-            "--required-capability",
-            "shell",
-            "--target-capability",
-            "quality",
-            "--required-decision-scope",
-            "merge",
-            "--state-file",
-            "ACTIVE_GOAL_STATE.md",
-        ]
-    )
-
-    validate_todo_capture_followups_options(args)
+    assert exc_info.value.code == 2
+    diagnostic = capsys.readouterr().err
+    assert "invalid choice" in diagnostic
+    assert "capture-followups" in diagnostic
 
 
 @pytest.mark.parametrize(

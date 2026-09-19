@@ -25,7 +25,6 @@ from ..registry import registry_goals
 from ..control_plane.work_items.semantic_replan_writeback import (
     qualify_replan_writeback,
 )
-from ..todo_followups import capture_followup_todos
 from ..todo_suggestion_prompt import (
     build_todo_suggestion_prompt_packet,
     render_todo_suggestion_prompt_markdown,
@@ -48,7 +47,6 @@ from .todo_argument_validation import (
     validate_shared_todo_options,
     validate_todo_add_options,
     validate_todo_archive_completed_options,
-    validate_todo_capture_followups_options,
     validate_todo_claim_options,
     validate_todo_complete_options,
     validate_todo_list_options,
@@ -586,26 +584,6 @@ def handle_todo_command(
                 trigger=args.suggestion_trigger,
             )
             payload["dry_run"] = True
-        elif args.todo_command == "capture-followups":
-            validate_todo_capture_followups_options(args)
-            followups = list(args.followups or [])
-            if args.text:
-                followups.append(args.text)
-            payload = capture_followup_todos(
-                registry_path=registry_path,
-                runtime_root_arg=runtime_root_arg,
-                goal_id=args.goal_id,
-                followups=followups,
-                evidence=args.evidence or "",
-                task_class=args.task_class,
-                action_kind=args.action_kind,
-                required_write_scopes=args.required_write_scopes,
-                required_capabilities=args.required_capabilities,
-                target_capabilities=args.target_capabilities,
-                required_decision_scopes=args.required_decision_scopes,
-                **_todo_path_args(args),
-                dry_run=bool(args.dry_run),
-            )
         else:
             raise ValueError("unsupported todo command")
     except Exception as exc:

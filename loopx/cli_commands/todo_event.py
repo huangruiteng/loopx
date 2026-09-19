@@ -27,7 +27,6 @@ TODO_EVENT_KINDS = {
     "complete": "todo_complete",
     "supersede": "todo_supersede",
     "archive-completed": "todo_archive_completed",
-    "capture-followups": "todo_capture_followups",
 }
 
 

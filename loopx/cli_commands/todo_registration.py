@@ -42,7 +42,6 @@ def register_todo_command(
             "archive-completed",
             "suggest",
             "plan",
-            "capture-followups",
             "project-markdown",
         ],
         default=None,
@@ -51,19 +50,12 @@ def register_todo_command(
             "agent id, list to read projected todos, update/complete/supersede to transition by todo_id, or "
             "archive-completed to move older completed todos into Completed Work Archive. "
             "Use suggest to generate an agent-facing candidate todo analysis prompt without writing state. "
-            "Use plan with --text and --agent-id for the existing Goal's model planning checkpoint; the caller owns subsequent execution. "
-            "Use capture-followups to record a capped public-safe unclaimed follow-up batch."
+            "Use plan with --text and --agent-id for the existing Goal's model planning checkpoint; the caller owns subsequent execution."
         ),
     )
     todo_parser.add_argument("--goal-id", required=True, help="Goal id whose active state should receive the todo.")
     todo_parser.add_argument("--role", choices=["user", "agent"], help="Todo owner. Required for add; optional todo_id search scope for lifecycle commands. Defaults to agent for archive-completed.")
     todo_parser.add_argument("--text", help="Todo text. Required for add; keep it short and public-safe enough for local status.")
-    todo_parser.add_argument(
-        "--follow-up",
-        dest="followups",
-        action="append",
-        help="For capture-followups, append one public-safe agent follow-up todo. Repeat up to the requested batch.",
-    )
     todo_parser.add_argument("--todo-id", help="Structured todo id from status/quota, such as todo_ab12cd34ef56.")
     todo_parser.add_argument(
         "--update-operation-id",

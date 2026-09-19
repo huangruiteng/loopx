@@ -18,7 +18,6 @@ from loopx.event_sourced_state import (
     AppendOnlyStateEventStore,
     make_state_event,
 )
-from loopx.todo_followups import capture_followup_todos
 from loopx.todos import (
     add_goal_todo,
     archive_completed_todos,
@@ -277,7 +276,7 @@ def test_enabled_task_lease_facades_shadow_only_committed_mutations(
     assert "authority_shadow" not in replayed_acquire
 
 
-def test_handoff_mode_and_direct_followup_writers_refresh_the_same_shadow(
+def test_handoff_mode_and_todo_add_refresh_the_same_shadow(
     tmp_path: Path,
 ) -> None:
     registry, _state, runtime_root = _fixture(tmp_path, enabled=True)
@@ -287,21 +286,22 @@ def test_handoff_mode_and_direct_followup_writers_refresh_the_same_shadow(
         goal_id=GOAL_ID,
         mode="legacy",
     )
-    followups = capture_followup_todos(
+    added = add_goal_todo(
         registry_path=registry,
         goal_id=GOAL_ID,
-        followups=["Verify the migrated authority projection."],
-        evidence="validation://local-shadow-followup",
+        role="agent",
+        text="Verify the migrated authority projection.",
+        task_class="advancement_task",
     )
 
     assert mode["changed"] is True
     assert mode["authority_shadow"]["outcome"] == "captured"
-    assert followups["changed"] is True
-    assert followups["authority_shadow"]["outcome"] == "captured"
+    assert added["added"] is True
+    assert added["authority_shadow"]["outcome"] == "captured"
     head = _shadow_document(runtime_root)["head"]
     assert head["handoff_mode"] == "legacy"
     assert [todo["todo_id"] for todo in head["todos"]] == [
-        followups["items"][0]["todo_id"]
+        added["todo_id"]
     ]
 
 

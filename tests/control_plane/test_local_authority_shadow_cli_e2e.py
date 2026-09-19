@@ -423,19 +423,21 @@ def test_product_cli_runtime_root_override_keeps_one_candidate_lineage(
         "agent-a",
     )
     assert updated["changed"] is True
-    followups = _cli(
+    second_add = _cli(
         registry,
         override_runtime,
         "todo",
-        "capture-followups",
+        "add",
         "--goal-id",
         goal_id,
-        "--follow-up",
+        "--role",
+        "agent",
+        "--text",
         "Verify that one goal keeps one candidate lineage.",
         "--evidence",
-        "validation://one-root-followup",
+        "validation://one-root-add",
     )
-    assert followups["changed"] is True
+    assert second_add["added"] is True
     completed = _cli(
         registry,
         override_runtime,
@@ -461,7 +463,7 @@ def test_product_cli_runtime_root_override_keeps_one_candidate_lineage(
         "todo add": added,
         "task-lease acquire": lease,
         "todo update": updated,
-        "todo capture-followups": followups,
+        "todo add (second)": second_add,
         "todo complete": completed,
     }
     for label, payload in responses.items():

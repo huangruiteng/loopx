@@ -15,7 +15,7 @@ from loopx.control_plane.coordination.legacy_writer_fence import (
     legacy_todo_write_transaction,
 )
 from loopx.control_plane.todos.handoff_mode import set_goal_handoff_mode
-from loopx.todo_followups import capture_followup_todos
+from loopx.todos import add_goal_todo
 
 
 GOAL = "writer-boundary"
@@ -42,9 +42,8 @@ def fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     return registry, state, root
 
 
-@pytest.mark.parametrize("writer", ["handoff", "followups"])
-def test_omitted_writers_refuse_a_fence_before_primary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, writer: str,
+def test_handoff_writer_refuses_a_fence_before_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry, state, root = fixture(tmp_path)
     fence = legacy_coordination_writer_fence_path(runtime_root=root, goal_id=GOAL)
@@ -58,13 +57,7 @@ def test_omitted_writers_refuse_a_fence_before_primary(
     )
     before = state.read_bytes()
     with pytest.raises(LegacyCoordinationWriterFenced):
-        if writer == "handoff":
-            set_goal_handoff_mode(registry_path=registry, goal_id=GOAL, mode="soft_claim")
-        else:
-            capture_followup_todos(
-                registry_path=registry, goal_id=GOAL,
-                followups=["Review the durable boundary."], evidence="review fixture",
-            )
+        set_goal_handoff_mode(registry_path=registry, goal_id=GOAL, mode="soft_claim")
     assert state.read_bytes() == before
     assert not (root / "authority-shadow").exists()
 
@@ -213,7 +206,7 @@ def cli(registry: Path, *args: str) -> dict:
     return json.loads(result.stdout)
 
 
-def test_real_cli_handoff_and_followup_batch_have_one_receipt_each(tmp_path: Path) -> None:
+def test_real_cli_handoff_and_todo_add_have_one_receipt_each(tmp_path: Path) -> None:
     registry, state, root = fixture(tmp_path)
     value = json.loads(registry.read_text())
     value["goals"][0]["coordination"]["runtime_shadow"] = {
@@ -222,21 +215,17 @@ def test_real_cli_handoff_and_followup_batch_have_one_receipt_each(tmp_path: Pat
     registry.write_text(json.dumps(value))
     cli(registry, "coordination-shadow", "bootstrap", "--goal-id", GOAL, "--execute")
     handoff = cli(registry, "handoff-mode", "set", "--goal-id", GOAL, "--mode", "soft_claim")
-    followed = cli(registry, "todo", "capture-followups", "--goal-id", GOAL,
-        "--follow-up", "Inspect the read path.", "--follow-up", "Inspect the write path.",
+    added = cli(registry, "todo", "add", "--goal-id", GOAL, "--role", "agent",
+        "--text", "Inspect the read path.", "--task-class", "advancement_task",
         "--evidence", "review fixture")
     assert handoff["coordination_runtime_shadow"]["outcome"] == "delivered", handoff
-    assert followed["coordination_runtime_shadow"]["outcome"] == "delivered", followed
-    assert followed["recorded_count"] == 2
+    assert added["coordination_runtime_shadow"]["outcome"] == "delivered", added
+    assert added["added"] is True
     digest = hashlib.sha256(GOAL.encode()).hexdigest()[:16]
     candidate = json.loads((root / "authority-shadow" / "file-v0" / f"authority-store-{digest}.json").read_text())
     assert candidate["cursor"] == "3", "bootstrap plus two primary writes must not get CLI mirror receipts"
     assert len(candidate["committed"]) == 3
     assert "Inspect the read path." in state.read_text()
-    noop = cli(registry, "todo", "capture-followups", "--goal-id", GOAL,
-        "--follow-up", "Inspect the read path.", "--evidence", "review fixture")
-    assert noop["changed"] is False
-    assert json.loads((root / "authority-shadow" / "file-v0" / f"authority-store-{digest}.json").read_text())["cursor"] == "3"
 
 
 @pytest.mark.parametrize("phase", ["before", "after"])
@@ -313,7 +302,7 @@ raise SystemExit(main())
                 assert time.monotonic() < deadline, "engagement did not acquire the Todo lock"
                 time.sleep(0.01)
             child = subprocess.Popen([sys.executable, "-c", code, "--registry", str(registry), "--format", "json",
-                "todo", "capture-followups", "--goal-id", GOAL, "--follow-up", "Must be fenced.",
+                "todo", "add", "--goal-id", GOAL, "--role", "agent", "--text", "Must be fenced.",
                 "--evidence", "race fixture"], cwd=REPO,
                 text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             children.append(child)
@@ -359,8 +348,8 @@ raise SystemExit(main(sys.argv[1:]))
     try:
         writer = subprocess.Popen([sys.executable, "-c", writer_code, "--registry", str(registry),
             "--runtime-root", str(tmp_path / "override" if override_root else root),
-            "--format", "json", "todo", "capture-followups", "--goal-id", GOAL,
-            "--follow-up", "Primary won the lock.", "--evidence", "ordering fixture"],
+            "--format", "json", "todo", "add", "--goal-id", GOAL, "--role", "agent",
+            "--text", "Primary won the lock.", "--evidence", "ordering fixture"],
             cwd=REPO, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         children.append(writer)
         assert writer.stdout is not None
@@ -381,7 +370,7 @@ raise SystemExit(main(sys.argv[1:]))
         assert engager.poll() is None
         output, error = writer.communicate("continue\n", timeout=30)
         assert writer.returncode == 0, output + error
-        assert json.loads(output)["recorded_count"] == 1
+        assert json.loads(output)["added"] is True
         output, error = engager.communicate(timeout=30)
         assert json.loads(output)["status"] == "applied", output + error
         assert "Primary won the lock." in state.read_text()
@@ -408,8 +397,10 @@ def test_failed_primary_replace_never_marks_shadow_committed(tmp_path: Path, mon
         original(source, target)
     monkeypatch.setattr(active_state_editing.os, "replace", fail_primary)
     with pytest.raises(OSError, match="primary replace refused"):
-        capture_followup_todos(registry_path=registry, goal_id=GOAL,
-            followups=["Must stay prepared."], evidence="replace failure")
+        add_goal_todo(
+            registry_path=registry, goal_id=GOAL, role="agent",
+            text="Must stay prepared.",
+        )
     assert state.read_bytes() == before
     directory = root / "authority-shadow" / "outbox" / GOAL / "todos"
     assert len(list(directory.glob("*.prepared.json"))) == 1
@@ -454,13 +445,17 @@ def test_override_root_is_the_only_maintenance_authority(tmp_path: Path) -> None
     management.parent.mkdir(parents=True)
     management.write_text("{}")
     with pytest.raises(ShadowManagementError):
-        capture_followup_todos(registry_path=registry, goal_id=GOAL,
-            runtime_root_arg=str(override), followups=["Hold override."], evidence="root fixture")
+        add_goal_todo(
+            registry_path=registry, goal_id=GOAL, runtime_root_arg=str(override),
+            role="agent", text="Hold override.",
+        )
     assert "Hold override." not in state.read_text()
     assert not (root / "authority-transition").exists()
-    result = capture_followup_todos(registry_path=registry, goal_id=GOAL,
-        followups=["Default root remains writable."], evidence="root fixture")
-    assert result["recorded_count"] == 1
+    result = add_goal_todo(
+        registry_path=registry, goal_id=GOAL, role="agent",
+        text="Default root remains writable.",
+    )
+    assert result["added"] is True
 
 
 @pytest.mark.parametrize("writer", ["todo", "prose"])
@@ -475,8 +470,10 @@ def test_override_root_cannot_bypass_registry_source_maintenance(tmp_path: Path,
     before = state.read_bytes()
     with pytest.raises(ShadowManagementError):
         if writer == "todo":
-            capture_followup_todos(registry_path=registry, goal_id=GOAL,
-                runtime_root_arg=str(override), followups=["Cannot bypass source maintenance."], evidence="root fixture")
+            add_goal_todo(
+                registry_path=registry, goal_id=GOAL, runtime_root_arg=str(override),
+                role="agent", text="Cannot bypass source maintenance.",
+            )
         else:
             refresh_state_run(registry_path=registry, runtime_root_override=str(override), goal_id=GOAL,
                 project=None, state_file=None, classification="continue", recommended_action="Continue inspection.",
@@ -532,7 +529,7 @@ raise SystemExit(main())
 """
     child = subprocess.Popen([sys.executable, "-c", code, str(state), str(waiting), str(proceed),
         "--registry", str(registry), "--runtime-root", str(tmp_path / "override"), "--format", "json",
-        "todo", "capture-followups", "--goal-id", GOAL, "--follow-up", "Must observe the new source binding.",
+        "todo", "add", "--goal-id", GOAL, "--role", "agent", "--text", "Must observe the new source binding.",
         "--evidence", "cross-root race"], cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         deadline = time.monotonic() + 10
@@ -638,23 +635,7 @@ def test_active_capture_prepare_failure_holds_primary_before_any_transition(tmp_
     assert list(directory.glob("*.committed.json")) == []
 
 
-def test_public_preview_does_not_require_primary_write_permission(tmp_path: Path) -> None:
-    from loopx.control_plane.coordination.shadow_management import shadow_management_state_path
-    registry, state, root = fixture(tmp_path)
-    before = state.read_bytes()
-    management = shadow_management_state_path(root, GOAL)
-    management.parent.mkdir(parents=True)
-    management.write_text("{}")
-    fence = legacy_coordination_writer_fence_path(runtime_root=root, goal_id=GOAL)
-    fence.write_text("{invalid")
-    preview = cli(registry, "todo", "capture-followups", "--goal-id", GOAL,
-        "--follow-up", "Preview remains read-only.", "--evidence", "preview fixture", "--dry-run")
-    assert preview["dry_run"] is True
-    assert state.read_bytes() == before
-    assert not (root / "authority-shadow").exists()
-
-
-@pytest.mark.parametrize("operation", ["add", "update", "complete", "supersede", "archive", "followups"])
+@pytest.mark.parametrize("operation", ["add", "update", "complete", "supersede", "archive"])
 def test_all_todo_transaction_owners_enforce_active_preparation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str,
 ) -> None:
@@ -694,10 +675,8 @@ def test_all_todo_transaction_owners_enforce_active_preparation(
         elif operation == "supersede":
             todos.supersede_goal_todo(**identity, todo_id=seed["todo_id"], reason="Replace the approach.",
                 next_agent_todo="Use a better check.", next_task_class="advancement_task", agent_id="agent-a")
-        elif operation == "archive":
-            todos.archive_completed_todos(**identity, max_active_done=0, dry_run=False)
         else:
-            capture_followup_todos(**identity, followups=["Capture another owner."], evidence="Boundary fixture.")
+            todos.archive_completed_todos(**identity, max_active_done=0, dry_run=False)
     assert held.value.reason_code == "shadow_capture_prepare_failed"
     assert state.read_bytes() == before
 

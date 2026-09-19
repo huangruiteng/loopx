@@ -261,13 +261,9 @@ def _writer_sequence_supersede_and_hygiene(sequence: _WriterSequence) -> str:
         flag="superseded",
     )
     sequence.commit(
-        "todo capture-followups",
-        sequence.cli(
-            "todo", "capture-followups",
-            "--follow-up", "Verify the migrated authority projection.",
-            "--evidence", "validation://ladder-followup",
-        ),
-        flag="changed",
+        "todo add (verification)",
+        add_todo(sequence.workspace, "Verify the migrated authority projection."),
+        flag="added",
     )
     sequence.commit(
         "todo archive-completed",
@@ -434,11 +430,7 @@ def row_dual_runtime_root_consistency(context: RowContext) -> RowOutcome:
         workspace, "todo", "update", "--goal-id", workspace.goal_id, "--todo-id", todo_id,
         "--note", "Observed under the override root.", "--agent-id", AGENT_A,
     )
-    followups = run_cli(
-        workspace, "todo", "capture-followups", "--goal-id", workspace.goal_id,
-        "--follow-up", "Keep one candidate lineage per goal.",
-        "--evidence", "validation://ladder-one-root",
-    )
+    second_add = add_todo(workspace, "Keep one candidate lineage per goal.")
     completed = run_cli(
         workspace, "todo", "complete", "--goal-id", workspace.goal_id, "--todo-id", todo_id,
         "--agent-id", AGENT_A, "--task-lease-idempotency-key", "ladder-one-root-lease",
@@ -451,7 +443,7 @@ def row_dual_runtime_root_consistency(context: RowContext) -> RowOutcome:
             ("todo add", added),
             ("task-lease acquire", acquired),
             ("todo update", updated),
-            ("todo capture-followups", followups),
+            ("todo add (second)", second_add),
             ("todo complete", completed),
         )
     ]
@@ -462,7 +454,7 @@ def row_dual_runtime_root_consistency(context: RowContext) -> RowOutcome:
     expect(document.cursor == str(len(observations)), "candidate cursor must equal the observation count")
     expect(
         todo_id in document.todo_ids and len(document.todo_ids) == 2,
-        "head must hold the completed todo and its captured follow-up",
+        "head must hold the completed todo and the second added todo",
     )
     expect(
         [lease.get("todo_id") for lease in document.leases] == [todo_id]

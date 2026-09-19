@@ -120,17 +120,8 @@ def test_todo_argument_intent_and_rejections(caller: Caller) -> None:
     assert 'Corrected operator intent' in w.state.read_text()
 
 
-def test_handoff_followup_preview_batch_and_quiescence(caller: Caller) -> None:
+def test_handoff_mode_quiescence(caller: Caller) -> None:
     w = caller
-    args = ('todo', 'capture-followups', '--follow-up', 'First bounded followup',
-            '--follow-up', 'Second bounded followup', '--evidence', 'validation://followups')
-    before = w.primary()
-    assert w.call(*args, '--dry-run')['recorded_count'] == 2
-    assert w.primary() == before
-    assert w.call(*args)['recorded_count'] == 2
-    before = w.primary()
-    assert w.call(*args)['recorded_count'] == 0
-    assert w.primary() == before
     assert w.call('handoff-mode', 'set', '--mode', 'hard_lease')['changed'] is True
     before = w.primary()
     assert w.call('handoff-mode', 'set', '--mode', 'hard_lease')['changed'] is False

@@ -113,10 +113,10 @@ def test_other_goal_cannot_write_a_protected_goal_source_via_state_override(tmp_
                               "coordination": {"registered_agents": ["agent-a"]}})
     ws.registry.write_text(json.dumps(registry))
     # Preserve the existing opt-out contract before any source authority exists.
-    legacy = public(ws, "todo", "capture-followups", "--state-file", str(ws.state),
-                    "--follow-up", "An unbound shared-state write remains supported.",
+    legacy = public(ws, "todo", "add", "--state-file", str(ws.state), "--role", "agent",
+                    "--text", "An unbound shared-state write remains supported.",
                     "--evidence", "Legacy compatibility control.", goal="goal-other")
-    assert legacy["ok"] is True and legacy["recorded_count"] == 1, legacy
+    assert legacy["ok"] is True and legacy["added"] is True, legacy
     if authority == "active_capture":
         # A registered source stays protected even without a frontmatter owner.
         ws.state.write_text(ws.state.read_text().replace(f"goal_id: {ws.goal}\n", ""))
@@ -125,8 +125,8 @@ def test_other_goal_cannot_write_a_protected_goal_source_via_state_override(tmp_
         result = subprocess.run(fence_command(ws), cwd=REPO, capture_output=True, text=True, check=True, timeout=20)
         assert json.loads(result.stdout)["status"] == "applied"
     before = ws.state.read_bytes(), other_state.read_bytes()
-    result = public(ws, "todo", "capture-followups", "--state-file", str(ws.state),
-                    "--follow-up", "Must not bypass another goal's source authority.",
+    result = public(ws, "todo", "add", "--state-file", str(ws.state), "--role", "agent",
+                    "--text", "Must not bypass another goal's source authority.",
                     "--evidence", "Cross-goal source boundary.", goal="goal-other")
     assert not result.get("ok"), json.dumps(result, indent=2)
     expected = "shadow_source_goal_mismatch" if authority == "active_capture" else "legacy_coordination_writer_fenced"
@@ -134,8 +134,8 @@ def test_other_goal_cannot_write_a_protected_goal_source_via_state_override(tmp_
     assert (ws.state.read_bytes(), other_state.read_bytes()) == before
     assert not (ws.runtime / "authority-shadow" / "outbox" / "goal-other").exists()
     if authority == "active_capture":
-        unknown = public(ws, "todo", "capture-followups", "--state-file", str(ws.state),
-                         "--follow-up", "An unregistered goal cannot bypass source ownership.",
+        unknown = public(ws, "todo", "add", "--state-file", str(ws.state), "--role", "agent",
+                         "--text", "An unregistered goal cannot bypass source ownership.",
                          "--evidence", "Unregistered goal control.", goal="unregistered-goal")
         assert not unknown.get("ok"), unknown
         assert (ws.state.read_bytes(), other_state.read_bytes()) == before
@@ -292,8 +292,11 @@ def test_native_fence_waits_for_public_prose_and_then_blocks_todo_writes(tmp_pat
         assert finish(prose, resume=True)["ok"] is True
         assert finish(fence)["status"] == "applied"
         before = ws.state.read_bytes()
-        result = public(ws, "todo", "capture-followups", "--follow-up", "Must now be fenced.", "--evidence", "Boundary check.")
-        assert result["error_code"] == "legacy_coordination_writer_fenced", result
+        result = public(
+            ws, "todo", "add", "--role", "agent", "--text", "Must now be fenced.",
+            "--evidence", "Boundary check.",
+        )
+        assert result["error_code"] == "local_authority_todo_list_unavailable", result
         assert ws.state.read_bytes() == before
         assert "Prose committed before the fence." in ws.state.read_text()
         assert len(index.read_text().splitlines()) == 2

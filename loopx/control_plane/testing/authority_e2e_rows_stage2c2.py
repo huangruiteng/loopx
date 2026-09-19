@@ -72,7 +72,6 @@ PARITY_REQUIRED_WRITE_CLASSES: tuple[str, ...] = (
     "todo_update",
     "todo_complete",
     "todo_supersede",
-    "todo_capture_followups",
     "task_lease_acquire",
     "task_lease_renew",
     "task_lease_transfer",
@@ -795,13 +794,9 @@ def _mixed_writer_cycle(ledger: _MixedWriterLedger, cycle: int) -> None:
         flag="superseded",
     )
     ledger.mutate(
-        "todo capture-followups",
-        ledger.cli(
-            "todo", "capture-followups",
-            "--follow-up", f"Cycle {cycle}: verify the captured projection.",
-            "--evidence", "validation://ladder-parity-followup",
-        ),
-        flag="changed",
+        "todo add (verification)",
+        add_todo(workspace, f"Cycle {cycle}: verify the captured projection."),
+        flag="added",
     )
 
 

@@ -209,14 +209,16 @@ def test_snapshot_changed_between_python_builder_and_native_inspection_is_reject
     assert result["reason_code"] == "source_changed_retry"
 
 
-def test_public_handoff_followups_and_monitor_successor_capture_each_primary_mutation(tmp_path: Path) -> None:
+def test_public_handoff_todo_and_monitor_successor_capture_each_primary_mutation(tmp_path: Path) -> None:
     registry, runtime, _state = workspace(tmp_path)
     enable(registry)
     cli(registry, runtime, "coordination-shadow", "bootstrap", "--goal-id", "goal-a", "--execute")
     cli(registry, runtime, "handoff-mode", "set", "--goal-id", "goal-a", "--mode", "soft_claim")
     assert len(history(tmp_path, runtime)) == 2
-    cli(registry, runtime, "todo", "capture-followups", "--goal-id", "goal-a",
-        "--follow-up", "First retained followup", "--follow-up", "Second retained followup", "--evidence", "validation://followups")
+    cli(
+        registry, runtime, "todo", "add", "--goal-id", "goal-a", "--role", "agent",
+        "--text", "Validate the retained projection", "--evidence", "validation://todo-add",
+    )
     assert len(history(tmp_path, runtime)) == 3
     monitor = cli(registry, runtime, "todo", "add", "--goal-id", "goal-a", "--role", "agent",
         "--text", "Observe the public release", "--task-class", "continuous_monitor", "--action-kind", "monitor",
@@ -231,11 +233,11 @@ def test_public_handoff_followups_and_monitor_successor_capture_each_primary_mut
         "--next-continuation-policy", "same_agent_non_delivery", "--next-claimed-by", "agent-a", "--execute")
     assert len(result["successor_todo_ids"]) == 1
     transactions = history(tmp_path, runtime)
-    assert len(transactions) == 6  # Baseline, handoff, followup batch, monitor add, observation update, successor add.
+    assert len(transactions) == 6  # Baseline, handoff, todo add, monitor add, observation update, successor add.
     receipts = [transaction["receipts"][0] for transaction in transactions[1:]]
     assert len({receipt["entry_id"] for receipt in receipts}) == 5
     assert [receipt["seq"] for receipt in receipts] == [1, 2, 3, 4, 5]
-    assert {receipt["write_class"] for receipt in receipts} >= {"handoff_mode_set", "todo_capture_followups", "todo_add", "todo_update"}
+    assert {receipt["write_class"] for receipt in receipts} >= {"handoff_mode_set", "todo_add", "todo_update"}
     qualified = cli(registry, runtime, "coordination-shadow", "qualify", "--goal-id", "goal-a", "--minimum-operations", "5")
     assert qualified["qualification"]["qualified"] is True
     assert qualified["qualification"]["evidence"]["operation_count"] == 5
