@@ -122,12 +122,10 @@ function ManagerHomeBoard({
   ] as const;
   const active = Object.fromEntries(activeHomeLanes.map((lane) => [lane.key, [] as WorkspaceGoal[]])) as Record<(typeof activeHomeLanes)[number]["key"], WorkspaceGoal[]>;
   const history: WorkspaceGoal[] = [];
-  const stopped: WorkspaceGoal[] = [];
   goals.filter((goal) => !goal.loadState).forEach((goal) => {
     const lane = workspaceHomeLaneForGoal(goal);
     if (lane === "history") history.push(goal);
-    else if (lane === "stopped") stopped.push(goal);
-    else active[lane].push(goal);
+    else if (lane !== "stopped") active[lane].push(goal);
   });
   const goalCard = (goal: WorkspaceGoal) => (
     <button className="personal-home-goal-card" data-goal-state={goal.loadState ?? goal.state} data-load-error={goal.loadError} key={goal.goalId} onClick={() => onSelectGoal(goal.goalId)} type="button">
@@ -177,12 +175,6 @@ function ManagerHomeBoard({
         <summary><span>{t("home.history")}</span><b>{history.length}</b><small>{t("home.completedGoals")}</small></summary>
         <div>{history.map(goalCard)}</div>
       </details> : null}
-      {stopped.length ? (
-        <details className="personal-home-history is-stopped">
-          <summary><span>{t("home.stopped")}</span><b>{stopped.length}</b><small>{t("home.preservedState")}</small></summary>
-          <div>{stopped.map(goalCard)}</div>
-        </details>
-      ) : null}
     </section>
   );
 }

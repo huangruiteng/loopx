@@ -90,6 +90,7 @@ export const navigationSortingScenario = {
       await page.screenshot({ path: resolve(outputDir, 'goal-reorder-default.png'), fullPage: false, animations: 'disabled' });
       if (!(await stoppedDirectory.isVisible()) || await stoppedDirectory.getAttribute("open") !== null) throw new Error("Stopped Goals are not available in a collapsed directory section");
       await page.waitForFunction(() => document.querySelectorAll(".personal-stopped-goals .personal-goal-row").length === 2, null, { timeout: 3_000 });
+      if (await page.locator(".personal-home-board").getByText("已停止", { exact: true }).count()) throw new Error("Stopped Goals still occupy the home board after archive load");
       await stoppedDirectory.locator("summary").click();
       await page.locator(".personal-goal-link").filter({ hasText: "Legacy Benchmark" }).click();
       await page.waitForFunction(() => new URL(window.location.href).searchParams.get("goalId") === "legacy-benchmark");
@@ -121,7 +122,7 @@ export const navigationSortingScenario = {
         throw new Error(`Settings entry still renders as a weak transparent footer row: ${JSON.stringify(settingsEntryVisual)}`);
       }
       await page.screenshot({ path: resolve(outputDir, "desktop-first-screen.png"), fullPage: false, animations: "disabled" });
-      pass(4, "First viewport exposes populated Goal lanes; empty scheduled/history sections do not compete with active work.");
+      pass(4, "First viewport exposes populated Goal lanes; stopped Goals remain in the sidebar and empty scheduled/history sections do not compete with active work.");
       pass(15, "Desktop viewport matches the approved single-sidebar/channel/drawer composition.");
       await page.locator(".personal-goal-link").filter({ hasText: "LoopX meta" }).click();
       await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "概览", exact: true }).click();
