@@ -145,8 +145,15 @@ runtime.
 This consumption also applies when the target todo is already `open`, such as
 publication performed immediately after approval. A completed `user_action`
 may still use the exact unblock relation for compatibility, but it does not
-consume decision authority. `todo supersede` records replacement or rejection;
+consume decision authority. `todo supersede` records replacement;
 it never implies approval and therefore never consumes a required scope.
+
+Completion consumes requirements only on active, nonterminal Agent targets.
+A blocked target resumes only when no active linked User Todo, unresolved
+requirement or recorded negative outcome remains; explicit blockers still need
+repair. Completed/deferred/archived targets are unchanged. File, SQLite and the
+service-owned PostgreSQL transaction commit these effects with the source
+completion. See [linked effects and historical recovery](../canonical-todo-completion-update.md#linked-user-completion-effects).
 
 ## Standing Approval Receipts
 

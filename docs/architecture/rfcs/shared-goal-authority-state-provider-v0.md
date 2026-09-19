@@ -3069,13 +3069,12 @@ tenant, restore and capacity qualification; its deployment must not delay the
 local profile's work.
 
 The reconciled baseline includes #4286 (command receipts/archive), #4289
-(typed work/ownership intent), #4292 (declarative decision metadata), and #4304
-(canonical handoff mode). Candidate #4316 closes Goal Channel observation;
-#4317 unifies provider opening; #4348 adds canonical renew; #4328 is the first
-SQLite D2 measurement/recovery batch. They are review candidates, not merged
-prerequisites or proof of the full cards. #4334 is the independent PostgreSQL
-service-admission candidate. Re-read actual heads before composing work; do
-not carry their already-merged ancestors as new changes.
+(typed work/ownership intent), #4292 (decision metadata), #4304 (handoff mode),
+#4316 (Goal Channel observation), #4317 (provider opening), #4348 (renew),
+#4328 (first SQLite D2 batch) and #4334 (PostgreSQL service admission): all are
+merged at the 2026-09-20 checkpoint. Their existence does not qualify the full
+cards. #4732 remains the open Monitor observation/reactivation slice; #4224
+retains contributor ownership of SQLite D2. Re-read actual heads before work.
 
 The identifiers below are **planned PR packages**, not reserved GitHub numbers.
 A package may split at a real effect/compatibility boundary; changing languages
@@ -3084,7 +3083,7 @@ or moving a helper is not by itself a package exit.
 | Wave / package | Reviewable delivery and TS ownership payoff | Dependencies and exit evidence |
 | --- | --- | --- |
 | A / L1: Monitor configuration (this slice) | Existing `todo update` config enters the TS planner/CAS/receipt; delete Python's duplicate intent field catalog. Separate authoring from observed hashes, times and generations. | Ordinary CLI/API, clear/omission, active lease proof, no-op/replay, failed display delivery, complete fixture and real providers. This does not complete delegated Chat or leased polling. |
-| A / L2: Complete public mutation admission | User completion updates now share the TS edit/terminal transaction and reviewed Chat recovery. Continue the actual CLI/Turn/Chat inventory for remaining effect-owned decisions, delegated owner actions and Monitor lifecycle transitions; [caller contract](../../reference/canonical-todo-completion-update.md). | Build on merged T1 owners, not a generic raw patch. Prove permission rejection and exact caller response; remove replaced Python admission and name every remaining unsupported command. |
+| A / L2: Complete public mutation admission | User completion updates share the TS edit/terminal transaction and reviewed Chat recovery; linked decision consumption/reject/cancel/resume now commit with the source, replacing Python followthrough rules. Continue the actual CLI/Turn/Chat inventory for remaining effect-owned decisions, delegated owner actions and Monitor lifecycle transitions; [caller contract](../../reference/canonical-todo-completion-update.md). | Build on merged T1 owners, not a generic raw patch. Prove permission rejection and exact caller response; remove replaced Python admission and name every remaining unsupported command. |
 | A / L3: Canonical lease lifecycle | Standalone acquire/takeover, atomic claim lease admission and maintenance reuse TS facts/decision/materialization and one provider opening fence. Explicit claimed-work transfer now commits source-authorized Todo ownership and the new lease generation together; canonical request types exclude legacy held-fence fields. Acquire success verifies current execution proof; canonical completion can recover missing display. | Full-head scope conflict, archived/ineffective holders, exact create-CAS retry, stale execution, process loss and real CLI/four-arm rehearsal are covered. [Operation and remaining callers](../../reference/canonical-lease-renew.md). Executor-held external-effect fences remain explicit work; D1–D3/default holds remain. |
 | B / L4: Leased Monitor poll and settlement | Current execution proof now binds CLI intent, observation/generation/independent-successor CAS and historical business receipt. Quota pending admission is frozen before the business write; recovery preserves that decision after lease retirement. | Existing L3 lease lifecycle, real File/SQLite/PostgreSQL, mixed fixtures, process death between business/quota commits, competing renewal and unchanged polling. [Operation and snapshot rehearsal](../../reference/protocols/quota-monitor-observation-receipt-v0.md). No lease lifecycle effects or quota spend; separate authorities stay separate. Event callers, wider L2 admission and D1–D3/default remain open. |
 | B / L5: Consumer and display closure | Reconcile #4316, audit Turn/quota/Dashboard/Chat source reads, and finish D1 freshness/recovery through the existing projection outbox. | CLI, Lark/Chat and packaged frontend read back their affected interactions; absent/stale display, empty canonical state, pending projection and data beyond UI limits. Delete post-promotion legacy fallbacks with each consumer. |
@@ -3096,9 +3095,31 @@ or moving a helper is not by itself a package exit.
 **Cadence is evidence-based.** First reconcile the active stack, then deliver A
 packages as complete operations while L6/L7 progress independently. B integrates
 those contracts into complete user flows; C has one reproducible qualification
-checkpoint; D changes the default in its own reviewable PR. This is roughly
-nine cohesive packages at this checkpoint, not a line-count target or a promise
-of nine merges. Avoid concurrent edits to the same transaction owner; share
+checkpoint; D changes the default in its own reviewable PR. After the linked
+User completion slice, the 2026-09-20 planning estimate is **6–9 further cohesive
+PRs**, conditional on the caller audit finding no additional missing effects:
+
+| Remaining work package | Estimated PRs | Exit |
+| --- | --- | --- |
+| Monitor observation/reactivation | 1, existing #4732 | Real caller and complete graph acceptance; avoid a duplicate implementation. |
+| Remaining L2/L3 caller and executor-effect fences | 1–2 | Actual CLI/Turn/Chat command inventory and external-effect boundary closure. |
+| L5 / D1 consumer and projection closure | 1 | Full consumer parity, lag/recovery and packaged client readback. |
+| L6 / SQLite D2 | 1–2, contributor-owned #4224 | Capacity, crash/restore and separately authorized elapsed-soak evidence on one profile. |
+| L7 capture plus L8 integrated migration | 1–2 | Mixed-writer continuity, fenced whole-Goal rehearsal, export/rollback and cohort evidence. |
+| L9 default and bounded retirement | 1 | New-Goal onboarding/settings/install choose the qualified profile; remove final obsolete callers. |
+
+This counts delivery boundaries, not guaranteed merges or all Python deletion.
+Scope may split only where a real effect/compatibility boundary warrants it.
+Small Python business-rule deletions can ship with each TS owner; rendering,
+private command execution and import/export keep their active adapters.
+
+截至 2026-09-20，关联 User 完成链路补齐后，按以上六类完整交付边界估算还需 **6–9 个 PR**。
+Monitor 复用 #4732，SQLite D2 仍归 #4224 contributor；其余顺序是调用方/执行围栏、
+消费与投影、capture 与整 Goal 演练，最后独立切换默认值。该估算以未发现更多缺失
+effect 为前提，不是合并数承诺，也不要求先删完 Python。TS owner 每收敛一块即可
+删除对应旧规则；仍有真实调用方的渲染、私有命令执行和导入导出适配器继续保留。
+
+Avoid concurrent edits to the same transaction owner; share
 fixture/contracts early and rebase after the owner lands.
 
 There is no defensible calendar completion date before the L2/L3 command

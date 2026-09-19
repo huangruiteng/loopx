@@ -45,6 +45,58 @@ Markdown is a display projection and is not required to admit a completion.
 Private validation declarations remain in their private store; they are neither
 imported from an untrusted display nor embedded in public completion receipts.
 
+## Linked User completion effects
+
+An admitted `todo complete --decision-outcome approve|reject|cancel` now commits
+its exact linked Agent Todo effects in the **same** provider transaction as the
+User completion and receipt. Ordinary User actions completed through update or
+Chat use the same rule. `todos/user_completion.ts` owns this decision for both
+canonical providers and the legacy Markdown adapter; Python retains locked
+snapshot extraction and writeback, not a second scope/resume implementation.
+
+| Decision / current target | Effect |
+| --- | --- |
+| Approve a linked gate | Consume only covered required scopes and their recorded negative outcomes; preserve independent requirements. |
+| Reject or cancel a linked gate | Keep requirements, replace the latest outcome for that exact scope, preserve independent outcomes, and block the active target. |
+| Complete a linked User action | Attempt resume without consuming decision authority. |
+| Another active linked User Todo, remaining requirement or negative outcome | Keep the blocked target blocked. |
+| Explicit blocker task | Require explicit blocker repair. |
+| Completed, deferred or archived target | Do not change or reactivate it. |
+
+Approval can consume a requirement on an already open target. Resume preserves
+its claim; it does not acquire or transfer the **Agent target's** lease. The
+existing exact-gate auto-acquire/release contract still applies to the completing
+User gate itself. Supersede never runs approval effects. An unrelated Todo or
+unlinked standing approval is outside this exact-target mutation.
+
+This fixes canonical completion previously leaving an approved target stranded.
+It also intentionally tightens **both** legacy and canonical behavior: partial
+approval cannot resume work with unmet requirements, and late rejection cannot
+revive terminal/deferred work. Normal completion without a linked target is
+unchanged. No provider selector or capability default changes.
+
+`unblock_resume` and `decision_scope_resolution` are historical business results,
+not fresh permission. Existing receipt identities remain valid. Replaying a
+pre-fix receipt does not retrofit missing effects; an already completed gate is
+not a new owner decision. Reconcile such an inconsistent target against the
+recorded decision through an explicit reviewed repair. Never reopen a gate just
+to obtain another approval, or change an operation id to reinterpret old intent.
+
+Concurrency rejection writes neither the User completion nor its dependent
+effects. After a lost response, recover the same receipt; after display loss,
+rebuild from the current canonical head. The packaged Chat HTTP tests cover
+linked User-action completion, failed validation, readback and proposal retry.
+The existing decision-gate UI directs explicit decisions to the CLI, so no new
+frontend control or Lark permission surface is introduced.
+
+关联 User 完成与目标 Agent Todo 的决策消解、阻塞状态、原操作回执在同一事务内提交。
+旧 Markdown 路径也调用同一个 TS 规则；Python 仅保留锁内快照适配与写回。批准只消解
+覆盖的要求，拒绝/取消保留要求并记录结果；普通 User action 不消费授权。其他关联
+User Todo、剩余要求或拒绝结果仍会阻止恢复；已完成、延期、归档任务不会被晚到决定
+重新激活。上述两项安全修复同时影响旧路径和 canonical 路径，其他默认值不变。
+重放返回历史回执，不补做旧版本遗漏的联动，也不产生新的授权；历史不一致须根据
+原决定显式核对修复。目标任务的执行租约与用户批准仍是不同合同。
+
 ## Recovery and callers
 
 - Historical replay precedes current source admission and returns the original
