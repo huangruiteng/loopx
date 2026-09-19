@@ -806,8 +806,10 @@ with root/refresh-state CLI help, and JSON authoring uses `apply_patch` or a quo
 heredoc, optionally followed by bound CLI closeout. The shared read parser admits
 the entire plan before execution. Ordinary nonzero reads return an exit code and
 bounded output to the model; recovery consumes the same call budget and a failed
-read supplies no evidence. Unsupported programs, outside-fixture writes and
-invalid semantic/binding claims remain rejected. The host does not add missing
+read supplies no evidence. Unadmitted commands likewise return a no-execution
+error instead of ending the conversation; their grammar limits are not raised.
+Unsupported programs never execute, and detected outside-fixture authoring and
+invalid semantic/binding claims still fail qualification. The host does not add missing
 semantic fields or execute arbitrary model shell programs. These host semantics
 are explicit for required-vision qualification; other actors retain their current
 contracts. Receipts distinguish tool execution errors, accepted writeback and
