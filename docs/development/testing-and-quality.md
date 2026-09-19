@@ -800,12 +800,20 @@ and qualification scope; a successful ordinary `typed_progress_repeat` refresh
 cannot qualify this journey. The narrow semantic-action gate remains useful
 but does not prove full closeout. Run this focused journey with
 `uv run --extra test python scripts/qualify-doubao-replan-semantic-action-live.py --required-vision --qualification-id <public-safe-run-id>`.
-Its seven-call bound is unchanged. The hermetic host supports bounded reads,
-real LoopX CLI calls and confined JSON authoring (`apply_patch` or a quoted
-heredoc, optionally followed by bound CLI closeout); it does not
-execute arbitrary model shell programs or add missing semantic fields.
-Receipts distinguish accepted writeback from settled closeout, retain bounded
-failure-stage codes, and never persist raw model conversations. The other turn cases remain
+Its seven-call bound is unchanged. The tool description declares the actual
+bounded host grammar, not unrestricted shell access: workspace reads may compose
+with root/refresh-state CLI help, and JSON authoring uses `apply_patch` or a quoted
+heredoc, optionally followed by bound CLI closeout. The shared read parser admits
+the entire plan before execution. Ordinary nonzero reads return an exit code and
+bounded output to the model; recovery consumes the same call budget and a failed
+read supplies no evidence. Unsupported programs, outside-fixture writes and
+invalid semantic/binding claims remain rejected. The host does not add missing
+semantic fields or execute arbitrary model shell programs. These host semantics
+are explicit for required-vision qualification; other actors retain their current
+contracts. Receipts distinguish tool execution errors, accepted writeback and
+settled closeout without persisting raw conversations. A host grammar rejection
+before writeback is not evidence of a core semantic-admission failure.
+The other turn cases remain
 bounded packet-interpretation checks. Nine core-contract scenarios cover
 onboarding, agent identity and goal selection, selected todo, peer identity
 routing, same-agent continuation, final human gate, healthy continuation, and
