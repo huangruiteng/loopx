@@ -516,6 +516,8 @@ class ChatLoopXMode:
             action = arguments.get("action")
             if action != "operations" and ("limit" in arguments or "cursor" in arguments):
                 raise ValueError("pagination is only valid for operations")
+            if action == "operations" and set(arguments) - {"action", "limit", "cursor"}:
+                raise ValueError("operations reads a page; use read to select an operation")
             operation_id = arguments.get("operation_id", "")
             if action == "messages":
                 rows = [

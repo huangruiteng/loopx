@@ -248,6 +248,8 @@ def test_pause_fences_dispatch_and_does_not_cancel_members(mode, monkeypatch):
         inventory = adapter.session.read_tool_handler(TOOL["name"], {"action": "operations"})
         assert inventory["ok"] and inventory["items"] == []
         assert inventory["page_readback_complete"] and not inventory["has_more"]
+        invalid = adapter.session.read_tool_handler(TOOL["name"], {"action": "operations", "operation_id": "one"})
+        assert invalid["error"] == "collaboration_request_rejected"
 
         # Pause persists before attempting potentially slow provider interruption.
         def interrupt(**_):
