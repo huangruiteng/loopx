@@ -241,6 +241,7 @@ def test_native_cli_is_read_only_and_does_not_claim_native_receipts(tmp_path, ph
     assert payload["read_only"] is True
     assert payload["agent_context"]["phase"] == phase
     assert payload["host_receipts_observed"] is False
+    assert payload["host_receipts_scope"] == "native_tool_input"
     assert registry.read_bytes() == before
     command[command.index(SCOPE["agent_id"])] = "unregistered"
     rejected = subprocess.run(command, capture_output=True, text=True)

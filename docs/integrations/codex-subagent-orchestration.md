@@ -489,7 +489,10 @@ The coordinator must be registered. The command reads current registry policy
 without writing a Todo, starting a turn or spending quota. When an execution
 configuration is present, it also reads the current requester's existing local
 delegation operation journal; otherwise it has no native execution receipt
-input and return-phase facts explicitly say `not_supplied`.
+input and return-phase facts explicitly say `not_supplied`. The top-level
+`host_receipts_observed: false` is retained for compatibility and is explicitly
+scoped by `host_receipts_scope: native_tool_input`; it does not negate the
+separate bounded delegation-journal observation inside capability facts.
 LoopX cannot transparently intercept arbitrary host tools. The managed return
 packet is returned to the caller, not automatically sent as another model turn.
 

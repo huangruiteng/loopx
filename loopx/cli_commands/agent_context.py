@@ -41,6 +41,7 @@ def handle_agent_context(args, registry_path, runtime_root, print_payload, outpu
             "source": "registry.spawn_policy+local_delegation",
             "read_only": True,
             "host_receipts_observed": False,
+            "host_receipts_scope": "native_tool_input",
         },
         output_format(args),
         render_agent_context,
