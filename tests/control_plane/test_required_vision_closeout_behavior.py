@@ -343,6 +343,56 @@ def test_authoring_rejection_is_recoverable_but_has_no_file_or_suffix_effect(rej
     assert receipt["tool_call_count"] == 6
 
 
+@pytest.mark.parametrize("evidence_ref,passed", [
+    ("evidence-permission-config", True), ("fixture/permission-config.json", True),
+    ("fixture/unread.json", False), ("replan-frontier.json", False),
+])
+def test_closeout_matches_observed_evidence_not_one_identifier_spelling(evidence_ref: str, passed: bool, tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    def author(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        return ScriptedExecToolAction(heredoc_action(request).command.replace("evidence-permission-config", evidence_ref))
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json"),
+        author, projected_refresh, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="observed-evidence-reference", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is passed
+    if passed:
+        assert receipt["vision_closeout"]["spend_count"] == 1
+    else:
+        assert receipt["failure_code"] == "vision_closeout_evidence_not_observed"
+        assert receipt["semantic_action_accepted"] is False
+
+
+@pytest.mark.parametrize("shell_shape", ["assignment_prefix", "newline_sequence"])
+def test_shell_shape_is_not_silently_discarded_before_binding_check(shell_shape: str, tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    def prefixed(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        command = projected_refresh(request).command
+        command = ("TURN=unexpanded\n" + command if shell_shape == "assignment_prefix"
+                   else command + "\n" + projected_spend(request).command)
+        return ScriptedExecToolAction(command)
+    def recover(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        error = json.loads(request["messages"][-1]["content"])
+        assert error["error_code"] == "vision_command_requires_literal_loopx_argv"
+        assert "not executed" in error["output"]
+        return projected_refresh(request)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json"),
+        vision_patch_action, prefixed, recover, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="literal-cli-admission", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is True
+    assert receipt["vision_closeout"]["spend_count"] == 1
+    assert receipt["tool_call_count"] == 6
+
+
 def test_help_host_extension_does_not_change_narrow_actor_contract(tmp_path: Path) -> None:
     fixture = _build_fixture(tmp_path)
     assert _bounded_workspace_read_plan("loopx --help", fixture=fixture) is None

@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 REQUIRED_VISION_CLOSEOUT_MAX_CALLS = 16
 
 
-class VisionAuthoringRejected(ValueError):
-    """Pre-execution file admission failure; no file or CLI effect has run."""
+class VisionHostAdmissionRejected(ValueError):
+    """Pre-execution host rejection; no file or CLI effect has run."""
 
 
 VISION_HOST_INSTRUCTION = (
@@ -109,26 +109,26 @@ def _authored_file(command: str, project: Path) -> str:
         r"(.*?)\n\*\*\* End Patch\n\1", command.strip(), re.DOTALL,
     )
     if not match:
-        raise VisionAuthoringRejected("vision_authoring_requires_single_add_file_patch")
+        raise VisionHostAdmissionRejected("vision_authoring_requires_single_add_file_patch")
     lines = match[3].splitlines()
     if not lines or any(not line.startswith("+") for line in lines):
-        raise VisionAuthoringRejected("vision_authoring_requires_added_lines")
+        raise VisionHostAdmissionRejected("vision_authoring_requires_added_lines")
     return _write_json_file(project, match[2], "\n".join(line[1:] for line in lines) + "\n")
 
 
 def _write_json_file(project: Path, name: str, content: str) -> str:
     relative = Path(name)
     if relative.is_absolute() or relative.suffix != ".json" or ".." in relative.parts:
-        raise VisionAuthoringRejected("vision_authoring_path_outside_fixture")
+        raise VisionHostAdmissionRejected("vision_authoring_path_outside_fixture")
     target = (project / relative).resolve()
     if not target.is_relative_to(project.resolve()) or target.exists():
-        raise VisionAuthoringRejected("vision_authoring_path_outside_fixture")
+        raise VisionHostAdmissionRejected("vision_authoring_path_outside_fixture")
     try:
         value = json.loads(content)
     except json.JSONDecodeError:
-        raise VisionAuthoringRejected("vision_authoring_requires_json_object") from None
+        raise VisionHostAdmissionRejected("vision_authoring_requires_json_object") from None
     if not isinstance(value, dict):
-        raise VisionAuthoringRejected("vision_authoring_requires_json_object")
+        raise VisionHostAdmissionRejected("vision_authoring_requires_json_object")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return json.dumps({"ok": True, "path": relative.as_posix()})
@@ -147,17 +147,17 @@ def _json_heredoc(command: str) -> tuple[str, str, list[str]] | None:
     try:
         tokens = list(lexer)
     except ValueError:
-        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc") from None
+        raise VisionHostAdmissionRejected("vision_authoring_requires_literal_json_heredoc") from None
     if len(tokens) != 5 or tokens[0] != "cat" or set(tokens[1::2]) != {">", "<<"}:
-        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc")
+        raise VisionHostAdmissionRejected("vision_authoring_requires_literal_json_heredoc")
     name = tokens[tokens.index(">") + 1]
     delimiter = tokens[tokens.index("<<") + 1]
     if delimiter != quoted[2]:
-        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc")
+        raise VisionHostAdmissionRejected("vision_authoring_requires_literal_json_heredoc")
     lines = rest.splitlines(keepends=True)
     end = next((index for index, line in enumerate(lines) if line.rstrip("\r\n") == delimiter), None)
     if end is None:
-        raise VisionAuthoringRejected("vision_authoring_requires_literal_json_heredoc")
+        raise VisionHostAdmissionRejected("vision_authoring_requires_literal_json_heredoc")
     suffix = "".join(lines[end + 1:]).strip()
     lexer = shlex.shlex(suffix, posix=True, punctuation_chars=";&|\n")
     lexer.whitespace = " \t\r"
@@ -167,20 +167,20 @@ def _json_heredoc(command: str) -> tuple[str, str, list[str]] | None:
     try:
         suffix_tokens = list(lexer)
     except ValueError:
-        raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx") from None
+        raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx") from None
     for token in [*suffix_tokens, "\n"]:
         if token == "&&" or token.strip("\n") == "":
             if argv:
                 if Path(argv[0]).name != "loopx":
-                    raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx")
+                    raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx")
                 commands.append(shlex.join(argv))
                 argv = []
         elif token in {";", "|", "||", "&"}:
-            raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx")
+            raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx")
         else:
             argv.append(token)
     if len(commands) > 2:
-        raise VisionAuthoringRejected("vision_authoring_suffix_requires_loopx")
+        raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx")
     return name, "".join(lines[:end]), commands
 
 
@@ -214,6 +214,11 @@ def dispatch_vision_closeout(
     tokens = loopx_command_tokens(command) or []
     if "refresh-state" not in tokens and "spend-slot" not in tokens:
         return None
+    lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=";&|\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    if tokens != list(lexer):
+        raise VisionHostAdmissionRejected("vision_command_requires_literal_loopx_argv")
     packet = state.quota_packet or {}
     binding = dict(dict(dict(packet.get("interaction_contract") or {}).get("cli_channel") or {}).get("replan_settlement_contract") or {}).get("settlement_binding") or {}
     if not binding or argument_value(tokens, binding["cli_argument"]) != binding["id"]:
@@ -229,13 +234,15 @@ def dispatch_vision_closeout(
             raise ValueError("vision_authoring_path_outside_fixture")
         vision = json.loads(target.read_text(encoding="utf-8"))
         source_evidence = json.loads(state.fixture.frontier_target.read_text(encoding="utf-8"))["uncovered"]
-        observed_ids = {item["evidence_id"] for item in source_evidence}
+        source_ref = state.fixture.work_source_target.relative_to(state.fixture.project_root).as_posix()
+        observed_refs = {ref for item in source_evidence if item.get("source_ref") == source_ref
+                         for ref in (item["evidence_id"], source_ref)}
         path_delta = vision.get("path_delta")
         refs = path_delta.get("evidence_refs") if isinstance(path_delta, dict) else None
         if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
             raise ValueError("vision_closeout_evidence_not_observed")
         refs = set(refs)
-        if not refs.intersection(observed_ids):
+        if not refs.intersection(observed_refs):
             raise ValueError("vision_closeout_evidence_not_observed")
         output = execute(command, fixture=state.fixture, turn_instance_id=state.turn_instance_id)
         row = _rows(state)[-1]

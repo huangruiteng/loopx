@@ -35,7 +35,7 @@ from .selected_todo_tool_behavior import bounded_workspace_read_plan
 from .replan_vision_closeout_behavior import (
     dispatch_vision_closeout, VISION_HOST_INSTRUCTION, VISION_EXEC_TOOL_DESCRIPTION,
     REQUIRED_VISION_CLOSEOUT_MAX_CALLS,
-    VisionAuthoringRejected,
+    VisionHostAdmissionRejected,
 )
 
 REPLAN_SEMANTIC_ACTION_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
@@ -1289,11 +1289,11 @@ def _run_qualification_loop(
                 state,
             )
             kind = dispatched_kind
-        except (VisionAuthoringRejected, _HostToolError) as exc:
-            if isinstance(exc, VisionAuthoringRejected):
+        except (VisionHostAdmissionRejected, _HostToolError) as exc:
+            if isinstance(exc, VisionHostAdmissionRejected):
                 exc = _HostToolError(
-                    str(exc), "File and suffix not executed: " + str(exc) + ". "
-                    "Use a new relative JSON file and the declared authoring grammar; "
+                    str(exc), "Command not executed: " + str(exc) + ". "
+                    "Use literal LoopX arguments, new relative JSON files and the declared grammar; "
                     "other operations can be issued as separate tool calls.", 2,
                 )
             _record_tool_step(state, kind=kind, command=tool_call.command,
