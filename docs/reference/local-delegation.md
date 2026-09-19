@@ -52,6 +52,7 @@ delegate() {
 }
 
 delegate list
+delegate inspect --binding-id independent-review
 delegate start --binding-id independent-review --operation-id review-round-1 \
   --brief-file request.json --execute
 delegate read --operation-id review-round-1
@@ -194,6 +195,40 @@ of the new tool description, not injected into those older threads' shared promp
 `unavailable`，不能当成失败重派或静默隐藏。`has_more` 表示还有下一页，
 `page_readback_complete` 只表示本页是否均成功读取；二者都不代表整个团队已完成。
 此入口不创建 Agent、不扩大授权，也不唤醒闲置的 Codex 对话。
+
+### Check a binding before new work
+
+`delegate inspect --binding-id independent-review` uses the same task,
+workspace, host, model/effort and validator arguments as an actual delegation,
+through `turn run-once` without `--execute`. It creates no request or Turn,
+does not invoke the host and spends no quota. Host arguments that enable
+execution or retarget the selected work are rejected before the subprocess.
+
+The typed result keeps three facts separate: `turn_eligible` is the current
+Turn decision for that exact Todo; `acceptance_ready` is the current pinned
+acceptance binding, not passed output validation; `executor.available` uses
+the existing host probe. `false` means unavailable, while `null` means the
+runtime has not been probed. In particular, the generic-cli path used by the
+optional Ark adapter does not acquire a remote readiness guarantee from a
+successful local dry run. `launchable` only means those local prerequisites
+were observed; it grants no execution permission and does not reserve capacity.
+Normal start still reads current admission and independently validates output.
+If the existing Turn rejects preflight, inspection reports that error rather than
+manufacturing a launchable result; no request is created.
+
+Enabled MCP exposes `inspect_execution_binding`; newly enrolled Goal Chat tools
+accept `action=inspect` with `binding_id`. Existing native thread schemas remain
+unchanged. Owners can use **Team execution** directly below the Goal conversation
+controls after configuring its existing bindings, including while paused or
+before enabling LoopX mode. Expand it to recover paged work and artifact hashes,
+or check one member's prerequisites. Reads run only on request; ordinary polling
+does not run validators or preflight. Closing the panel changes no work state.
+This local operator entrypoint does not grant a Lark audience access.
+
+中文：配置原有执行绑定后，在 Goal 对话中展开「团队执行情况」，不必让模型转述或
+跳到另一个页面。可分页查看原请求、当前验收与产物哈希，点「检查启动条件」读取
+指定任务的 Turn 决策及实际模型配置。运行时未探测时明确显示「尚未验证」，不能
+把已登记、已分配或 dry-run 成功当作正在运行。暂停时仍可检查；检查不启动成员。
 
 ## Use the same bindings through MCP
 

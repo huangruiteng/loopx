@@ -34,6 +34,21 @@ thread keeps its original read/wait operations; a shell-capable caller can use
 the CLI recovery entrypoint independently. Tool-schema upgrade remains a
 separate session capability.
 
+After configuring bindings, **Team execution** opens the same durable inventory
+for the owner, independently of the native thread's installed tools. Its
+on-demand refresh rechecks accepted artifacts, preserves unavailable items and
+offers pagination. **Check prerequisites** reads the selected member's actual
+Turn/profile and pinned acceptance binding without launching work. An unknown
+runtime stays unknown. The panel works while paused and before enabling mode;
+it does not add validation to regular snapshot polling. Existing native threads
+remain intact. This is local operator readback, not a new dispatch surface.
+
+Synthetic desktop and narrow-screen examples show unverified runtime,
+unavailable output and an original execution needing recovery:
+
+![Team execution on desktop](../assets/personal-workspace/goal-team-execution-desktop.png)
+![Team execution on a narrow screen](../assets/personal-workspace/goal-team-execution-mobile.png)
+
 The composer shows native state, accumulated coordinator usage and last member
 observations. **Pause** stops the coordinator, while already delegated members
 continue under their independent deadlines and acceptance rules. **Continue**
