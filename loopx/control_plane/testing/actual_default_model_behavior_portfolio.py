@@ -1111,6 +1111,15 @@ def _scenario_contract(
     _validate_identity_scenario_contract(spec, source_packet, contract)
     _validate_planning_context_scenario(spec, source_packet, contract)
     _validate_control_plane_composition_scenario(spec, source_packet, contract)
+    if spec.scenario_id == "turn_required_vision_replan":
+        obligation = source_packet["autonomous_replan_obligation"]
+        contract.update(
+            qualification_scope="required_vision_closeout",
+            trigger_kinds=sorted({item["kind"] for item in obligation["triggers"]}),
+            required_semantic_outcomes=list(source_packet["replan_action_packet"]["uncovered_frontier"]["required_any_of"]),
+            vision_closeout={"checkpoint_satisfied": True, "bound_writeback": True,
+                             "settled": True, "spend_count": 1, "original_obligation_closed": True},
+        )
     _validate_compaction_scenario(spec, source_packet, actor_packet, contract)
     if spec.scenario_family == "diagnostic_authority_boundary":
         diagnostic = dict(actor_packet.get("agent_todo_summary") or {})
@@ -1183,6 +1192,11 @@ def _receipt_alignment(
             if receipt.get(field) != expected[field]
         ]
         mismatches.extend(str(item) for item in receipt.get("safety_violations") or [])
+        if spec.scenario_id == "turn_required_vision_replan" and not (
+            receipt.get("semantic_action_accepted") is True
+            and set(receipt.get("selected_semantic_outcomes") or []).intersection(expected["required_semantic_outcomes"])
+        ):
+            mismatches.append("required_vision_outcome_not_accepted")
         if (
             spec.semantic_contract_fields
             and receipt.get("semantic_contract_complete") is not True
