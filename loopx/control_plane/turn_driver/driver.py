@@ -40,6 +40,73 @@ REPLAN_ACTIONS = {
     "autonomous_replan_required",
     "successor_replan_required",
 }
+# How each action the registered union can carry classifies, stated once and in
+# full. The root should-run/Envelope slot is a disjoint union of the decision
+# vocabulary and the frontier vocabulary, so both owners are covered here.
+# ``governed_capability_intent`` is absent on purpose: it is not a plain
+# classification, it has to validate the intent projection first and keeps its
+# own branch below.
+#
+# The accompanying test fails when an owner gains a value this table does not
+# classify, which is the point of listing every value rather than deriving the
+# ordinary case by subtraction: a new action must be classified deliberately,
+# not inherit host execution because nothing else matched it.
+REGISTERED_ACTION_ROUTES: dict[str, LoopXTurnRoute] = {
+    # Frontier vocabulary.
+    "agent_scope_exhausted": LoopXTurnRoute.READY_FOR_HOST,
+    "agent_scope_wait": LoopXTurnRoute.READY_FOR_HOST,
+    "reassignment_required": LoopXTurnRoute.READY_FOR_HOST,
+    "successor_replan_required": LoopXTurnRoute.REPLAN_REQUIRED,
+    # Decision vocabulary: replan.
+    "autonomous_replan_required": LoopXTurnRoute.REPLAN_REQUIRED,
+    # Decision vocabulary: repair.
+    "agent_workspace_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "boundary_projection_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "capability_bridge_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "control_plane_health_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "control_plane_projection_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "control_plane_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "runtime_user_gate_projection_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "state_projection_gap_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    "todo_decision_scope_projection_repair": LoopXTurnRoute.REPAIR_REQUIRED,
+    # Decision vocabulary: ordinary host execution.
+    "agent_monitor_only": LoopXTurnRoute.READY_FOR_HOST,
+    "automation_prompt_upgrade_required": LoopXTurnRoute.READY_FOR_HOST,
+    "blocked_health": LoopXTurnRoute.READY_FOR_HOST,
+    "blocked_wait": LoopXTurnRoute.READY_FOR_HOST,
+    "coordinate_task_bundle": LoopXTurnRoute.READY_FOR_HOST,
+    "external_evidence_observe": LoopXTurnRoute.READY_FOR_HOST,
+    "heartbeat_receipt_write_failed": LoopXTurnRoute.READY_FOR_HOST,
+    "heartbeat_settled_skip": LoopXTurnRoute.READY_FOR_HOST,
+    "lark_inbox_reply_due": LoopXTurnRoute.READY_FOR_HOST,
+    "monitor_due": LoopXTurnRoute.READY_FOR_HOST,
+    "monitor_quiet_skip": LoopXTurnRoute.READY_FOR_HOST,
+    "normal_run": LoopXTurnRoute.READY_FOR_HOST,
+    "operator_gate_notify": LoopXTurnRoute.READY_FOR_HOST,
+    "operator_inbox_material_review_due": LoopXTurnRoute.READY_FOR_HOST,
+    "outcome_floor_recovery": LoopXTurnRoute.READY_FOR_HOST,
+    "peer_coordination_blocked": LoopXTurnRoute.READY_FOR_HOST,
+    "quota_skip": LoopXTurnRoute.READY_FOR_HOST,
+    "scoped_user_gate_fallback": LoopXTurnRoute.READY_FOR_HOST,
+    "terminal_no_followup": LoopXTurnRoute.READY_FOR_HOST,
+    "throttled_skip": LoopXTurnRoute.READY_FOR_HOST,
+    "unsettled_host_turn_recovery": LoopXTurnRoute.READY_FOR_HOST,
+}
+
+
+def compatibility_route(effective_action: str) -> LoopXTurnRoute:
+    """Classify an action the registered table does not name.
+
+    Values reaching here are legacy or unrecognised. They are deliberately not
+    rejected: narrowing what the driver accepts is an admission-domain change
+    that needs its own approval and version boundary. Keeping the previous
+    suffix rule and host-execution default in one named function separates
+    "this is the compatibility path" from the registered table above, so a
+    reviewer can see which classifications are stated and which are inherited.
+    """
+    if effective_action.endswith(("_repair", "_repair_required")):
+        return LoopXTurnRoute.REPAIR_REQUIRED
+    return LoopXTurnRoute.READY_FOR_HOST
 
 
 
@@ -90,9 +157,10 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
             return LoopXTurnRoute.CAPABILITY_ACTION_REQUIRED
         if effective_action in REPLAN_ACTIONS:
             return LoopXTurnRoute.REPLAN_REQUIRED
-        if effective_action.endswith(("_repair", "_repair_required")):
-            return LoopXTurnRoute.REPAIR_REQUIRED
-        return LoopXTurnRoute.READY_FOR_HOST
+        registered = REGISTERED_ACTION_ROUTES.get(effective_action)
+        if registered is not None:
+            return registered
+        return compatibility_route(effective_action)
     if user.get("action_required") is True:
         return LoopXTurnRoute.USER_ACTION_REQUIRED
     if action.get("quiet_noop_allowed") is True:
