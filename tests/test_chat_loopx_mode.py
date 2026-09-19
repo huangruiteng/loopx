@@ -151,6 +151,62 @@ def test_goal_registry_is_the_execution_config_owner(mode):
         )
 
 
+def test_unfinished_legacy_session_can_resume_until_goal_config_is_migrated(mode):
+    service, sid, repo, settings, calls = mode
+    registry = service.controller.registry_path
+    payload = json.loads(registry.read_text())
+    goal = next(item for item in payload["goals"] if item["id"] == "research")
+    goal["spawn_policy"].pop("execution_config")
+    registry.write_text(json.dumps(payload))
+    service.store.update_session(
+        sid,
+        native_goal={"status": "paused", "tokensUsed": 10},
+        loopx_mode={
+            "enabled": True,
+            "paused": True,
+            "settings": {
+                **settings,
+                "execution_config": ".loopx/config/delegations.json",
+            },
+        },
+    )
+
+    assert service.snapshot(sid)["settings"]["execution_config"] == (
+        ".loopx/config/delegations.json"
+    )
+    result = apply(mode, "resume")
+    assert result["turn_id"]
+    assert len(calls) == 1
+    stored = service.store.load_session(sid)["loopx_mode"]["settings"]
+    assert "execution_config" not in stored
+    assert stored["execution_config_ref"] == ".loopx/config/delegations.json"
+
+
+def test_completed_legacy_session_requires_goal_owned_execution_config(mode):
+    service, sid, _, settings, _ = mode
+    registry = service.controller.registry_path
+    payload = json.loads(registry.read_text())
+    goal = next(item for item in payload["goals"] if item["id"] == "research")
+    goal["spawn_policy"].pop("execution_config")
+    registry.write_text(json.dumps(payload))
+    service.store.update_session(
+        sid,
+        native_goal={"status": "complete", "tokensUsed": 10},
+        loopx_mode={
+            "enabled": True,
+            "paused": True,
+            "settings": {
+                **settings,
+                "execution_config": ".loopx/config/delegations.json",
+            },
+        },
+    )
+
+    assert service.snapshot(sid)["settings"]["execution_config"] is None
+    with pytest.raises(ValueError, match="Goal sub-agent settings"):
+        apply(mode, "start")
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

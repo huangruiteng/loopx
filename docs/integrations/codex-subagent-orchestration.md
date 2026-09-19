@@ -426,6 +426,11 @@ editor preview, apply and read back the same field. Clear it with
 `--clear-subagent-execution-config --execute`. Turning child execution off
 retains the pointer for a later re-enable.
 
+An unfinished Goal Chat run created before this field existed may resume with
+its already pinned Session reference until that run becomes terminal. New runs
+and completed legacy runs must configure the Goal-owned pointer first; the
+compatibility path does not write or synchronize a second configuration owner.
+
 At `before_plan`, `loopx agent-context` considers at most six bindings authorized
 for the current requester and projects as many as fit the existing context byte
 budget; `authorized_count` and `routes_truncated` make omissions explicit. Each

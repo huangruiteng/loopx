@@ -133,6 +133,11 @@ Remove only the pointer with
 `--clear-subagent-execution-config --execute`; revoke actual admission in the
 operator binding file.
 
+For compatibility, an unfinished Goal Chat run created before the Goal-owned
+pointer was available can resume with its frozen Session reference. That path
+ends with the run: a new or completed run must use the Goal configuration, and
+no legacy Session setting is copied back into the registry automatically.
+
 中文：本地授权文件可放在协调者 Goal 仓库中已忽略的
 `.loopx/config/delegations.json`，但必须位于所有被委托成员工作区之外。先用
 `configure-goal` 预览，再执行写入；注册表只保存仓库相对指针，不复制授权内容。
