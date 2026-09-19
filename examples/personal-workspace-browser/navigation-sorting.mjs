@@ -15,6 +15,12 @@ export const navigationSortingScenario = {
     const notes = [];
     const pass = (criterion, note) => notes.push(`${criterion}: ${note}`);
     try {
+      // Network idleness can precede the per-Goal projection merge. Assert the
+      // settled home model, not the transient directory-only classification.
+      await page.waitForFunction(() => (
+        document.querySelectorAll(".personal-home-lanes .personal-home-goal-card").length === 5
+        && !document.querySelector('[data-testid="personal-home-lane-scheduled"]')
+      ), null, { timeout: 6_000 });
       const body = await page.locator("body").innerText();
       for (const text of ["LoopX 管家", "需要你", "执行中", "观察中", "GOALS", "Codex"]) {
         if (!body.includes(text)) {

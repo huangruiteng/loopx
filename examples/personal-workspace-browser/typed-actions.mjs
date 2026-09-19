@@ -781,17 +781,16 @@ export const typedActionsScenario = {
         throw new Error(`Compact Goal settings trigger was compressed: ${JSON.stringify(compactGoalSettingsBox)}`);
       }
       const compactHeaderLayout = await page.evaluate(() => {
-        const live = document.querySelector(".personal-live-indicator");
+        const title = document.querySelector('.personal-channel-header[data-goal-selected="true"] .personal-channel-title h1');
         return {
           documentWidth: document.documentElement.scrollWidth,
-          liveHeight: live?.getBoundingClientRect().height ?? 0,
-          liveScrollWidth: live?.scrollWidth ?? 0,
-          liveWidth: live?.getBoundingClientRect().width ?? 0,
+          titleHeight: title?.getBoundingClientRect().height ?? 0,
+          titleWidth: title?.getBoundingClientRect().width ?? 0,
           viewportWidth: window.innerWidth,
         };
       });
-      if (compactHeaderLayout.liveScrollWidth > compactHeaderLayout.liveWidth + 1 || compactHeaderLayout.liveHeight > 36) {
-        throw new Error(`Compact header live status wrapped: ${JSON.stringify(compactHeaderLayout)}`);
+      if (compactHeaderLayout.titleWidth <= 0 || compactHeaderLayout.titleHeight > 36) {
+        throw new Error(`Compact Goal title did not remain on one line: ${JSON.stringify(compactHeaderLayout)}`);
       }
       if (compactHeaderLayout.documentWidth > compactHeaderLayout.viewportWidth + 1) {
         throw new Error(`Compact header caused horizontal overflow: ${JSON.stringify(compactHeaderLayout)}`);
