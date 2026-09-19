@@ -475,6 +475,7 @@ type PersonalGoalItem = {
       matchingTodoCount: number;
     }>;
     enabled: boolean;
+    executionConfig?: string;
     maxChildren: number;
   };
   title: string;
@@ -1273,6 +1274,7 @@ function buildPersonalHomeModel(
           enabled: goal.spawn_policy?.mode === "multi_subagent"
             && goal.spawn_policy.spawn_allowed === true
             && goal.spawn_policy.max_children > 0,
+          executionConfig: goal.spawn_policy?.execution_config,
           maxChildren: goal.spawn_policy?.max_children ?? 0,
           modelConfig: goal.spawn_policy?.model_config,
         },
@@ -2858,6 +2860,7 @@ function PersonalGoalHome({
               configuration: {
                 allowedDomains: preview.after.orchestration.allowed_domains,
                 enabled: preview.feature_summary.multi_subagent === "enabled",
+                executionConfig: preview.after.orchestration.execution_config,
                 maxChildren: preview.after.orchestration.max_children,
                 modelConfig: preview.after.orchestration.model_config,
               },
@@ -2869,6 +2872,7 @@ function PersonalGoalHome({
             return {
               allowedDomains: result.after.orchestration.allowed_domains,
               enabled: result.feature_summary.multi_subagent === "enabled",
+              executionConfig: result.after.orchestration.execution_config,
               maxChildren: result.after.orchestration.max_children,
               modelConfig: result.after.orchestration.model_config,
             };

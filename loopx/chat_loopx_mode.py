@@ -16,6 +16,10 @@ from .agent_registry import load_goal_from_registry, registered_agent_ids_for_go
 from .chat_codex_goal import CodexGoalDriver, validate_goal_chat
 from .control_plane.effect_runtime import effect_runtime_result
 from .file_lock import exclusive_file_lock, LockAcquisitionPolicy
+from .orchestration import (
+    compact_orchestration_policy,
+    normalize_subagent_execution_config,
+)
 
 TOOL = {
     "type": "function",
@@ -89,12 +93,59 @@ class ChatLoopXMode:
             raise ValueError("Goal unavailable")
         return goal
 
+    @staticmethod
+    def _goal_execution_config(goal) -> str | None:
+        return str(
+            compact_orchestration_policy(goal.get("spawn_policy")).get(
+                "execution_config"
+            )
+            or ""
+        ) or None
+
+    @staticmethod
+    def _unfinished_native_goal(session) -> bool:
+        return (session.get("native_goal") or {}).get("status") not in {
+            None,
+            "absent",
+            "complete",
+        }
+
     def _execution(self, session, settings):
         from .collaboration_mcp import Delegations
 
         goal = self._goal(session)
         workspace = Path(goal["repo"]).resolve()
-        relative = Path(str(settings.get("execution_config") or ""))
+        goal_execution_config = self._goal_execution_config(goal)
+        stored_config_raw = str(
+            settings.get("execution_config_ref")
+            or settings.get("execution_config")
+            or ""
+        ).strip()
+        stored_config = (
+            normalize_subagent_execution_config(stored_config_raw)
+            if stored_config_raw
+            else None
+        )
+        # Before the Goal registry became the sole configuration owner, an
+        # unfinished native Goal pinned this pointer in its Session. Preserve
+        # that exact execution identity only until the run reaches a terminal
+        # state; new and completed runs must use the Goal-owned pointer.
+        execution_config = goal_execution_config or (
+            stored_config if self._unfinished_native_goal(session) else None
+        )
+        if not execution_config:
+            raise ValueError(
+                "configure delegation bindings in Goal sub-agent settings first"
+            )
+        if (
+            stored_config
+            and goal_execution_config
+            and stored_config != goal_execution_config
+        ):
+            raise ValueError(
+                "Goal execution bindings changed; reopen settings before continuing"
+            )
+        relative = Path(execution_config)
         if (
             relative.is_absolute()
             or ".." in relative.parts
@@ -125,13 +176,27 @@ class ChatLoopXMode:
             raise ValueError(
                 "the selected coordinator has no authorized member bindings"
             )
-        return service, directory, digest
+        return service, directory, digest, execution_config
 
     def snapshot(self, session_id):
         session = self._session(session_id)
         goal = self._goal(session)
         mode = session.get("loopx_mode") or {}
         settings = mode.get("settings") or {}
+        execution_config = self._goal_execution_config(goal)
+        if not execution_config and self._unfinished_native_goal(session):
+            legacy_config = str(
+                settings.get("execution_config_ref")
+                or settings.get("execution_config")
+                or ""
+            ).strip()
+            if legacy_config:
+                try:
+                    execution_config = normalize_subagent_execution_config(
+                        legacy_config
+                    )
+                except ValueError:
+                    execution_config = None
         native = session.get("native_goal") or {"status": "absent"}
         busy_turn = session.get("active_turn_id")
         active = (
@@ -148,7 +213,7 @@ class ChatLoopXMode:
         # explicitly last-read observations, never canonical Goal settlement.
         if deliveries and not active:
             try:
-                service, _, _ = self._execution(session, settings)
+                service, _, _, _ = self._execution(session, settings)
                 deliveries = [
                     {**row, "status": service.read(row["operation_id"])["status"]}
                     for row in deliveries
@@ -160,8 +225,11 @@ class ChatLoopXMode:
             "session_id": session_id,
             "enabled": mode.get("enabled") is True,
             "settings": {
-                key: settings.get(key)
-                for key in ("agent_id", "token_budget", "execution_config")
+                **{
+                    key: settings.get(key)
+                    for key in ("agent_id", "token_budget")
+                },
+                "execution_config": execution_config or None,
             },
             "native": native,
             "active_turn_id": active,
@@ -210,7 +278,7 @@ class ChatLoopXMode:
                         or not existing.get("loopx_execution")
                         or any(
                             expected.get(k) != prior_settings.get(k)
-                            for k in ("agent_id", "token_budget", "execution_config")
+                            for k in ("agent_id", "token_budget")
                         )
                     ):
                         raise ValueError("execution operation identity conflict")
@@ -263,16 +331,30 @@ class ChatLoopXMode:
             ):
                 if any(
                     prior.get(k) != settings.get(k)
-                    for k in ("agent_id", "execution_config")
+                    for k in ("agent_id",)
                 ):
                     raise ValueError(
                         "an unfinished Goal cannot change coordinator or execution bindings"
                     )
-                settings = {**settings, "config_digest": prior.get("config_digest")}
+                settings = {
+                    **settings,
+                    "execution_config_ref": (
+                        prior.get("execution_config_ref")
+                        or prior.get("execution_config")
+                    ),
+                    "config_digest": prior.get("config_digest"),
+                }
             if not settings.get("agent_id"):
                 raise ValueError("select a registered coordinator identity")
-            service, directory, digest = self._execution(session, settings)
-            settings = {**settings, "config_digest": digest}
+            service, directory, digest, execution_config = self._execution(
+                session, settings
+            )
+            settings = {
+                "agent_id": settings["agent_id"],
+                "token_budget": settings.get("token_budget"),
+                "execution_config_ref": execution_config,
+                "config_digest": digest,
+            }
             goal = self._goal(session)
             effect_runtime_result(
                 "collaboration.chat_mode",
@@ -475,7 +557,7 @@ class ChatLoopXMode:
         settings = mode.get("settings") or {}
         if not mode.get("enabled") or mode.get("paused"):
             raise ValueError("conversation execution is paused")
-        service, _, _ = self._execution(session, settings)
+        service, _, _, _ = self._execution(session, settings)
         # Multiple conversations cannot run under the same configured sender.
         identity = hashlib.sha256(
             json.dumps([session["goal_id"], settings["agent_id"]]).encode()

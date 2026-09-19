@@ -67,8 +67,23 @@ def _subagent_model_options(config: Mapping[str, Any]) -> dict[str, Any]:
 
 def _multi_subagent_options(config: Mapping[str, Any]) -> dict[str, Any]:
     model_options = _subagent_model_options(config)
+    execution_options: dict[str, Any] = {}
+    if "execution_config" in config:
+        execution_config = config.get("execution_config")
+        if execution_config is not None and not isinstance(execution_config, str):
+            raise TypeError("multi_subagent.execution_config must be a string")
+        execution_config = str(execution_config or "").strip()
+        execution_options = (
+            {"subagent_execution_config": execution_config}
+            if execution_config
+            else {"clear_subagent_execution_config": True}
+        )
     if not _boolean_configuration("multi_subagent", config, "enabled"):
-        return {"multi_subagent_feature": "off", **model_options}
+        return {
+            "multi_subagent_feature": "off",
+            **model_options,
+            **execution_options,
+        }
     max_children = config.get("max_children", 4)
     if not isinstance(max_children, int) or isinstance(max_children, bool):
         raise TypeError("multi_subagent.max_children must be an integer")
@@ -82,6 +97,7 @@ def _multi_subagent_options(config: Mapping[str, Any]) -> dict[str, Any]:
         "max_children": max_children,
         "allowed_domains": domains,
         **model_options,
+        **execution_options,
     }
 
 
@@ -151,6 +167,7 @@ def _goal_capability_options(
             "allowed_domains",
             "model",
             "reasoning_effort",
+            "execution_config",
         },
         "peer_task_coordination": {"coordinator_agent_id"},
         "explore_graph": {"enabled"},

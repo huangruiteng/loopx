@@ -9,7 +9,9 @@ existing Turn entrypoint; there is no steward-specific scheduler or task store.
 
 First register the participating Agents and bind the intended canonical Todos
 to [owner-configured acceptance](goal-acceptance-observations.md). Prepare an
-operator-owned JSON file **outside member workspaces**:
+operator-owned JSON file **outside every delegated member workspace**. A
+coordinator may keep it as an ignored file under its Goal project at
+`.loopx/config/delegations.json`:
 
 ```json
 {
@@ -95,8 +97,56 @@ than maintaining separate rules.
 This entrypoint does not create Agents, grant bindings or wake an idle Codex
 conversation. The existing host/LoopX continuation policy owns the next lead
 turn. The conversation remains persistent independently of whether autonomous
-LoopX mode is enabled. Current Dashboard/Lark setup is unchanged; those surfaces
-keep their existing conversation and runtime owners.
+LoopX mode is enabled. Dashboard, CLI/managed Turn and Lark keep their existing
+conversation and runtime owners; they may consume the shared bounded route
+projection described below, but they do not get another grant or scheduler.
+
+### Publish bounded route readiness to the coordinator
+
+After the ignored operator file exists, register only its Goal-relative pointer
+through the existing orchestration configuration:
+
+```bash
+loopx configure-goal --goal-id "$GOAL_ID" \
+  --subagent-execution-config .loopx/config/delegations.json
+loopx configure-goal --goal-id "$GOAL_ID" \
+  --subagent-execution-config .loopx/config/delegations.json --execute
+loopx agent-context --goal-id "$GOAL_ID" --agent-id "$AGENT_ID" \
+  --phase before_plan --format json
+```
+
+Preview before apply. The pointer accepts only a repository-relative JSON path
+under `.loopx/config/`; symlinked or missing files yield a typed blocked
+observation. The registry does not copy the file. The same requester grant
+filter used by `delegate list` considers at most six public-safe planning routes
+and byte-bounds the projected subset; `authorized_count` and `routes_truncated`
+make omissions explicit. Managed-host availability comes from the existing Turn host/profile owner;
+unprobed generic adapters are `unknown`, not optimistically ready.
+
+This planning projection is read-only. It does not start, resume, accept,
+enumerate operations or periodically poll work. A ready observation is not an
+execution receipt. Use the original binding and a stable operation id for
+dispatch, then read and validate the original artifacts. An explicit
+`agent-context --phase after_delegate_result` read may summarize current
+requester-scoped operation statuses; those counts are not parent acceptance.
+Remove only the pointer with
+`--clear-subagent-execution-config --execute`; revoke actual admission in the
+operator binding file.
+
+For compatibility, an unfinished Goal Chat run created before the Goal-owned
+pointer was available can resume with its frozen Session reference. That path
+ends with the run: a new or completed run must use the Goal configuration, and
+no legacy Session setting is copied back into the registry automatically.
+
+中文：本地授权文件可放在协调者 Goal 仓库中已忽略的
+`.loopx/config/delegations.json`，但必须位于所有被委托成员工作区之外。先用
+`configure-goal` 预览，再执行写入；注册表只保存仓库相对指针，不复制授权内容。
+`agent-context` 复用 `delegate list` 的 requester 范围，最多投影六条公开安全的
+路由状态；managed runtime 的可用性由既有 Turn host/profile owner 判断，未探测的
+通用适配器显示 `unknown`，不能乐观宣称 ready。规划投影不会枚举 operation，也不会
+启动、恢复、验收或周期轮询工作；需要时可显式读取 `after_delegate_result` 阶段的有界
+operation 状态摘要。ready 和状态计数都不是执行或父级验收回执。清除指针不会撤销
+授权；真正撤销仍须修改 operator binding 文件。
 
 ### Recover work without remembered operation ids
 

@@ -34,9 +34,12 @@ export const loopxModeScenario = {
       await settings.waitFor({ state: "visible" });
       await settings.getByLabel("已注册的协调身份").selectOption("lead");
       await settings.getByLabel("协调员总 token 额度").fill("100000");
-      const executionConfig = settings.getByLabel("成员执行绑定文件（项目内）");
+      const executionConfig = settings.getByLabel("成员执行绑定文件（Goal 配置）");
       if (await executionConfig.inputValue() !== ".loopx/config/delegations.json") {
-        throw new Error("LoopX mode did not preserve the bounded project-relative execution configuration");
+        throw new Error("LoopX mode did not read the Goal-owned execution configuration");
+      }
+      if (await executionConfig.isEditable()) {
+        throw new Error("LoopX mode must not edit the Goal-owned execution configuration");
       }
       await settings.getByRole("button", { name: "保存设置", exact: true }).click();
       await settings.waitFor({ state: "detached" });
@@ -45,7 +48,7 @@ export const loopxModeScenario = {
       if (request?.operation !== "configure"
         || request.settings?.agent_id !== "lead"
         || request.settings?.token_budget !== 100000
-        || request.settings?.execution_config !== ".loopx/config/delegations.json") {
+        || Object.hasOwn(request.settings ?? {}, "execution_config")) {
         throw new Error(`LoopX mode settings did not round-trip through the real frontend API: ${JSON.stringify(request)}`);
       }
       if (api.turnRequests.length) throw new Error("Configuring LoopX mode started work without explicit activation");
@@ -54,7 +57,7 @@ export const loopxModeScenario = {
 
       return {
         coverageEntries: await context.close(),
-        note: "One enable click during a pending snapshot opens settings, keeps bindings project-relative, and does not start work while configuring.",
+        note: "One enable click during a pending snapshot opens settings, reads Goal-owned bindings without resending them, and does not start work while configuring.",
       };
     } catch (error) {
       releaseSnapshot();

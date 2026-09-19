@@ -257,6 +257,14 @@ receipt 过期。
 
 ### 交付语义：先修正规则，再迁移
 
+Replan 的义务结果规则现收敛到 `work_items/replan_semantics.ts`：接受结果选择、
+vision path／terminal 一致性校验与对应 refresh 输入投影共用同一 owner。
+Python 保留 progress 归一化／新颖性与持久化适配，不再重复义务匹配规则。
+这是有界规则收敛，不是 settlement writer 或存储迁移。先刻画既有接受语义，
+再修正所有 vision trigger 的可执行写入投影，并验证真实绑定 CLI 闭环、回读及
+资格范围错配反例。Checkpoint 恢复与 in-flight 规则仍由既有边界负责，
+不新增 capability、provider 或设置。
+
 交付历史边界将 `classification`、`health_check` 与 `recommended_action` 视为
 叙述文本。它们不能生成或解除 follow-through obligation，不能证明 outcome，也
 不能判定交付规模。例如，`unblocked after dependency update` 不构成 blocker

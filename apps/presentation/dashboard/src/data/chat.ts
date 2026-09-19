@@ -113,6 +113,15 @@ export const managerChannelBindingSchema = z.object({
   model_source: z.string(),
   credential_env_var: z.string(),
   operator_credential_configured: z.boolean(),
+  output_token_budget: z.object({
+    schema_version: z.literal("dsh_output_token_budget_v0"),
+    scope: z.literal("per_model_request"),
+    max_tokens: z.number().int().positive().nullable(),
+    valid: z.boolean(),
+    source: z.enum(["product_default", "explicit_argument"]),
+    final_response_reserve_supported: z.boolean(),
+    hard_tool_budget_supported: z.boolean(),
+  }).nullable().optional(),
   available: z.boolean().nullable(),
   unavailable_reason: z.string().nullable(),
 });
@@ -260,6 +269,7 @@ export const todoApplyResultSchema = z.object({
 
 const goalSubagentOrchestrationSchema = z.object({
   model_config: z.object({ model: z.string(), reasoning_effort: z.string().optional() }).optional(),
+  execution_config: z.string().optional(),
 
   mode: z.string(),
   spawn_allowed: z.boolean(),
@@ -293,6 +303,7 @@ export type GoalSubagentConfigurationResult = z.infer<typeof goalSubagentConfigu
 
 export type GoalSubagentConfigurationRequest = {
   modelConfig?: { model: string; reasoning_effort?: string } | null;
+  executionConfig?: string;
   allowedDomains: string[];
   enabled: boolean;
   goalId: string;
@@ -839,10 +850,10 @@ export async function interruptChatTurn(sessionId: string, turnId: string) {
   );
 }
 
-export type LoopXModeSettings = { agent_id: string; token_budget: number; execution_config: string };
+export type LoopXModeSettings = { agent_id: string; token_budget: number };
 export type LoopXModeSnapshot = {
   ok: true; session_id: string; enabled: boolean; active_turn_id: string | null; conversation_busy: boolean;
-  settings: Partial<LoopXModeSettings>;
+  settings: Partial<LoopXModeSettings> & { execution_config?: string };
   native: { status: string; tokenBudget?: number; tokensUsed?: number };
   registered_agents: string[]; paused: boolean; recovery_required: boolean;
   members: Array<{id: string; agent_id: string; todo_id: string}>;
@@ -1016,6 +1027,7 @@ function goalSubagentConfigurationBody(request: GoalSubagentConfigurationRequest
     goal_id: request.goalId,
     enabled: request.enabled,
     ...(request.modelConfig !== undefined ? { model_config: request.modelConfig } : {}),
+    ...(request.executionConfig !== undefined ? { execution_config: request.executionConfig } : {}),
     ...(request.enabled ? {
       max_children: request.maxChildren,
       allowed_domains: request.allowedDomains,
@@ -1033,6 +1045,7 @@ function verifyGoalSubagentConfigurationResult(
   const matchesRequest = result.goal_id === request.goalId
     && enabled === request.enabled
     && (request.modelConfig === undefined || JSON.stringify(orchestration.model_config ?? null) === JSON.stringify(request.modelConfig))
+    && (request.executionConfig === undefined || (orchestration.execution_config ?? "") === request.executionConfig)
     && (request.enabled
       ? orchestration.max_children === request.maxChildren
         && JSON.stringify(orchestration.allowed_domains) === JSON.stringify(expectedDomains)
