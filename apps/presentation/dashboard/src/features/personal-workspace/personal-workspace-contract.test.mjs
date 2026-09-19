@@ -248,6 +248,7 @@ assert.match(drawer, /t\("drawer\.repository"\)/, "Goal settings display the loc
 assert.match(drawer, /t\("common\.readOnly"\)/, "Repository is visibly read-only");
 assert.doesNotMatch(drawer, /Add repository/, "Goal settings do not imply repository binding controls");
 assert.match(model, /subagentExecution\??:\s*WorkspaceGoalSubagentConfiguration/, "Goal exposes the projected sub-agent execution boundary");
+assert.match(model, /executionConfig\??:\s*string/, "Goal sub-agent settings expose the shared delegation binding pointer");
 for (const callback of ["onPreviewGoalSubagentConfiguration", "onApplyGoalSubagentConfiguration"]) {
   assert.match(model, new RegExp(`${callback}\\??:`), `Goal sub-agent settings expose ${callback}`);
   assert.match(drawer, new RegExp(`callbacks\\.${callback}`), `Goal drawer calls ${callback}`);
@@ -262,6 +263,8 @@ assert.match(drawer, /normalize.*SubagentDomains|normalizedSubagentDomains/, "Go
 assert.match(chatData, /\/api\/chat\/goal-subagents\/dry-run/, "Dashboard uses the local preview-locked Goal sub-agent API");
 assert.match(chatData, /\/api\/chat\/goal-subagents\/apply/, "Dashboard applies Goal sub-agent settings through the same local API");
 assert.match(chatData, /global_sync\.readback\.verified/, "Goal sub-agent success requires shared-state readback verification");
+assert.match(chatData, /execution_config:\s*request\.executionConfig/, "Goal sub-agent writes use the canonical execution-config field");
+assert.match(drawer, /subagentExecutionConfigHint/, "Goal sub-agent settings explain the local-private delegation binding boundary");
 assert.match(dashboard, /goal\.spawn_policy\?\.mode === "multi_subagent"/, "Rendered switch state comes from the status spawn-policy projection");
 assert.match(dashboard, /capabilities\.goal_subagent_configuration === "preview_locked"/, "Goal sub-agent UI requires the authoritative Chat capability opt-in");
 assert.match(dashboard, /goalSubagentConfigurationEnabled \? \{[\s\S]*subagentExecution:/, "Capability-off models omit the Goal sub-agent UI contract");
