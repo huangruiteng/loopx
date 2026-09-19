@@ -145,8 +145,11 @@ shared lifecycle scenarios (including renew, reclaim after grace, stale-fence
 rejection, atomic completion/successor, competition, replay, lost response,
 retention, and revision advancement) through the production
 `CoordinationAuthorityExecutor` against the file-backed control provider and,
-when `NOKV_COORDINATION_LIVE=1` and the stack variables are set, this NoKV
-provider. One NoKV-only row performs a real commit/snapshot/restore and proves
+when `NOKV_COORDINATION_LIVE=1`, the stack variables and exactly one routing
+group are set (`NOKV_SEEDS` for a seed-routed owner, or `NOKV_ETCD` plus
+`NOKV_ETCD_PREFIX` for the 0.11.0 etcd control path), this NoKV provider. A
+routing kind the installed `nokv` wheel cannot build, or both groups set at
+once, is reported as a typed unverified reason, not as a failed row. One NoKV-only row performs a real commit/snapshot/restore and proves
 the restored lineage fails closed as `store_lineage_mismatch`. Without a
 reachable stack the NoKV rows report unverified and the script stays green, so
 it is evidence tooling, not a merge gate.

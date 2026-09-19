@@ -23,6 +23,7 @@ LIVE_ENVIRONMENT_VARIABLES = (
     ladder.POSTGRES_URL_VARIABLE,
     ladder.NOKV_LIVE_FLAG,
     *ladder.NOKV_STACK_VARIABLES,
+    *ladder.NOKV_ROUTING_VARIABLES,
     ladder.NOKV_AUTHORITY_LIVE_FLAG,
     *ladder.NOKV_AUTHORITY_VARIABLES,
 )
@@ -403,3 +404,88 @@ def test_list_prints_rows_and_pending_declarations(
     assert [row["id"] for row in stage_listing["rows"]] == list(STAGE_2C2_ROW_IDS)
     assert [row["id"] for row in stage_listing["pending"]] == list(PENDING_ROW_IDS)
     assert {row["stage"] for row in stage_listing["pending"]} == {"2c2"}
+
+
+def test_nokv_legacy_gate_requires_exactly_one_routing_group() -> None:
+    core = {ladder.NOKV_LIVE_FLAG: "1"}
+    core.update({name: f"stack-{index}" for index, name in enumerate(ladder.NOKV_STACK_VARIABLES)})
+    missing_one_of = (
+        "nokv_live_env_missing",
+        {"missing_one_of": [["NOKV_SEEDS"], ["NOKV_ETCD", "NOKV_ETCD_PREFIX"]]},
+    )
+    assert ladder.gate_unverified_reason("env:nokv_legacy", core) == missing_one_of
+    assert ladder.nokv_routing_kind(core) is None
+
+    seeds = {**core, "NOKV_SEEDS": "127.0.0.1:7750,127.0.0.1:7751"}
+    assert ladder.gate_unverified_reason("env:nokv_legacy", seeds) is None
+    assert ladder.nokv_routing_kind(seeds) == "seeds"
+
+    etcd = {**core, "NOKV_ETCD": "http://127.0.0.1:2379", "NOKV_ETCD_PREFIX": "/nokv/control"}
+    assert ladder.gate_unverified_reason("env:nokv_legacy", etcd) is None
+    assert ladder.nokv_routing_kind(etcd) == "etcd"
+
+    partial = {**core, "NOKV_ETCD": "http://127.0.0.1:2379"}
+    assert ladder.gate_unverified_reason("env:nokv_legacy", partial) == missing_one_of
+
+    both = {**seeds, **etcd}
+    assert ladder.gate_unverified_reason("env:nokv_legacy", both) == (
+        "nokv_routing_env_ambiguous",
+        {"routing_kinds": ["etcd", "seeds"]},
+    )
+    assert ladder.nokv_routing_kind(both) is None
+    assert ladder.collect_bindings(both)["nokv_routing_group"] is None
+    # Reports carry the variable name: the kind literal is also a client-config
+    # string leaf and therefore a forbidden privacy token.
+    assert ladder.collect_bindings(seeds)["nokv_routing_group"] == "NOKV_SEEDS"
+    assert ladder.collect_bindings(etcd)["nokv_routing_group"] == "NOKV_ETCD"
+
+    # Seed and etcd endpoint values are privacy tokens like every other stack value.
+    tokens = ladder.default_forbidden_tokens([], both)
+    assert "127.0.0.1:7750,127.0.0.1:7751" in tokens
+    assert "http://127.0.0.1:2379" in tokens
+
+    # The opt-in flag is still checked after the routing group is complete.
+    assert ladder.gate_unverified_reason(
+        "env:nokv_legacy", {**seeds, ladder.NOKV_LIVE_FLAG: "0"}
+    ) == ("nokv_coordination_live_not_enabled", {"flag": ladder.NOKV_LIVE_FLAG})
+
+
+def test_stage_2a_row_reports_a_wrong_wheel_as_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The probe's typed capability mismatch is a missing stack, not a failed row."""
+
+    import subprocess
+
+    config = tmp_path / "client.json"
+    config.write_text("{}", encoding="utf-8")
+    python = tmp_path / "python"
+    python.write_text("", encoding="utf-8")
+    environ = {
+        ladder.NOKV_AUTHORITY_LIVE_FLAG: "1",
+        ladder.NOKV_AUTHORITY_CONFIG_VARIABLE: str(config),
+        ladder.NOKV_AUTHORITY_PYTHON_VARIABLE: str(python),
+        ladder.NOKV_AUTHORITY_WORKBENCH_VARIABLE: "workbench-a",
+    }
+    monkeypatch.setattr(ladder, "node_executable", lambda: "/usr/bin/false")
+    stderr = json.dumps(
+        {"schema_version": "x", "ok": False, "reason_code": "nokv_sdk_capability_mismatch", "reason": "r"}
+    )
+    monkeypatch.setattr(
+        ladder.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, stdout="", stderr=stderr + "\n"),
+    )
+    outcome = ladder._row_nokv_live_qualification(ladder.RowContext(root=tmp_path, environ=environ))
+    assert outcome.status == "unverified"
+    assert outcome.reason_code == "nokv_sdk_capability_mismatch"
+
+    other = json.dumps({"schema_version": "x", "ok": False, "reason_code": "qualification_failed", "reason": "r"})
+    monkeypatch.setattr(
+        ladder.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, stdout="", stderr=other + "\n"),
+    )
+    with pytest.raises(ladder.RowAssertionError, match="qualification_failed"):
+        ladder._row_nokv_live_qualification(ladder.RowContext(root=tmp_path, environ=environ))
+

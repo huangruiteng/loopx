@@ -7,7 +7,10 @@ import {
   NoKVTransportProtocolError,
   NoKVTransportUnavailableError,
 } from "../../loopx/control_plane/coordination/nokv_authority_store.ts";
-import { NoKVJsonLinesTransport } from "../../loopx/control_plane/coordination/nokv_jsonl_transport.ts";
+import {
+  NoKVHelperOpenRefusedError,
+  NoKVJsonLinesTransport,
+} from "../../loopx/control_plane/coordination/nokv_jsonl_transport.ts";
 import { registerAuthorityStoreConformance } from "./authority_store_conformance.ts";
 
 const PYTHON = process.env.LOOPX_TEST_PYTHON ?? "python3";
@@ -21,21 +24,30 @@ const FAKE_SDK_ROOT = fileURLToPath(
   new URL("../fixtures/nokv_fake_sdk", import.meta.url),
 );
 
-async function openSdkHelper() {
+const ETCD_ROUTING = {
+  kind: "etcd",
+  endpoints: ["http://127.0.0.1:2379"],
+  key_prefix: "/nokv/control",
+  lease_ttl_seconds: 10,
+};
+// Seed routing names serving owners directly; it is the routing kind of the
+// NoKV metadata-runtimes line, which drops the etcd constructor.
+const SEEDS_ROUTING = { kind: "seeds", endpoints: ["127.0.0.1:7750"] };
+
+async function openSdkHelper(
+  routing: Record<string, unknown> = ETCD_ROUTING,
+  extraEnv: Record<string, string> = {},
+) {
   return await NoKVJsonLinesTransport.open({
     argv: [PYTHON, SDK_HELPER],
     config: {
       root_id: "0".repeat(32),
-      routing: {
-        kind: "etcd",
-        endpoints: ["http://127.0.0.1:2379"],
-        key_prefix: "/nokv/control",
-        lease_ttl_seconds: 10,
-      },
+      routing,
       object_store: { kind: "memory" },
     },
     env: {
       ...process.env,
+      ...extraEnv,
       PYTHONPATH: process.env.PYTHONPATH
         ? `${FAKE_SDK_ROOT}:${process.env.PYTHONPATH}`
         : FAKE_SDK_ROOT,
@@ -201,3 +213,60 @@ test("NoKV AuthorityStore preserves helper protocol failure as failed, not missi
     assert.equal(loaded.reason_code, "provider_protocol_violation");
   }
 });
+
+test("JSON-lines transport opens the real helper with seed routing", async () => {
+  const transport = await openSdkHelper(SEEDS_ROUTING);
+  try {
+    const identity = await transport.storeIdentity("authority-workbench");
+    assert.equal(identity.status, "available");
+    if (identity.status !== "available") throw new Error("unreachable");
+    assert.equal(identity.store_identity, `nokv:authority-workbench:${"a".repeat(32)}`);
+  } finally {
+    await transport.close();
+  }
+});
+
+test("JSON-lines transport surfaces an unknown routing kind as a typed protocol failure", async () => {
+  await assert.rejects(
+    openSdkHelper({ kind: "gossip", endpoints: ["127.0.0.1:7750"] }),
+    (error: unknown) =>
+      error instanceof NoKVTransportProtocolError && /routing kind/.test(error.message),
+  );
+});
+
+test("JSON-lines transport records the SDK wire schema from the ready handshake", async () => {
+  const release = await openSdkHelper();
+  try {
+    assert.equal(release.sdkProtocolSchema, null, "the 0.11.0-shaped wheel exports no schema");
+  } finally {
+    await release.close();
+  }
+  const newer = await openSdkHelper(SEEDS_ROUTING, {
+    LOOPX_FAKE_NOKV_PROTOCOL_SCHEMA: "nokv.workspace.rpc.v10",
+  });
+  try {
+    assert.equal(newer.sdkProtocolSchema, "nokv.workspace.rpc.v10");
+  } finally {
+    await newer.close();
+  }
+});
+
+test("JSON-lines transport types a helper open refused for a wheel that lacks the routing kind", async () => {
+  await assert.rejects(
+    openSdkHelper(SEEDS_ROUTING, { LOOPX_FAKE_NOKV_RELEASE_SHAPE: "1" }),
+    (error: unknown) =>
+      error instanceof NoKVHelperOpenRefusedError
+      && error instanceof NoKVTransportProtocolError
+      && error.reasonCode === "nokv_sdk_capability_mismatch"
+      && /RoutingConfig\.seeds/.test(error.message)
+      && !/7750/.test(error.message),
+  );
+  // The same narrowed wheel still opens with the routing kind it does provide.
+  const release = await openSdkHelper(ETCD_ROUTING, { LOOPX_FAKE_NOKV_RELEASE_SHAPE: "1" });
+  try {
+    assert.equal(release.sdkProtocolSchema, null);
+  } finally {
+    await release.close();
+  }
+});
+

@@ -53,9 +53,19 @@ run is Stage 2A single-node storage conformance evidence only.
 ## Inputs
 
 Use a current NoKV Python environment. Keep the client configuration in an
-ignored local file; do not commit credentials. Static routing is valid for a
-single-node NoKV deployment—etcd is not required by this probe. The following
-shape is illustrative:
+ignored local file; do not commit credentials. The helper accepts three routing
+kinds and passes each to the matching `RoutingConfig` constructor of the
+installed SDK: `etcd` and `static` (the 0.11.0 release wheel) and `seeds`
+(`{"kind": "seeds", "endpoints": ["IP:PORT", ...]}`, the NoKV
+metadata-runtimes line, which names serving owners directly and drops the etcd
+constructor). Static routing is valid for a single-node NoKV deployment; etcd
+is not required by this probe. A routing kind the installed wheel cannot build
+fails the open handshake with `nokv_sdk_capability_mismatch` before any client
+is constructed, so a seeds configuration against a 0.11.0 wheel (or an etcd
+configuration against a metadata-runtimes wheel) is reported as the wrong
+wheel, not as an outage. The `ready` handshake echoes `nokv_protocol_schema`:
+the SDK's `WORKSPACE_PROTOCOL_SCHEMA` when the wheel exports one, otherwise
+`null` (the 0.11.0 release does not). The following shape is illustrative:
 
 ```json
 {
@@ -126,7 +136,7 @@ unfenced, pre-existing, or unreadable state exits nonzero with a compact JSON
 reason; provider stderr, endpoints, credentials, and raw SDK errors are not
 copied into that result. A successful JSON report includes
 `"qualification_scope":"stage_2a_single_node_store_conformance"`,
-`"nokv_sdk_version":"0.11.0"`, and `"nokv_api_version":1`. The two version
+`"nokv_sdk_version":"0.11.0"`, `"nokv_api_version":1`, and `"nokv_protocol_schema"` (the wheel's `WORKSPACE_PROTOCOL_SCHEMA`, or `null` for the 0.11.0 release, which exports none). The two version
 fields are the helper's admission constants: the helper refuses to open a client
 for any other SDK version or API version, so a successful report implies them,
 but they are not values read back from the NoKV server. The report is Stage

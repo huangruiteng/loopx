@@ -25,6 +25,7 @@ import {
   type NoKVStoreIdentityResult,
 } from "../../loopx/control_plane/coordination/nokv_authority_store.ts";
 import {
+  NoKVHelperOpenRefusedError,
   NoKVJsonLinesTransport,
 } from "../../loopx/control_plane/coordination/nokv_jsonl_transport.ts";
 
@@ -48,6 +49,8 @@ export class QualificationFailure extends Error {
 
 export interface QualificationTransport extends NoKVBlobTransport {
   close(): Promise<void>;
+  /** Wire schema declared by the helper's SDK; absent or `null` when unknown. */
+  readonly sdkProtocolSchema?: string | null;
 }
 
 export interface QualificationOptions {
@@ -71,6 +74,8 @@ export interface QualificationReport {
   availability_or_ha_proven: false;
   nokv_sdk_version: typeof QUALIFIED_NOKV_SDK_VERSION;
   nokv_api_version: typeof QUALIFIED_NOKV_API_VERSION;
+  /** `null` when the wheel exports no `WORKSPACE_PROTOCOL_SCHEMA` (0.11.0). */
+  nokv_protocol_schema: string | null;
 }
 
 export interface QualificationSequenceResult {
@@ -499,12 +504,16 @@ export async function exerciseQualificationSequence(
 export async function qualifyNoKVAuthorityStore(
   options: QualificationOptions,
 ): Promise<QualificationReport> {
-  const sequence = await exerciseQualificationSequence(options, async () =>
-    await NoKVJsonLinesTransport.open({
+  let protocolSchema: string | null = null;
+  const sequence = await exerciseQualificationSequence(options, async () => {
+    const transport = await NoKVJsonLinesTransport.open({
       argv: qualificationHelperArgv(options.python_executable),
       config: options.client_config,
       request_timeout_ms: options.request_timeout_ms,
-    }));
+    });
+    if (protocolSchema === null) protocolSchema = transport.sdkProtocolSchema;
+    return transport;
+  });
   return {
     schema_version: REPORT_SCHEMA,
     qualification_scope: QUALIFICATION_SCOPE,
@@ -515,6 +524,7 @@ export async function qualifyNoKVAuthorityStore(
     availability_or_ha_proven: false,
     nokv_sdk_version: QUALIFIED_NOKV_SDK_VERSION,
     nokv_api_version: QUALIFIED_NOKV_API_VERSION,
+    nokv_protocol_schema: protocolSchema,
   };
 }
 
@@ -610,6 +620,11 @@ async function main(): Promise<number> {
     } else if (error instanceof NoKVTransportUnavailableError) {
       reasonCode = "nokv_backend_unavailable";
       reason = "NoKV backend or SDK helper is unavailable";
+    } else if (error instanceof NoKVHelperOpenRefusedError) {
+      // The helper's own typed code (for example nokv_sdk_capability_mismatch);
+      // its human-readable reason may echo configuration and stays out of stderr.
+      reasonCode = error.reasonCode;
+      reason = "NoKV SDK helper refused the open handshake";
     } else if (error instanceof NoKVTransportProtocolError) {
       reasonCode = "nokv_transport_protocol_failed";
       reason = "NoKV SDK helper violated the transport protocol";
