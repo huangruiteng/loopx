@@ -183,9 +183,18 @@ class Delegations:
             selected = build_parser().parse_args(arguments)
         except SystemExit as exc:
             raise ValueError("invalid delegation Turn arguments") from exc
+        workspace = Path(binding["workspace"]).resolve()
+        selected_project = Path(selected.project)
+        selected_scan_root = Path(selected.scan_root)
+        if not selected_project.is_absolute():
+            selected_project = workspace / selected_project
+        if not selected_scan_root.is_absolute():
+            selected_scan_root = workspace / selected_scan_root
         if (selected.execute or selected.resume_turn_key
                 or (selected.goal_id, selected.agent_id, selected.todo_id, selected.turn_instance_id)
-                != (self.goal_id, binding["agent_id"], binding["todo_id"], operation)):
+                != (self.goal_id, binding["agent_id"], binding["todo_id"], operation)
+                or selected_project.resolve() != workspace
+                or selected_scan_root.resolve() != workspace):
             raise ValueError("delegation inspection cannot execute or retarget bound work")
         preview = self._cli(binding, *arguments)
         if preview.get("status") != "preview":

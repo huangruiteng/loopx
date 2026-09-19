@@ -39,6 +39,8 @@ def test_preflight_rejects_execution_and_retargeting_before_subprocess(
         ["--exec"],
         ["--todo-id", "other"],
         ["--agent-id", "other"],
+        ["--project", "other"],
+        ["--scan-root", "other"],
         ["--resume-turn-key", "other"],
     ):
         config["bindings"][0]["host_args"] = [*original, *flags]
@@ -130,6 +132,14 @@ def test_http_team_readback_uses_original_scope_without_a_new_turn(service):
     config = workspace / ".loopx" / "config" / "delegations.json"
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_bytes(runner.config.read_bytes())
+    registry_payload = json.loads(runner.registry.read_text())
+    goal = next(
+        item for item in registry_payload["goals"] if item["id"] == runner.goal_id
+    )
+    goal.setdefault("spawn_policy", {})["execution_config"] = (
+        ".loopx/config/delegations.json"
+    )
+    runner.registry.write_text(json.dumps(registry_payload))
     store = ChatSessionStore(root / "runtime")
     controller = ChatRuntimeController(
         store=store, codex_bin="codex", registry_path=runner.registry
@@ -150,7 +160,6 @@ def test_http_team_readback_uses_original_scope_without_a_new_turn(service):
             "settings": {
                 "agent_id": "lead",
                 "token_budget": 1000,
-                "execution_config": ".loopx/config/delegations.json",
             },
         },
         work_dir=root,

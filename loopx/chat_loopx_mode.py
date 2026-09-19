@@ -254,7 +254,10 @@ class ChatLoopXMode:
         if operation not in {"inspect", "operations"} or set(body) - allowed:
             raise ValueError("invalid team readback request")
         session = self._session(session_id)
-        service, _, _ = self._execution(session, (session.get("loopx_mode") or {}).get("settings") or {})
+        settings = (session.get("loopx_mode") or {}).get("settings") or {}
+        if not settings.get("agent_id"):
+            raise ValueError("configure a coordinator identity before team readback")
+        service, _, _, _ = self._execution(session, settings)
         result = (service.inspect(body.get("binding_id", "")) if operation == "inspect" else
                   service.operations(limit=body.get("limit", 10), cursor=body.get("cursor")))
         return {"ok": True, **result}
