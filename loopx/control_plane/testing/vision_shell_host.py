@@ -99,6 +99,10 @@ class VisionShellHost:
         argv = [str(shutil.which("bwrap")), "--unshare-all", "--die-with-parent", "--new-session", "--proc", "/proc", "--dev", "/dev"]
         for path in dict.fromkeys(readable):
             argv += ["--ro-bind", str(path), str(path)]
+        # usr-merged Linux needs the original loader and shell aliases too.
+        for name in ("/bin", "/sbin", "/lib", "/lib64"):
+            if Path(name).is_symlink():
+                argv += ["--symlink", os.readlink(name), name]
         argv += ["--bind", str(self.project), str(self.project)]
         for path in self.originals:
             argv += ["--ro-bind", str(path), str(path)]
