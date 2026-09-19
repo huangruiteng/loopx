@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from .model_tool_behavior import argument_value, loopx_command_tokens
+from .model_behavior_qualification import model_behavior_semantic_contract_from_packet
 from ..quota.effective_action import EffectiveAction
 
 if TYPE_CHECKING:
@@ -21,11 +24,54 @@ VISION_HOST_INSTRUCTION = (
     "You are Codex operating a hermetic LoopX project. Follow the heartbeat and "
     "the live control-plane packet, including its semantic writeback and settlement. "
     "The shell cwd is the connected project. Available operations are bounded "
-    "workspace reads, LoopX CLI commands, and apply_patch with a single Add File "
-    "patch in a quoted heredoc to author a new relative JSON file. No external "
+    "workspace reads, LoopX CLI commands, and new relative JSON file authoring "
+    "via apply_patch Add File or cat with a quoted heredoc. A cat write may be "
+    "followed by bound LoopX commands separated by newlines or &&. No external "
     "network or writes outside the fixture are available. Choose the decision "
     "from the evidence; file creation alone is not delivery."
 )
+
+
+def required_vision_scenario_contract(
+    source_packet: Mapping[str, Any], contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the source scenario and bind its full closeout acceptance."""
+    semantics = model_behavior_semantic_contract_from_packet(source_packet, arm="full_packet")
+    vision = semantics["vision_continuation"]
+    trigger_kinds = set(vision.get("trigger_kinds", []))
+    required = {
+        "selected_todo_id": None,
+        "user_action_required": False,
+        "must_attempt_work": True,
+        "quiet_noop_allowed": False,
+    }
+    if any(contract.get(field) != value for field, value in required.items()):
+        raise ValueError("required-vision scenario must execute before quiet wait")
+    if vision.get("required") is not True or "required_agent_vision_missing" not in trigger_kinds:
+        raise ValueError("required-vision scenario must preserve the profile gap")
+    if semantics["required_reads"]:
+        raise ValueError("required-vision replan must not require a model read ritual")
+    action_packet = source_packet.get("replan_action_packet")
+    obligation = source_packet.get("autonomous_replan_obligation")
+    if not (
+        isinstance(action_packet, Mapping)
+        and isinstance(obligation, Mapping)
+        and action_packet.get("decision") == "replan_required"
+        and action_packet.get("obligation_id") == obligation.get("obligation_id")
+        and dict(obligation.get("replan_context") or {}).get("delivery") == "host_projected"
+    ):
+        raise ValueError("required-vision scenario must preserve host-delivered replan context")
+    if semantics["scheduler_action"].get("action") != "run_now":
+        raise ValueError("required-vision scenario must remain immediately runnable")
+    return {
+        "qualification_scope": "required_vision_closeout",
+        "trigger_kinds": sorted({item["kind"] for item in obligation["triggers"]}),
+        "required_semantic_outcomes": list(action_packet["uncovered_frontier"]["required_any_of"]),
+        "vision_closeout": {
+            "checkpoint_satisfied": True, "bound_writeback": True,
+            "settled": True, "spend_count": 1, "original_obligation_closed": True,
+        },
+    }
 
 
 def _authored_file(command: str, project: Path) -> str:
@@ -38,21 +84,67 @@ def _authored_file(command: str, project: Path) -> str:
     )
     if not match:
         raise ValueError("vision_authoring_requires_single_add_file_patch")
-    relative = Path(match[2])
+    lines = match[3].splitlines()
+    if not lines or any(not line.startswith("+") for line in lines):
+        raise ValueError("vision_authoring_requires_added_lines")
+    return _write_json_file(project, match[2], "\n".join(line[1:] for line in lines) + "\n")
+
+
+def _write_json_file(project: Path, name: str, content: str) -> str:
+    relative = Path(name)
     if relative.is_absolute() or relative.suffix != ".json" or ".." in relative.parts:
         raise ValueError("vision_authoring_path_outside_fixture")
     target = (project / relative).resolve()
     if not target.is_relative_to(project.resolve()) or target.exists():
         raise ValueError("vision_authoring_path_outside_fixture")
-    lines = match[3].splitlines()
-    if not lines or any(not line.startswith("+") for line in lines):
-        raise ValueError("vision_authoring_requires_added_lines")
-    content = "\n".join(line[1:] for line in lines) + "\n"
     if not isinstance(json.loads(content), dict):
         raise ValueError("vision_authoring_requires_json_object")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return json.dumps({"ok": True, "path": relative.as_posix()})
+
+
+def _json_heredoc(command: str) -> tuple[str, str, list[str]] | None:
+    """Decode inert JSON plus a bounded CLI suffix, never a shell program."""
+    header, newline, rest = command.partition("\n")
+    if not newline or not header.lstrip().startswith("cat "):
+        return None
+    quoted = re.search(r"<<\s*(['\"])([A-Za-z_][A-Za-z0-9_]*)\1", header)
+    if quoted is None:
+        return None
+    lexer = shlex.shlex(header, posix=True, punctuation_chars="<>&;|")
+    lexer.whitespace_split = True
+    tokens = list(lexer)
+    if len(tokens) != 5 or tokens[0] != "cat" or set(tokens[1::2]) != {">", "<<"}:
+        raise ValueError("vision_authoring_requires_literal_json_heredoc")
+    name = tokens[tokens.index(">") + 1]
+    delimiter = tokens[tokens.index("<<") + 1]
+    if delimiter != quoted[2]:
+        raise ValueError("vision_authoring_requires_literal_json_heredoc")
+    lines = rest.splitlines(keepends=True)
+    end = next((index for index, line in enumerate(lines) if line.rstrip("\r\n") == delimiter), None)
+    if end is None:
+        raise ValueError("vision_authoring_requires_literal_json_heredoc")
+    suffix = "".join(lines[end + 1:]).strip()
+    lexer = shlex.shlex(suffix, posix=True, punctuation_chars=";&|\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    commands: list[str] = []
+    argv: list[str] = []
+    for token in [*lexer, "\n"]:
+        if token == "&&" or token.strip("\n") == "":
+            if argv:
+                if Path(argv[0]).name != "loopx":
+                    raise ValueError("vision_authoring_suffix_requires_loopx")
+                commands.append(shlex.join(argv))
+                argv = []
+        elif token in {";", "|", "||", "&"}:
+            raise ValueError("vision_authoring_suffix_requires_loopx")
+        else:
+            argv.append(token)
+    if len(commands) > 2:
+        raise ValueError("vision_authoring_suffix_requires_loopx")
+    return name, "".join(lines[:end]), commands
 
 
 def _rows(state: _QualificationState) -> list[dict[str, Any]]:
@@ -64,6 +156,20 @@ def _rows(state: _QualificationState) -> list[dict[str, Any]]:
 def dispatch_vision_closeout(
     command: str, state: _QualificationState, *, execute: Callable[..., str],
 ) -> tuple[str, str, bool] | None:
+    heredoc = _json_heredoc(command)
+    if heredoc is not None:
+        if not state.seen_quota:
+            raise ValueError("vision_authoring_before_quota")
+        name, content, suffix = heredoc
+        result: tuple[str, str, bool] = (_write_json_file(state.fixture.project_root, name, content), "vision_file_authoring", False)
+        for following in suffix:
+            if result[2]:
+                raise ValueError("vision_authoring_suffix_requires_loopx")
+            next_result = dispatch_vision_closeout(following, state, execute=execute)
+            if next_result is None:
+                raise ValueError("vision_authoring_suffix_requires_loopx")
+            result = next_result
+        return result
     if command.startswith("apply_patch"):
         if not state.seen_quota:
             raise ValueError("vision_authoring_before_quota")

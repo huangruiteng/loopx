@@ -801,7 +801,8 @@ cannot qualify this journey. The narrow semantic-action gate remains useful
 but does not prove full closeout. Run this focused journey with
 `uv run --extra test python scripts/qualify-doubao-replan-semantic-action-live.py --required-vision --qualification-id <public-safe-run-id>`.
 Its seven-call bound is unchanged. The hermetic host supports bounded reads,
-real LoopX CLI calls and single-file `apply_patch` JSON authoring; it does not
+real LoopX CLI calls and confined JSON authoring (`apply_patch` or a quoted
+heredoc, optionally followed by bound CLI closeout); it does not
 execute arbitrary model shell programs or add missing semantic fields.
 Receipts distinguish accepted writeback from settled closeout, retain bounded
 failure-stage codes, and never persist raw model conversations. The other turn cases remain

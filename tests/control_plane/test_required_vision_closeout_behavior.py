@@ -14,7 +14,7 @@ from loopx.control_plane.testing.model_tool_behavior import (
 from loopx.control_plane.testing.replan_semantic_action_behavior import (
     DoubaoReplanSemanticActionBehaviorActor, _build_fixture,
 )
-from loopx.control_plane.testing.replan_vision_closeout_behavior import _authored_file
+from loopx.control_plane.testing.replan_vision_closeout_behavior import _authored_file, _json_heredoc
 
 
 def _packet(request: Mapping[str, Any]) -> dict[str, Any]:
@@ -64,17 +64,31 @@ def projected_spend(request: Mapping[str, Any]) -> ScriptedExecToolAction:
     return ScriptedExecToolAction(command)
 
 
+def heredoc_action(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+    patch_lines = vision_patch_action(request).command.splitlines()[3:-2]
+    content = "\n".join(line[1:] for line in patch_lines)
+    return ScriptedExecToolAction("cat > decision.json <<'JSON'\n" + content + "\nJSON")
+
+
 @pytest.mark.parametrize("advancement_policy", ["as_needed", "repeat_until_closed"])
-def test_required_vision_uses_real_bound_refresh_spend_and_readback(tmp_path: Path, advancement_policy: str) -> None:
+@pytest.mark.parametrize("authoring", ["apply_patch", "heredoc_with_closeout"])
+def test_required_vision_uses_real_bound_refresh_spend_and_readback(tmp_path: Path, advancement_policy: str, authoring: str) -> None:
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
     def authored_decision(request: Mapping[str, Any]) -> ScriptedExecToolAction:
-        return ScriptedExecToolAction(vision_patch_action(request).command.replace('"as_needed"', json.dumps(advancement_policy)))
-    transport = ScriptedDoubaoExecTransport([
+        command = (vision_patch_action if authoring == "apply_patch" else heredoc_action)(request).command
+        command = command.replace('"as_needed"', json.dumps(advancement_policy))
+        if authoring == "heredoc_with_closeout":
+            command += "\n" + projected_refresh(request).command + " && " + projected_spend(request).command
+        return ScriptedExecToolAction(command)
+    actions = [
         ScriptedExecToolAction(fixture.quota_guard_command),
         ScriptedExecToolAction("cat replan-frontier.json"),
         ScriptedExecToolAction("cat fixture/permission-config.json"),
-        authored_decision, projected_refresh, projected_spend,
-    ])
+        authored_decision,
+    ]
+    if authoring == "apply_patch":
+        actions.extend([projected_refresh, projected_spend])
+    transport = ScriptedDoubaoExecTransport(actions)
     receipt = DoubaoReplanSemanticActionBehaviorActor(
         api_key="test-only-placeholder", transport=transport,
     ).qualify(qualification_id="required-vision", fixture_root=tmp_path / "actor", required_vision=True)
@@ -136,3 +150,14 @@ def test_authoring_cannot_escape_or_overwrite_fixture(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="path_outside_fixture"):
         _authored_file(command, tmp_path)
     assert (tmp_path / "decision.json").read_bytes() == original
+
+
+def test_heredoc_is_inert_json_and_never_an_arbitrary_shell_program() -> None:
+    command = heredoc_action({}).command
+    name, content, suffix = _json_heredoc(command.replace("Explicit write grant", "$(touch outside); `echo untrusted`"))
+    assert name == "decision.json" and suffix == []
+    assert "$(touch outside)" in json.loads(content)["path_delta"]["retained"][0]
+    for tail in ("\ntouch outside", "\nloopx quota spend-slot; touch outside", "\nloopx quota spend-slot | echo outside"):
+        with pytest.raises(ValueError, match="suffix_requires_loopx"):
+            _json_heredoc(command + tail)
+    assert _json_heredoc(command.replace("<<'JSON'", "<<JSON")) is None

@@ -1146,6 +1146,8 @@ _EXPECTED_BEHAVIOR_FAILURES = frozenset(
         "vision_authoring_path_outside_fixture",
         "vision_authoring_requires_added_lines",
         "vision_authoring_requires_json_object",
+        "vision_authoring_requires_literal_json_heredoc",
+        "vision_authoring_suffix_requires_loopx",
         "vision_authoring_before_quota",
         "vision_closeout_binding_mismatch",
         "vision_closeout_turn_mismatch",
