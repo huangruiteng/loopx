@@ -613,7 +613,7 @@
         "settled"
       ],
       "value_notes": {
-        "poll_due": "Emitted when no quota monitor poll run exists for this settlement identity of goal, agent, turn instance and, where bound, Todo. The observation record itself is missing, so the system does not yet know whether anything is owed. This is what distinguishes it from the replay vocabulary's open, where the observation exists but its completion receipt does not.",
+        "poll_due": "Emitted when no committed quota monitor poll matches the exact goal, agent, turn and Todo identity. A matching observation row without its exact native commit effect does not prove closeout. This is what distinguishes it from the replay vocabulary's open, where the observation exists but its completion receipt does not.",
         "settlement_pending": "Compatibility value accepted from older phase producers. The current owner no longer emits it once an exact monitor-poll commit is present, because monitor observation is a no-spend closeout regardless of whether it releases a successor.",
         "settled": "Emitted whenever the exact quota monitor-poll commit exists for the settlement identity. Unchanged and material observations both close the observe-only monitor Turn without accountable refresh or quota spend; a material poll may atomically release an independent advancement successor."
       }

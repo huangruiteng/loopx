@@ -596,6 +596,26 @@ def test_same_turn_material_monitor_poll_is_no_spend_closeout_before_successor(
     successor_id = poll["successor_todo_ids"][0]
     assert poll["after"]["selected_todo"]["todo_id"] == admitted["todo_id"]
 
+    # The production CLI must not confuse an observation row with a committed
+    # closeout. Keep the exact guard and Todo fixed while corrupting only the
+    # commit evidence in this disposable runtime.
+    index = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+    committed_index = index.read_text(encoding="utf-8")
+    rows = [json.loads(line) for line in committed_index.splitlines()]
+    for metadata in (None, {}, {"effect_id": "quota-monitor-poll:wrong-turn"}):
+        mutated = [
+            {**row, "quota_monitor_poll_commit": metadata}
+            if row["classification"] == "quota_monitor_poll" else row
+            for row in rows
+        ]
+        index.write_text(
+            "".join(json.dumps(row) + "\n" for row in mutated), encoding="utf-8"
+        )
+        incomplete = run_json_cli(*guard_args, registry_path=registry, runtime_root=runtime)
+        assert incomplete["agent_lane_next_action"]["receipt_bound_monitor_phase"] == "poll_due"
+        assert incomplete["execution_obligation"]["must_attempt_work"] is True
+    index.write_text(committed_index, encoding="utf-8")
+
     replay = run_json_cli(
         *guard_args,
         registry_path=registry,
@@ -623,7 +643,6 @@ def test_same_turn_material_monitor_poll_is_no_spend_closeout_before_successor(
     assert replay["automation_liveness"]["automation_action"] == "keep_active_quiet"
     assert replay["heartbeat_receipt"]["status"] == "replayed"
 
-    index = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
     classifications = [
         row["classification"]
         for row in map(json.loads, index.read_text(encoding="utf-8").splitlines())

@@ -1,3 +1,15 @@
+import type { SettlementIdentity } from "../effect_program.ts";
+
+/** Both same-Turn readback and prior-Turn recovery accept the shipped effect identities. */
+export function isCommittedMonitorPollEffect(
+  effectId: unknown,
+  identity: Pick<SettlementIdentity, "goal_id" | "agent_id" | "turn_instance_id" | "todo_id">,
+): boolean {
+  if (!identity.todo_id) return false;
+  const base = `quota-monitor-poll:${identity.goal_id}:${identity.agent_id}:${identity.turn_instance_id}`;
+  return effectId === base || effectId === `${base}:todo:${identity.todo_id}`;
+}
+
 export const RECEIPT_BOUND_MONITOR_PHASES = [
   "poll_due",
   "settlement_pending",

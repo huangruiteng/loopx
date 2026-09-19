@@ -737,7 +737,10 @@ and new-topic lanes while preserving due `continuous_monitor` todos and verified
 direct operator replies. A future monitor stays quiet; a committed monitor poll
 is the Turn's no-spend closeout whether unchanged or material. A material poll
 may atomically release an independent advancement successor, whose later
-delivery has its own quota identity. Other peers remain active. Use
+delivery has its own quota identity. Same-Turn readback and prior-Turn recovery
+accept the same exact committed effect, including the shipped turn-only receipt;
+a preview or a row with missing or mismatched commit metadata cannot close the
+Turn. Other peers remain active. Use
 `--clear-agent-work-mode <agent-id>` (or set `=active`) to resume ordinary
 advancement.
 
