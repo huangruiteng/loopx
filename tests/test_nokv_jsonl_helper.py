@@ -12,6 +12,7 @@ import pytest
 from loopx.control_plane.coordination.nokv_jsonl_helper import (
     ClientAdmissionUnavailable,
     RequestError,
+    SdkCapabilityMismatch,
     build_client,
     handle_request,
     main,
@@ -586,5 +587,180 @@ def test_open_handshake_reports_the_qualified_sdk_contract(
         "request_id": "open-a",
         "status": "ready",
         "nokv_api_version": 1,
+        "nokv_protocol_schema": None,
+        "nokv_sdk_version": "0.11.0",
+    }
+
+
+def _sdk_module(routing: object, **overrides: Any) -> types.SimpleNamespace:
+    module = types.SimpleNamespace(
+        __version__="0.11.0",
+        API_VERSION=1,
+        Client=lambda **_kwargs: object(),
+        ObjectStoreConfig=types.SimpleNamespace(memory=lambda: object()),
+        RoutingConfig=routing,
+    )
+    for name, value in overrides.items():
+        setattr(module, name, value)
+    return module
+
+
+def _seeds_config(**routing_extra: Any) -> dict[str, Any]:
+    return {
+        "root_id": "a" * 32,
+        "routing": {"kind": "seeds", "endpoints": ["127.0.0.1:7750"], **routing_extra},
+        "object_store": {"kind": "memory"},
+    }
+
+
+def test_seeds_route_uses_the_sdk_seeds_constructor_with_exact_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seeds_calls: list[tuple[Any, ...]] = []
+
+    class RoutingConfig:
+        @staticmethod
+        def seeds(*args: Any) -> object:
+            seeds_calls.append(args)
+            return object()
+
+    monkeypatch.setitem(sys.modules, "nokv", _sdk_module(RoutingConfig))
+
+    build_client(_seeds_config())
+    assert seeds_calls == [(["127.0.0.1:7750"],)]
+
+    for invalid in (
+        _seeds_config(key_prefix="/nokv/control"),
+        {**_seeds_config(), "routing": {"kind": "seeds"}},
+        {**_seeds_config(), "routing": {"kind": "seeds", "endpoints": []}},
+    ):
+        with pytest.raises(RequestError):
+            build_client(invalid)
+    assert len(seeds_calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("routing_config", "sdk_routing"),
+    [
+        (
+            {"kind": "seeds", "endpoints": ["127.0.0.1:7750"]},
+            types.SimpleNamespace(
+                etcd=lambda *_args: object(), static=lambda *_args: object()
+            ),
+        ),
+        (
+            {
+                "kind": "etcd",
+                "endpoints": ["http://unused.invalid"],
+                "key_prefix": "/nokv/control",
+                "lease_ttl_seconds": 10,
+            },
+            types.SimpleNamespace(seeds=lambda *_args: object()),
+        ),
+    ],
+)
+def test_routing_kind_the_sdk_cannot_build_is_a_typed_capability_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    routing_config: dict[str, Any],
+    sdk_routing: types.SimpleNamespace,
+) -> None:
+    constructed: list[str] = []
+    module = _sdk_module(
+        sdk_routing,
+        Client=lambda **_kwargs: constructed.append("client"),
+    )
+    module.ObjectStoreConfig = types.SimpleNamespace(
+        memory=lambda: constructed.append("object_store")
+    )
+    monkeypatch.setitem(sys.modules, "nokv", module)
+
+    with pytest.raises(SdkCapabilityMismatch) as raised:
+        build_client(
+            {
+                "root_id": "a" * 32,
+                "routing": routing_config,
+                "object_store": {"kind": "memory"},
+            }
+        )
+
+    assert isinstance(raised.value, RequestError)
+    assert f"RoutingConfig.{routing_config['kind']}" in str(raised.value)
+    assert "127.0.0.1" not in str(raised.value)
+    assert "unused.invalid" not in str(raised.value)
+    assert constructed == []
+
+
+def test_unknown_routing_kind_is_invalid_config_not_a_capability_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _sdk_module(types.SimpleNamespace(seeds=lambda *_args: object()))
+    monkeypatch.setitem(sys.modules, "nokv", module)
+
+    with pytest.raises(RequestError) as raised:
+        build_client(
+            {**_seeds_config(), "routing": {"kind": "gossip", "endpoints": ["x"]}}
+        )
+    assert not isinstance(raised.value, SdkCapabilityMismatch)
+
+
+def test_open_handshake_reports_capability_mismatch_as_a_typed_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _sdk_module(types.SimpleNamespace(etcd=lambda *_args: object()))
+    monkeypatch.setitem(sys.modules, "nokv", module)
+    incoming = io.StringIO(
+        json.dumps(
+            {"request_id": "open-b", "operation": "open", "config": _seeds_config()}
+        )
+        + "\n"
+    )
+    outgoing = io.StringIO()
+    monkeypatch.setattr(sys, "stdin", incoming)
+    monkeypatch.setattr(sys, "stdout", outgoing)
+
+    assert main() == 2
+    response = json.loads(outgoing.getvalue().splitlines()[0])
+    assert response["request_id"] == "open-b"
+    assert response["status"] == "failed"
+    assert response["reason_code"] == "nokv_sdk_capability_mismatch"
+    assert "RoutingConfig.seeds" in response["reason"]
+    assert "127.0.0.1" not in response["reason"]
+
+
+@pytest.mark.parametrize(
+    ("declared", "expected"),
+    [
+        ("nokv.workspace.rpc.v10", "nokv.workspace.rpc.v10"),
+        (None, None),
+        (10, None),
+        ("", None),
+    ],
+)
+def test_open_handshake_echoes_only_a_well_formed_sdk_protocol_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    declared: object,
+    expected: str | None,
+) -> None:
+    extra: dict[str, Any] = {}
+    if declared is not None:
+        extra["WORKSPACE_PROTOCOL_SCHEMA"] = declared
+    module = _sdk_module(types.SimpleNamespace(seeds=lambda *_args: object()), **extra)
+    monkeypatch.setitem(sys.modules, "nokv", module)
+    incoming = io.StringIO(
+        json.dumps(
+            {"request_id": "open-c", "operation": "open", "config": _seeds_config()}
+        )
+        + "\n"
+    )
+    outgoing = io.StringIO()
+    monkeypatch.setattr(sys, "stdin", incoming)
+    monkeypatch.setattr(sys, "stdout", outgoing)
+
+    assert main() == 0
+    assert json.loads(outgoing.getvalue().splitlines()[0]) == {
+        "request_id": "open-c",
+        "status": "ready",
+        "nokv_api_version": 1,
+        "nokv_protocol_schema": expected,
         "nokv_sdk_version": "0.11.0",
     }

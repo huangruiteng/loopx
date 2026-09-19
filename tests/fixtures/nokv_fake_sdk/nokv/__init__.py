@@ -7,6 +7,12 @@ API_VERSION = 1
 
 
 class RoutingConfig:
+    # Union of the two real wheels the helper is qualified against: the 0.11.0
+    # release provides etcd/static, the metadata-runtimes line provides seeds.
+    @staticmethod
+    def seeds(endpoints: list[str]) -> object:
+        return ("seeds", endpoints)
+
     @staticmethod
     def etcd(endpoints: list[str], key_prefix: str, lease_ttl_seconds: int) -> object:
         return ("etcd", endpoints, key_prefix, lease_ttl_seconds)

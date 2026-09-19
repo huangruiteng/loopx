@@ -21,17 +21,22 @@ const FAKE_SDK_ROOT = fileURLToPath(
   new URL("../fixtures/nokv_fake_sdk", import.meta.url),
 );
 
-async function openSdkHelper() {
+const ETCD_ROUTING = {
+  kind: "etcd",
+  endpoints: ["http://127.0.0.1:2379"],
+  key_prefix: "/nokv/control",
+  lease_ttl_seconds: 10,
+};
+// Seed routing names serving owners directly; it is the routing kind of the
+// NoKV metadata-runtimes line, which drops the etcd constructor.
+const SEEDS_ROUTING = { kind: "seeds", endpoints: ["127.0.0.1:7750"] };
+
+async function openSdkHelper(routing: Record<string, unknown> = ETCD_ROUTING) {
   return await NoKVJsonLinesTransport.open({
     argv: [PYTHON, SDK_HELPER],
     config: {
       root_id: "0".repeat(32),
-      routing: {
-        kind: "etcd",
-        endpoints: ["http://127.0.0.1:2379"],
-        key_prefix: "/nokv/control",
-        lease_ttl_seconds: 10,
-      },
+      routing,
       object_store: { kind: "memory" },
     },
     env: {
@@ -201,3 +206,24 @@ test("NoKV AuthorityStore preserves helper protocol failure as failed, not missi
     assert.equal(loaded.reason_code, "provider_protocol_violation");
   }
 });
+
+test("JSON-lines transport opens the real helper with seed routing", async () => {
+  const transport = await openSdkHelper(SEEDS_ROUTING);
+  try {
+    const identity = await transport.storeIdentity("authority-workbench");
+    assert.equal(identity.status, "available");
+    if (identity.status !== "available") throw new Error("unreachable");
+    assert.equal(identity.store_identity, `nokv:authority-workbench:${"a".repeat(32)}`);
+  } finally {
+    await transport.close();
+  }
+});
+
+test("JSON-lines transport surfaces an unknown routing kind as a typed protocol failure", async () => {
+  await assert.rejects(
+    openSdkHelper({ kind: "gossip", endpoints: ["127.0.0.1:7750"] }),
+    (error: unknown) =>
+      error instanceof NoKVTransportProtocolError && /routing kind/.test(error.message),
+  );
+});
+
