@@ -61,6 +61,15 @@ export type WorkspaceRepositoryContext = {
 };
 
 export type WorkspaceGoalSubagentConfiguration = {
+  alignCodexHostCapacity?: boolean;
+  codexHostCapacity?: {
+    configuredChildren: number | null;
+    newSessionRequired: boolean;
+    requiredChildren: number;
+    status: string;
+    writeRequired: boolean;
+    written: boolean;
+  };
   modelConfig?: { model: string; reasoning_effort?: string } | null;
   executionConfig?: string;
   allowedDomains: string[];

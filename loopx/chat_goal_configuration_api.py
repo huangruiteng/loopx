@@ -11,6 +11,11 @@ from .capabilities.configuration_ui import (
 from .capabilities.machine_configuration.builtins import (
     build_builtin_machine_configuration_registry,
 )
+from .capabilities.multi_subagent import (
+    apply_codex_subagent_capacity,
+    plan_codex_subagent_capacity,
+    public_codex_host_capacity,
+)
 from .capabilities.machine_configuration.store import inspect_machine_configuration
 from .configuration_transaction import (
     build_configuration_update_plan,
@@ -96,6 +101,7 @@ def _multi_subagent_options(config: Mapping[str, Any]) -> dict[str, Any]:
         "multi_subagent_feature": "enabled",
         "max_children": max_children,
         "allowed_domains": domains,
+        "align_codex_subagent_capacity": True,
         **model_options,
         **execution_options,
     }
@@ -344,6 +350,11 @@ def _goal_configuration_update_plan(
     desired_configuration = _capability_entry(desired_public, capability_id).get(
         "current"
     )
+    host_capacity = (
+        public_codex_host_capacity(dict(desired_result))
+        if capability_id == "multi_subagent"
+        else {}
+    )
     plan = build_configuration_update_plan(
         schema_version="goal_configuration_update_plan_v0",
         current_present=isinstance(current_configuration, Mapping),
@@ -356,7 +367,8 @@ def _goal_configuration_update_plan(
             "base_revision": current_public["revision"],
         },
         changed_units={
-            "changed_fields": list(desired_result.get("changed_fields") or [])
+            "changed_fields": list(desired_result.get("changed_fields") or []),
+            **({"codex_host_capacity": host_capacity} if host_capacity else {}),
         },
         projected_configuration=(
             dict(desired_configuration)
@@ -364,6 +376,7 @@ def _goal_configuration_update_plan(
             else None
         ),
         projection_field="goal_configuration",
+        additional_write_required=bool(host_capacity.get("write_required")),
     )
     return plan, desired_configuration
 
@@ -517,6 +530,13 @@ class GoalConfigurationRequestMixin:
             goal_id=goal_id,
             runtime_root_override=getattr(self.server, "runtime_root_override", None),
             execute=False,
+            codex_home_override=getattr(
+                getattr(self.server, "runtime_controller", None),
+                "codex_home",
+                None,
+            ),
+            codex_host_capacity_planner=plan_codex_subagent_capacity,
+            codex_host_capacity_applier=apply_codex_subagent_capacity,
             **options,
         )
         desired_public = _public_goal_configuration(
@@ -552,6 +572,16 @@ class GoalConfigurationRequestMixin:
             readback_public = dict(desired_public)
             readback_configuration = None
             readback_verified = False
+        global_sync = applied.get("global_sync")
+        global_readback = (
+            global_sync.get("readback")
+            if isinstance(global_sync, Mapping)
+            and isinstance(global_sync.get("readback"), Mapping)
+            else {}
+        )
+        host_capacity = public_codex_host_capacity(dict(applied))
+        shared_sync_pending = not bool(global_readback.get("verified"))
+        host_capacity_pending = host_capacity.get("status") == "apply_failed"
         self._send_json(
             {
                 "ok": False,
@@ -564,11 +594,13 @@ class GoalConfigurationRequestMixin:
                     readback_public["revision"] if readback_verified else None
                 ),
                 "source_written": True,
-                "shared_sync_pending": True,
+                "shared_sync_pending": shared_sync_pending,
+                "host_capacity_pending": host_capacity_pending,
                 "readback_verified": readback_verified,
                 "changed_fields": list(applied.get("changed_fields") or []),
                 "goal_configuration": readback_configuration,
                 "capability_catalog": readback_public["capability_catalog"],
+                "codex_host_capacity": host_capacity,
                 "error": str(
                     applied.get("error")
                     or "Goal configuration shared projection did not synchronize"
@@ -609,6 +641,7 @@ class GoalConfigurationRequestMixin:
                 "changed_fields": list(applied.get("changed_fields") or []),
                 "goal_configuration": readback_configuration,
                 "capability_catalog": readback_public["capability_catalog"],
+                "codex_host_capacity": public_codex_host_capacity(dict(applied)),
             }
         )
 
@@ -645,6 +678,13 @@ class GoalConfigurationRequestMixin:
                 ),
                 execute=True,
                 expected_goal_configuration_revision=current_public["revision"],
+                codex_home_override=getattr(
+                    getattr(self.server, "runtime_controller", None),
+                    "codex_home",
+                    None,
+                ),
+                codex_host_capacity_planner=plan_codex_subagent_capacity,
+                codex_host_capacity_applier=apply_codex_subagent_capacity,
                 **options,
             )
             if not applied.get("ok"):

@@ -277,6 +277,10 @@ assert.doesNotMatch(drawer, /localStorage[\s\S]{0,120}subagent|subagent[\s\S]{0,
 assert.match(drawer, /authoritativeSupersedesReceipt/, "A newer authoritative status supersedes an apply receipt without closing the drawer");
 assert.match(drawer, /!subagentConfigurationsMatch\([\s\S]*baseline,[\s\S]*authoritativeSubagentConfiguration/, "Status changes away from the pre-apply baseline supersede the receipt even when they do not echo it");
 assert.match(i18n, /drawer\.subagentDescription/, "Sub-agent authority boundaries are localized in the Goal drawer");
+assert.match(chatData, /align_codex_host_capacity/, "Goal sub-agent confirmation carries the explicit Codex host-capacity request");
+assert.match(chatData, /codexHostCapacitySchema/, "Codex host-capacity receipts are schema validated before UI projection");
+assert.match(drawer, /subagentHostCapacityRaise/, "Goal sub-agent preview discloses a required Codex capacity raise");
+assert.match(drawer, /subagentAppliedRestart/, "Applied host capacity tells the operator that a new Session is required");
 
 for (const lane of ["needs_you", "running", "observing", "scheduled", "history"]) {
   assert.match(model, new RegExp(`"${lane}"`), `Manager home models the ${lane} lane`);
@@ -463,6 +467,8 @@ assert.match(chatData, /fetchGoalConfiguration\(goalId: string\)/, "Goal setting
 assert.match(goalCapabilitySettings, /restoreInheritance/, "Goal overrides expose an explicit path back to live machine defaults");
 assert.match(goalCapabilitySettings, /projectEditableCapabilityConfiguration/, "Goal writes project read models onto editor-owned fields");
 assert.match(goalCapabilitySettings, /status === "partial_write"/, "Goal settings preserve partial-write recovery outcomes");
+assert.match(goalCapabilitySettings, /codex_host_capacity\.write_required/, "Generic Goal capability preview shows the same Codex host-capacity adjustment");
+assert.match(goalCapabilitySettings, /host_capacity_pending/, "Generic Goal capability recovery distinguishes a host-capacity partial write from shared-sync failure");
 assert.match(chatData, /namespace_configuration:\s*namespaceConfiguration/, "The browser patches one owned namespace without round-tripping private namespaces");
 assert.match(chatData, /operation:\s*"remove"/, "The browser uses an explicit typed removal operation");
 assert.match(chatData, /z\.enum\(\["create", "update", "delete", "unchanged"\]\)/, "Machine previews recognize deletion as a first-class action");

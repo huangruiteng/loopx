@@ -460,7 +460,7 @@ export const typedActionsScenario = {
         throw new Error(`Sub-agent confirmation is detached from its switch: ${JSON.stringify(previewPlacement)}`);
       }
       await page.locator(".personal-subagent-preview").getByRole("button", { name: "确认", exact: true }).click();
-      await page.getByText("已写入，并通过共享 Goal 状态读回校验。", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("已写入并完成读回校验；提升后的 Codex 子 Agent 上限将在新 Session 中生效。", { exact: true }).waitFor({ state: "visible" });
       const enabledSubagentSwitch = page.getByRole("switch", { name: "预览关闭子代理执行" });
       await enabledSubagentSwitch.waitFor({ state: "visible" });
       if (await enabledSubagentSwitch.getAttribute("aria-checked") !== "true") throw new Error("Verified apply receipt did not keep the per-Goal switch on while the status projection remained stale");
@@ -516,7 +516,7 @@ export const typedActionsScenario = {
       if (api.durableWriteCount !== writesBeforeSubagentPreview + 1) throw new Error("Restricted sub-agent preview mutated durable Goal state");
       if ([...(api.goalSubagentPreviews.at(-1)?.allowed_domains ?? [])].sort((a, b) => a.localeCompare(b)).join(",") !== "code,validation") throw new Error("Sub-agent preview lost the bounded task domains");
       await page.locator(".personal-subagent-preview").getByRole("button", { name: "确认", exact: true }).click();
-      await page.getByText("已写入，并通过共享 Goal 状态读回校验。", { exact: true }).waitFor({ state: "visible" });
+      await page.getByText("已写入并完成读回校验；提升后的 Codex 子 Agent 上限将在新 Session 中生效。", { exact: true }).waitFor({ state: "visible" });
       if (api.durableWriteCount !== writesBeforeSubagentPreview + 2) throw new Error("Restricted sub-agent apply did not produce exactly one additional Goal write");
       if (api.goalSubagentWrites.at(-1)?.model_config !== null) throw new Error("Clearing the model was not sent explicitly");
       await page.screenshot({ path: resolve(outputDir, "goal-subagent-toggle.png"), fullPage: false, animations: "disabled" });

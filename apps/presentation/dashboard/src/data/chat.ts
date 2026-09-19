@@ -277,6 +277,26 @@ const goalSubagentOrchestrationSchema = z.object({
   allowed_domains: z.array(z.string()).optional().default([]),
 }).passthrough();
 
+const codexHostCapacitySchema = z.object({
+  alignment_requested: z.boolean(),
+  configured_children: z.number().int().positive().nullable(),
+  counts_main_thread: z.literal(false),
+  new_session_required: z.boolean().optional().default(false),
+  required_children: z.number().int().nonnegative(),
+  status: z.enum([
+    "already_sufficient",
+    "apply_failed",
+    "explicit_shortfall",
+    "explicit_sufficient",
+    "implicit_default_unknown",
+    "not_requested",
+    "not_required",
+    "updated",
+  ]),
+  write_required: z.boolean(),
+  written: z.boolean().optional().default(false),
+}).passthrough();
+
 export const goalSubagentConfigurationResultSchema = z.object({
   ok: z.literal(true),
   dry_run: z.boolean(),
@@ -289,6 +309,8 @@ export const goalSubagentConfigurationResultSchema = z.object({
   after: z.object({ orchestration: goalSubagentOrchestrationSchema }).passthrough(),
   preview_id: z.string().min(1),
   feature_summary: z.object({ multi_subagent: z.enum(["off", "enabled"]) }).passthrough(),
+  goal_configuration_changed: z.boolean(),
+  codex_host_capacity: codexHostCapacitySchema,
   global_sync: z.object({
     required: z.boolean(),
     executed: z.boolean(),
@@ -300,8 +322,10 @@ export const goalSubagentConfigurationResultSchema = z.object({
 });
 
 export type GoalSubagentConfigurationResult = z.infer<typeof goalSubagentConfigurationResultSchema>;
+export type CodexHostCapacity = z.infer<typeof codexHostCapacitySchema>;
 
 export type GoalSubagentConfigurationRequest = {
+  alignCodexHostCapacity?: boolean;
   modelConfig?: { model: string; reasoning_effort?: string } | null;
   executionConfig?: string;
   allowedDomains: string[];
@@ -1047,6 +1071,7 @@ function goalSubagentConfigurationBody(request: GoalSubagentConfigurationRequest
   return {
     goal_id: request.goalId,
     enabled: request.enabled,
+    align_codex_host_capacity: request.alignCodexHostCapacity ?? false,
     ...(request.modelConfig !== undefined ? { model_config: request.modelConfig } : {}),
     ...(request.executionConfig !== undefined ? { execution_config: request.executionConfig } : {}),
     ...(request.enabled ? {
@@ -1071,7 +1096,10 @@ function verifyGoalSubagentConfigurationResult(
       ? orchestration.max_children === request.maxChildren
         && JSON.stringify(orchestration.allowed_domains) === JSON.stringify(expectedDomains)
       : orchestration.spawn_allowed === false && orchestration.max_children === 0);
-  if (!matchesRequest) {
+  const hostCapacityMatches = !request.alignCodexHostCapacity
+    || !request.enabled
+    || result.codex_host_capacity.required_children === request.maxChildren;
+  if (!matchesRequest || !hostCapacityMatches) {
     throw new ChatApiError("Goal 子代理配置回执与本次请求不一致，界面已停止更新。", {
       after: result.after,
       goal_id: result.goal_id,
@@ -1116,8 +1144,11 @@ export async function applyGoalSubagentConfiguration(
     });
   }
   if (result.changed && (!result.written
-    || !result.global_sync.executed
-    || !result.global_sync.readback.verified)) {
+    || (result.goal_configuration_changed
+      && (!result.global_sync.executed || !result.global_sync.readback.verified))
+    || (request.alignCodexHostCapacity
+      && result.codex_host_capacity.write_required
+      && !result.codex_host_capacity.written))) {
     throw new ChatApiError("Goal 子代理设置未通过共享状态读回验证。", { result });
   }
   return verifyGoalSubagentConfigurationResult(result, request);
@@ -1344,6 +1375,7 @@ const goalConfigurationMutationBaseSchema = z.object({
   changed_fields: z.array(z.string()),
   goal_configuration: z.record(z.string(), z.unknown()).nullable(),
   capability_catalog: capabilityConfigurationCatalogSchema,
+  codex_host_capacity: codexHostCapacitySchema.optional(),
 });
 
 export const goalConfigurationPreviewSchema = goalConfigurationMutationBaseSchema.extend({
@@ -1374,13 +1406,15 @@ export const goalConfigurationPartialWriteSchema = z.object({
   plan_revision: z.string(),
   applied_revision: z.string().nullable(),
   source_written: z.literal(true),
-  shared_sync_pending: z.literal(true),
+  shared_sync_pending: z.boolean(),
+  host_capacity_pending: z.boolean().optional().default(false),
   readback_verified: z.boolean(),
   changed_fields: z.array(z.string()),
   goal_configuration: z.record(z.string(), z.unknown()).nullable(),
   capability_catalog: capabilityConfigurationCatalogSchema,
   error: z.string(),
   recommended_action: z.string(),
+  codex_host_capacity: codexHostCapacitySchema.optional(),
 });
 
 export const goalConfigurationApplyResultSchema = z.union([

@@ -63,6 +63,7 @@ const focusableSelector = [
 type TodoOperation = "block" | "complete" | "defer" | "successor_create";
 
 type GoalSubagentPreview = {
+  codexHostCapacity?: WorkspaceGoalSubagentConfiguration["codexHostCapacity"];
   modelConfig?: { model: string; reasoning_effort?: string } | null;
   executionConfig?: string;
   allowedDomains: string[];
@@ -424,6 +425,7 @@ export function ContextDrawer({ agents, attentionHistory = [], onSelectAttention
       return;
     }
     const request = {
+      alignCodexHostCapacity: enabled,
       allowedDomains: allowedDomains ?? [],
       enabled,
       goalId: selection.item.goalId,
@@ -452,7 +454,12 @@ export function ContextDrawer({ agents, attentionHistory = [], onSelectAttention
         setSubagentFeedback(t("drawer.subagentNoChange"));
         return;
       }
-      setSubagentPreview({ ...request, changed: preview.changed, previewId: preview.previewId });
+      setSubagentPreview({
+        ...request,
+        codexHostCapacity: preview.configuration.codexHostCapacity,
+        changed: preview.changed,
+        previewId: preview.previewId,
+      });
       setSubagentMutationState("ready");
       setSubagentFeedback(t("drawer.subagentPreviewReady"));
     } catch (error) {
@@ -468,6 +475,7 @@ export function ContextDrawer({ agents, attentionHistory = [], onSelectAttention
     try {
       const verifiedConfiguration = await callbacks.onApplyGoalSubagentConfiguration({
         allowedDomains: subagentPreview.allowedDomains,
+        alignCodexHostCapacity: subagentPreview.enabled,
         enabled: subagentPreview.enabled,
         goalId: subagentPreview.goalId,
         maxChildren: subagentPreview.maxChildren,
@@ -487,7 +495,11 @@ export function ContextDrawer({ agents, attentionHistory = [], onSelectAttention
       setSubagentExecutionConfig(verifiedConfiguration.executionConfig ?? "");
       setSubagentMaxChildren(verifiedConfiguration.maxChildren || 2);
       setSubagentMutationState("success");
-      setSubagentFeedback(t("drawer.subagentApplied"));
+      setSubagentFeedback(t(
+        verifiedConfiguration.codexHostCapacity?.newSessionRequired
+          ? "drawer.subagentAppliedRestart"
+          : "drawer.subagentApplied",
+      ));
       setSubagentPreview(null);
       try {
         await callbacks.onRefresh?.();
@@ -742,6 +754,15 @@ export function ContextDrawer({ agents, attentionHistory = [], onSelectAttention
                     : t("drawer.subagentDisableSummary")}</p>
                   {subagentPreview.modelConfig !== undefined ? <p>{t("drawer.subagentModel")}: {subagentPreview.modelConfig?.model || t("drawer.subagentModelDefault")} · {subagentPreview.modelConfig?.reasoning_effort || t("drawer.subagentModelDefault")}</p> : null}
                   <p>{t("drawer.subagentExecutionConfig")}: {subagentPreview.executionConfig || t("drawer.subagentExecutionConfigNone")}</p>
+                  {subagentPreview.enabled && subagentPreview.codexHostCapacity ? <p>{t(
+                    subagentPreview.codexHostCapacity.writeRequired
+                      ? "drawer.subagentHostCapacityRaise"
+                      : "drawer.subagentHostCapacityReady",
+                    {
+                      configured: subagentPreview.codexHostCapacity.configuredChildren ?? t("drawer.subagentHostCapacityImplicit"),
+                      required: subagentPreview.codexHostCapacity.requiredChildren,
+                    },
+                  )}</p> : null}
                   <div>
                     <button className="personal-primary-action" onClick={() => void applyGoalSubagentConfiguration()} type="button">{t("common.confirm")}</button>
                     <button className="personal-secondary-action" onClick={resetSubagentDraft} type="button">{t("common.cancel")}</button>

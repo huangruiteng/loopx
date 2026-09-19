@@ -216,8 +216,38 @@ loopx configure-goal \
   --goal-id example-peer-task-goal \
   --multi-subagent-feature enabled \
   --max-children 2 \
+  --align-codex-subagent-capacity \
   --execute
 ```
+
+### Codex Host Capacity Alignment / Codex 宿主容量对齐
+
+`max_children` is the Goal-owned upper bound. Codex separately owns the
+host-side [`[agents].max_concurrent_threads_per_session`](https://developers.openai.com/zh-Hans/docs/agent-configuration/subagents)
+limit. That Codex key
+counts child threads and excludes the main thread, so a Goal maximum of `6`
+requires a Codex value of `6`, not `7`.
+
+`--align-codex-subagent-capacity` turns the same preview/apply confirmation into
+a one-click cross-boundary adjustment. Preview reads the active `CODEX_HOME`,
+reports an explicit shortfall or an unknown implicit default, and performs no
+write. When a raise is needed, apply writes the canonical Codex key to at least
+`max_children`, keeps a higher existing value, removes the legacy
+`agents.max_threads` alias, writes atomically, and verifies an exact TOML
+readback. A sufficient legacy alias remains a compatible no-op. It never lowers capacity.
+Existing Sessions retain their startup configuration; the receipt therefore
+states when a new Session is required.
+
+`max_children` 是 Goal 权威拥有的上限；Codex 另外拥有宿主侧的
+`[agents].max_concurrent_threads_per_session`。该 Codex 配置只统计子线程，
+不包含主线程，因此 Goal 上限为 `6` 时，Codex 目标值也是 `6`，不是 `7`。
+
+加入 `--align-codex-subagent-capacity` 后，同一次 preview/apply 确认即可完成
+跨边界的一键对齐。预览只读取当前 `CODEX_HOME`，显示显式容量不足或“隐式默认值
+未知”，不会写文件；需要提升时，确认后只会把新配置键提升到至少
+`max_children`，保留已有更高值，移除旧别名 `agents.max_threads`，随后进行原子
+写入和精确 TOML 读回。容量已足够的旧别名仍是兼容的 no-op。该操作绝不降低
+容量。已有 Session 不会热加载宿主配置，因此回执会明确提示何时必须新建 Session。
 
 Task-domain filtering is optional. With no `--allowed-domain`, both tagged and
 untagged ready Todos remain eligible subject to every other admission boundary.
