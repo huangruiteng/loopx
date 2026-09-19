@@ -9,7 +9,7 @@ export const subagentContextProvider: AgentContextProvider = {
   produce(input, config) {
     const guidance = {
       before_plan: [
-        "Split bounded independent work when useful; avoid duplicate reads. Keep one decision-relevant coordinator question.",
+        "Prefer parallel delegation for bounded independent work when useful; avoid duplicate reads. Keep one decision-relevant coordinator question.",
         "Native child tools can read loopx agent-context at before_delegate and after_delegate_result; these calls do not start Turns or spend quota.",
         "Authorized routes are observations, not obligations. Use a ready route only when it fits; blocked/unknown routes never block native work. No heartbeat must use every route.",
       ],
@@ -18,7 +18,7 @@ export const subagentContextProvider: AgentContextProvider = {
         "For an authorized route, use its binding entrypoint and recheck the chosen runtime, execution profile and budget. Never silently substitute a runtime/model; record the selection reason and stable operation id. Preferences and readiness observations are not execution receipts.",
       ],
       after_delegate_result: [
-        "Check returned sources, omissions and contradictions against the question. Reconcile native child receipts and bound delegation operation receipts; missing, unavailable or rejected receipts do not establish completed work.",
+        "Check returned sources, omissions and contradictions against the question. Reconcile native child receipts and any freshly read bound delegation operation receipts; missing, unavailable or rejected receipts do not establish completed work.",
         "Verify decisive sources and record accept/defer/reject with reasons. Link accepted evidence to the deliverable and run parent validation before writeback; opinions are not independent evidence.",
       ],
     }[input.phase];
@@ -84,15 +84,17 @@ function boundedDelegationContext(value: unknown): JsonObject | null {
     if (reason) compact.reason_code = reason;
     return [compact];
   }) : [];
-  const rawReceipts = jsonObject(source.operation_receipts) ?? {};
+  const rawReceipts = jsonObject(source.operation_receipts);
   const operationReceipts: JsonObject = {};
-  for (const key of ["observed", "prepared", "running", "turn_returned", "accepted",
-    "rejected", "unavailable", "recovery_required"]) {
-    if (Number.isInteger(rawReceipts[key]) && Number(rawReceipts[key]) >= 0) {
-      operationReceipts[key] = Math.min(Number(rawReceipts[key]), 10_000);
+  if (rawReceipts) {
+    for (const key of ["observed", "prepared", "running", "turn_returned", "accepted",
+      "rejected", "unavailable", "recovery_required"]) {
+      if (Number.isInteger(rawReceipts[key]) && Number(rawReceipts[key]) >= 0) {
+        operationReceipts[key] = Math.min(Number(rawReceipts[key]), 10_000);
+      }
     }
+    if (rawReceipts.has_more === true) operationReceipts.has_more = true;
   }
-  if (rawReceipts.has_more === true) operationReceipts.has_more = true;
   const result: JsonObject = {
     schema_version: "loopx_delegation_context_v0",
     configuration_state: configurationState,
@@ -101,8 +103,8 @@ function boundedDelegationContext(value: unknown): JsonObject | null {
     projected_count: 0,
     entrypoint: "loopx delegation",
     routes: [],
-    operation_receipts: operationReceipts,
   };
+  if (rawReceipts) result.operation_receipts = operationReceipts;
   const reason = identifier(source.reason_code);
   if (reason) result.reason_code = reason;
   const projectedRoutes: JsonObject[] = [];

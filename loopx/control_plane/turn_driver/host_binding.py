@@ -272,6 +272,28 @@ def managed_executor_binding(
     }
 
 
+def turn_host_arg_option(host_args: Sequence[str], name: str) -> str | None:
+    """Return the value the Turn CLI will use for one repeatable argv option."""
+    args = [str(value) for value in host_args]
+    selected: str | None = None
+    for index, value in enumerate(args):
+        if value.startswith(f"{name}="):
+            candidate = value.partition("=")[2].strip()
+            if not candidate:
+                return None
+            selected = candidate
+        if value == name:
+            if index + 1 >= len(args):
+                return None
+            candidate = args[index + 1].strip()
+            # argparse treats another option token as a missing value for this
+            # option. Keep the read model fail-closed in the same case.
+            if not candidate or candidate.startswith("--"):
+                return None
+            selected = candidate
+    return selected
+
+
 def managed_executor_binding_from_host_args(
     host_args: Sequence[str],
     *,
@@ -286,27 +308,14 @@ def managed_executor_binding_from_host_args(
     capabilities can consume one provider-neutral executor projection.
     """
 
-    args = [str(value) for value in host_args]
-
-    def option(name: str) -> str | None:
-        for index in range(len(args) - 1, -1, -1):
-            value = args[index]
-            if value.startswith(f"{name}="):
-                return value.partition("=")[2].strip() or None
-            if value == name:
-                if index + 1 >= len(args):
-                    return None
-                return args[index + 1].strip() or None
-        return None
-
-    host = option("--host") or "unknown"
+    host = turn_host_arg_option(host_args, "--host") or "unknown"
     return managed_executor_binding(
         host,
         environ=environ,
         module_probe=module_probe,
-        provider=option("--dsh-provider"),
-        model=option("--dsh-model"),
-        reasoning_effort=option("--dsh-reasoning-effort"),
+        provider=turn_host_arg_option(host_args, "--dsh-provider"),
+        model=turn_host_arg_option(host_args, "--dsh-model"),
+        reasoning_effort=turn_host_arg_option(host_args, "--dsh-reasoning-effort"),
     )
 
 

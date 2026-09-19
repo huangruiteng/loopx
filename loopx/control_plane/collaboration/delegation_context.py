@@ -75,20 +75,28 @@ def project_delegation_context(
     agent_id: str,
     project: Path,
     execution_config: str | None,
+    include_operation_receipts: bool = False,
 ) -> dict[str, Any]:
-    """Return one bounded requester-scoped route and receipt observation."""
+    """Return one bounded requester-scoped delegation observation.
+
+    Route discovery is safe on planning hot paths. Operation inventory is
+    deliberately opt-in because accepted-row readback reruns owner-pinned
+    validation commands.
+    """
 
     observed_at = _observed_at()
     if not execution_config:
-        return {
+        result: dict[str, Any] = {
             "schema_version": "loopx_delegation_context_v0",
             "configuration_state": "not_configured",
             "observed_at": observed_at,
             "authorized_count": 0,
             "projected_count": 0,
             "routes": [],
-            "operation_receipts": {"observed": 0},
         }
+        if include_operation_receipts:
+            result["operation_receipts"] = {"observed": 0}
+        return result
 
     try:
         from ...collaboration_mcp import Delegations
@@ -105,48 +113,50 @@ def project_delegation_context(
             _route(service.binding(str(row["id"])), runtime_root=runtime_root)
             for row in bindings[:MAX_PROJECTED_ROUTES]
         ]
-        inventory = service.operations(limit=MAX_OPERATION_RECEIPTS)
-        items = inventory.get("items") if isinstance(inventory, dict) else []
-        statuses = Counter(
-            str(item.get("status") or "unavailable")
-            for item in items
-            if isinstance(item, dict)
-        )
-        recovery_required = sum(
-            1
-            for item in items
-            if isinstance(item, dict) and item.get("recovery_required") is True
-        )
-        receipt_summary: dict[str, Any] = {
-            "observed": len(items),
-            **{
-                key: statuses[key]
-                for key in (
-                    "prepared",
-                    "running",
-                    "turn_returned",
-                    "accepted",
-                    "rejected",
-                    "unavailable",
-                )
-                if statuses[key]
-            },
-        }
-        if recovery_required:
-            receipt_summary["recovery_required"] = recovery_required
-        if inventory.get("has_more") is True:
-            receipt_summary["has_more"] = True
-        return {
+        result = {
             "schema_version": "loopx_delegation_context_v0",
             "configuration_state": "ready",
             "observed_at": observed_at,
             "authorized_count": len(bindings),
             "projected_count": len(routes),
             "routes": routes,
-            "operation_receipts": receipt_summary,
         }
+        if include_operation_receipts:
+            inventory = service.operations(limit=MAX_OPERATION_RECEIPTS)
+            items = inventory.get("items") if isinstance(inventory, dict) else []
+            statuses = Counter(
+                str(item.get("status") or "unavailable")
+                for item in items
+                if isinstance(item, dict)
+            )
+            recovery_required = sum(
+                1
+                for item in items
+                if isinstance(item, dict) and item.get("recovery_required") is True
+            )
+            receipt_summary: dict[str, Any] = {
+                "observed": len(items),
+                **{
+                    key: statuses[key]
+                    for key in (
+                        "prepared",
+                        "running",
+                        "turn_returned",
+                        "accepted",
+                        "rejected",
+                        "unavailable",
+                    )
+                    if statuses[key]
+                },
+            }
+            if recovery_required:
+                receipt_summary["recovery_required"] = recovery_required
+            if inventory.get("has_more") is True:
+                receipt_summary["has_more"] = True
+            result["operation_receipts"] = receipt_summary
+        return result
     except (OSError, ValueError, KeyError, TypeError, EffectRuntimeRemoteError):
-        return {
+        result = {
             "schema_version": "loopx_delegation_context_v0",
             "configuration_state": "blocked",
             "reason_code": "delegation_context_unavailable",
@@ -154,8 +164,10 @@ def project_delegation_context(
             "authorized_count": 0,
             "projected_count": 0,
             "routes": [],
-            "operation_receipts": {"observed": 0},
         }
+        if include_operation_receipts:
+            result["operation_receipts"] = {"observed": 0}
+        return result
 
 
 __all__ = ["project_delegation_context"]

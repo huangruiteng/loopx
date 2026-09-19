@@ -431,9 +431,11 @@ for the current requester and projects as many as fit the existing context byte
 budget; `authorized_count` and `routes_truncated` make omissions explicit. Each
 route carries only binding/Agent/Todo/runtime
 identity, `ready|blocked|unknown`, an optional public-safe execution profile and
-one stable `loopx delegation` entrypoint. `after_delegate_result` projects only
-bounded operation-status counts and recovery-required count. This read path
-does not launch, resume, accept or poll a worker, and it never exposes raw host
+one stable `loopx delegation` entrypoint. A separate, explicit
+`agent-context --phase after_delegate_result` read may include bounded
+operation-status and recovery-required counts. Automatic planning and managed
+return paths do not enumerate the operation journal. These reads do not launch,
+resume or accept a worker, and they never expose raw host
 arguments, workspaces, output references, credentials or child results.
 
 Runtime availability and business adoption are separate. `ready` says that the
@@ -468,7 +470,7 @@ not arbitrary manifest scripts or external plugins.
 | --- | --- | --- |
 | `before_plan` | Live quota decision → `interaction_contract.agent_context` → signed `turn_envelope.agent_context` | Read requester-authorized route readiness when configured, choose only useful independent questions, and keep useful validation and integration work with the parent. |
 | `before_delegate` | Admitted child operations → plan and host request `delegation_context` | Bound briefs and expected evidence; recheck the chosen route/runtime/model/budget and forbid silent substitution. |
-| `after_delegate_result` | Host receipt reconciliation → journal `host_result.agent_context` → executor result `agent_context` | Reconcile bounded native and delegation receipts, validate original evidence, then accept/defer/reject and link outcomes. |
+| `after_delegate_result` | Host receipt reconciliation → journal `host_result.agent_context` → executor result `agent_context` | Reconcile bounded native receipts. Read delegation operation receipts explicitly when that separate source is needed, then validate original evidence and accept/defer/reject. |
 
 Planning guidance does not require two persistent Todos. Managed automatic
 child-lane admission still requires its existing prerequisites; this change
@@ -487,9 +489,10 @@ loopx agent-context --goal-id example-peer-task-goal --agent-id coordinator \
 
 The coordinator must be registered. The command reads current registry policy
 without writing a Todo, starting a turn or spending quota. When an execution
-configuration is present, it also reads the current requester's existing local
-delegation operation journal; otherwise it has no native execution receipt
-input and return-phase facts explicitly say `not_supplied`. The top-level
+configuration is present, `before_plan` reads only the binding directory;
+`after_delegate_result` explicitly reads the current requester's existing local
+delegation operation journal. Otherwise it has no native execution receipt input
+and return-phase facts explicitly say `not_supplied`. The top-level
 `host_receipts_observed: false` is retained for compatibility and is explicitly
 scoped by `host_receipts_scope: native_tool_input`; it does not negate the
 separate bounded delegation-journal observation inside capability facts.

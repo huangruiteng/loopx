@@ -29,6 +29,7 @@ from .todos import list_goal_todos
 from .control_plane.effect_runtime import effect_runtime_result, EffectRuntimeRemoteError
 from .control_plane.goals.acceptance import inspect_goal_acceptance, validate_goal_task_acceptance
 from .control_plane.turn_driver.journal_store import turn_journal_path
+from .control_plane.turn_driver.host_binding import turn_host_arg_option
 from .control_plane.collaboration.inbox import _hash, _read, _write, _root, _receipt
 from .control_plane.collaboration.peers import return_result
 from .control_plane.collaboration.inbox import acknowledge, _entry
@@ -332,6 +333,13 @@ class Delegations:
                      "--validation-command-json", json.dumps(validator),
                      "--validation-failure-kind", "repair_required", *host]
         if row["status"] == "prepared":
+            selected_host = turn_host_arg_option(host, "--host")
+            if not selected_host:
+                raise ValueError("delegation host_args require --host")
+            iteration_context = (
+                turn_host_arg_option(host, "--iteration-context")
+                or "resume-if-available"
+            )
             _write(Path(binding["workspace"]) / "DELEGATION.json", {
                 "request_id": request_id, "brief": _entry(self.root, self.goal_id, binding["agent_id"], request_id)["brief"],
                 "instruction": "Read context and assess this request independently before working. Return results through the bound tools.",
@@ -339,8 +347,8 @@ class Delegations:
             plan = self._cli(binding, "turn", "plan", *common, "--todo-id", binding["todo_id"],
                              "--turn-instance-id", "delegation-" + request_id[:32],
                              "--execution-mode", "isolated-headless", "--scan-root", binding["workspace"],
-                             "--host", host[host.index("--host") + 1],
-                             "--iteration-context", host[host.index("--iteration-context") + 1] if "--iteration-context" in host else "resume-if-available",
+                             "--host", selected_host,
+                             "--iteration-context", iteration_context,
                              "--include-transaction-detail")
             row["turn_key"] = plan["transaction"]["turn_key"]
             self._observe(path, row, "running")

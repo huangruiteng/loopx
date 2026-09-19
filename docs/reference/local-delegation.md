@@ -123,10 +123,12 @@ and byte-bounds the projected subset; `authorized_count` and `routes_truncated`
 make omissions explicit. Managed-host availability comes from the existing Turn host/profile owner;
 unprobed generic adapters are `unknown`, not optimistically ready.
 
-This projection is read-only. It does not start, resume, accept or periodically
-poll work. A ready observation is not an execution receipt, and operation status
-counts are not parent acceptance. Use the original binding and a stable
-operation id for dispatch, then read and validate the original artifacts.
+This planning projection is read-only. It does not start, resume, accept,
+enumerate operations or periodically poll work. A ready observation is not an
+execution receipt. Use the original binding and a stable operation id for
+dispatch, then read and validate the original artifacts. An explicit
+`agent-context --phase after_delegate_result` read may summarize current
+requester-scoped operation statuses; those counts are not parent acceptance.
 Remove only the pointer with
 `--clear-subagent-execution-config --execute`; revoke actual admission in the
 operator binding file.
@@ -136,9 +138,10 @@ operator binding file.
 `configure-goal` 预览，再执行写入；注册表只保存仓库相对指针，不复制授权内容。
 `agent-context` 复用 `delegate list` 的 requester 范围，最多投影六条公开安全的
 路由状态；managed runtime 的可用性由既有 Turn host/profile owner 判断，未探测的
-通用适配器显示 `unknown`，不能乐观宣称 ready。该投影不会启动、恢复、验收或周期
-轮询工作，ready 也不是执行回执。清除指针不会撤销授权；真正撤销仍须修改 operator
-binding 文件。
+通用适配器显示 `unknown`，不能乐观宣称 ready。规划投影不会枚举 operation，也不会
+启动、恢复、验收或周期轮询工作；需要时可显式读取 `after_delegate_result` 阶段的有界
+operation 状态摘要。ready 和状态计数都不是执行或父级验收回执。清除指针不会撤销
+授权；真正撤销仍须修改 operator binding 文件。
 
 ### Recover work without remembered operation ids
 

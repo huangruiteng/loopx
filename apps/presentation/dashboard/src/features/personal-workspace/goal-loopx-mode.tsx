@@ -16,7 +16,7 @@ export function GoalLoopXMode({sessionId, onPrepare, onExecute, onChange}: {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [settings, setSettings] = useState<LoopXModeSettings>({agent_id: "", token_budget: 0, execution_config: ".loopx/config/delegations.json"});
+  const [settings, setSettings] = useState<LoopXModeSettings>({agent_id: "", token_budget: 0});
   useEffect(() => {
     let alive = true;
     let refreshing = false;
@@ -38,10 +38,10 @@ export function GoalLoopXMode({sessionId, onPrepare, onExecute, onChange}: {
   const active = Boolean(snapshot?.enabled && snapshot.active_turn_id);
   const native = snapshot?.native.status ?? "absent";
   const resume = !["absent", "complete"].includes(native);
-  const configured = Boolean(snapshot?.settings.agent_id && snapshot.settings.token_budget);
+  const configured = Boolean(snapshot?.settings.agent_id && snapshot.settings.token_budget
+    && snapshot.settings.execution_config);
   const editSettings = (current: LoopXModeSnapshot) => {
-    setSettings({agent_id: current.settings.agent_id ?? "", token_budget: current.settings.token_budget ?? 0,
-      execution_config: current.settings.execution_config ?? ".loopx/config/delegations.json"});
+    setSettings({agent_id: current.settings.agent_id ?? "", token_budget: current.settings.token_budget ?? 0});
     setEditing(true);
   };
   const status = !snapshot?.enabled ? (zh ? "普通对话" : "Conversation")
@@ -92,9 +92,9 @@ export function GoalLoopXMode({sessionId, onPrepare, onExecute, onChange}: {
       </div></div>
     {editing ? <div className="goal-loopx-mode-settings"><label>{zh ? "已注册的协调身份" : "Registered coordinator"}<select value={settings.agent_id} onChange={event => setSettings({...settings, agent_id: event.target.value})}><option value="">{zh ? "选择已授权身份" : "Select authorized identity"}</option>{snapshot?.registered_agents.map(id => <option key={id} value={id}>{id}</option>)}</select></label>
       <label>{zh ? "协调员总 token 额度" : "Coordinator total token allowance"}<input type="number" min={1} max={2147483647} value={settings.token_budget || ""} onChange={event => setSettings({...settings, token_budget: Number(event.target.value)})}/></label>
-      <label>{zh ? "成员执行绑定文件（项目内）" : "Member execution bindings (project relative)"}<input value={settings.execution_config} onChange={event => setSettings({...settings, execution_config: event.target.value})}/></label>
-      <p>{zh ? "复用现有协作执行配置，文件须位于 .loopx/config/。额度包含协调员历史用量；成员沿用各自授权，不随开启扩大。" : "Reuse an existing delegation configuration under .loopx/config/. The allowance includes coordinator history; member grants remain separate."}</p>
-      <button type="button" disabled={busy || !settings.agent_id || settings.token_budget < 1} onClick={() => void mutate("configure")}>{zh ? "保存设置" : "Save settings"}</button></div> : null}
+      <label>{zh ? "成员执行绑定文件（Goal 配置）" : "Member execution bindings (Goal configuration)"}<input readOnly value={snapshot?.settings.execution_config ?? (zh ? "未配置" : "Not configured")}/></label>
+      <p>{zh ? "绑定文件由 Goal 子代理设置统一管理；额度包含协调员历史用量，成员授权不会因开启模式而扩大。" : "Manage the binding file in Goal sub-agent settings. The allowance includes coordinator history; enabling this mode does not expand member grants."}</p>
+      <button type="button" disabled={busy || !settings.agent_id || settings.token_budget < 1 || !snapshot?.settings.execution_config} onClick={() => void mutate("configure")}>{zh ? "保存设置" : "Save settings"}</button></div> : null}
     {snapshot?.enabled && snapshot.native.tokensUsed !== undefined ? <p className="goal-loopx-mode-usage">{zh ? "协调员累计用量" : "Coordinator usage"} {snapshot.native.tokensUsed.toLocaleString()} / {snapshot.native.tokenBudget?.toLocaleString() ?? "—"} tokens</p> : null}
     {snapshot?.enabled && snapshot.ingress.some(row => row.status !== "delivered") ? <p role="status">{zh ? "待处理消息：" : "Pending messages: "}{snapshot.ingress.filter(row => row.status !== "delivered").map(row => `${row.mode === "loopx_queue" ? "queue" : "inbox"} · ${row.status}`).join(" / ")}</p> : null}
     {snapshot?.enabled && snapshot.deliveries.length ? <div className="goal-loopx-mode-members" aria-label={zh ? "最近一次成员回读" : "Last member observations"}><span>{zh ? "成员最近回读" : "Last observations"}</span>{snapshot.deliveries.map(row => <span key={row.operation_id}>{row.agent_id} · {row.status === "accepted" ? (zh ? "已通过验收" : "Accepted") : row.status === "rejected" ? (zh ? "未通过验收" : "Rejected") : row.status === "unavailable" ? (zh ? "需要重新核验" : "Recheck required") : (zh ? "执行中" : "Working")}</span>)}</div> : null}

@@ -44,7 +44,8 @@ def project_goal_agent_context(
         and orchestration.get("spawn_allowed") is True
         and int(orchestration.get("max_children") or 0) > 0
     )
-    if enabled:
+    execution_config = str(orchestration.get("execution_config") or "") or None
+    if enabled and execution_config:
         project = Path(str(goal.get("repo") or ".")).expanduser()
         # Import lazily: the delegation projection reuses the Turn host owner,
         # whose package also imports envelope_agent_context for later lifecycle
@@ -59,9 +60,8 @@ def project_goal_agent_context(
                 goal_id=str(scope.get("goal_id") or ""),
                 agent_id=str(scope.get("agent_id") or ""),
                 project=project,
-                execution_config=(
-                    str(orchestration.get("execution_config") or "") or None
-                ),
+                execution_config=execution_config,
+                include_operation_receipts=phase == "after_delegate_result",
             ),
         )
     return project_agent_context(
@@ -103,7 +103,7 @@ def envelope_agent_context(
     boundary = envelope.get("boundary") or {}
     projected_observations = dict(observations or {})
     signed_delegation = _signed_delegation_observation(context)
-    if signed_delegation is not None:
+    if signed_delegation is not None and phase != "after_delegate_result":
         projected_observations.setdefault("delegation_context", signed_delegation)
     return project_agent_context(
         phase=phase,

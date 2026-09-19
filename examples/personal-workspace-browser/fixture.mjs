@@ -1442,7 +1442,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         enabled: false,
         active_turn_id: null,
         conversation_busy: false,
-        settings: {},
+        settings: { execution_config: ".loopx/config/delegations.json" },
         native: { status: "absent" },
         registered_agents: ["lead"],
         paused: false,
@@ -1461,7 +1461,13 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         await route.fulfill({ contentType: "application/json", json: { ok: false, error: "unsupported fixture operation" }, status: 400 });
         return;
       }
-      const configured = { ...current, settings: body.settings };
+      const configured = {
+        ...current,
+        settings: {
+          ...body.settings,
+          execution_config: current.settings.execution_config,
+        },
+      };
       loopxModes.set(sessionId, configured);
       await route.fulfill({ contentType: "application/json", json: configured, status: 200 });
       return;

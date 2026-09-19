@@ -103,7 +103,7 @@ test("return phase projects reconciliation counts without copying raw child mate
   assert.ok(!JSON.stringify(packet).includes("private original text"));
 });
 
-test("delegation routes and receipts are bounded public-safe lifecycle facts", () => {
+test("delegation routes and explicit result receipts are bounded public-safe facts", () => {
   const delegationContext = {
     schema_version: "loopx_delegation_context_v0",
     configuration_state: "ready",
@@ -123,10 +123,6 @@ test("delegation routes and receipts are bounded public-safe lifecycle facts", (
         runtime_id: "ignored", readiness: "ready",
       },
     ],
-    operation_receipts: {
-      observed: 12, accepted: 3, unavailable: 1, recovery_required: 1,
-      private_result: "raw child material",
-    },
   };
   const before = evaluateSubagentContext({ phase: "before_plan", scope,
     orchestration: policy, observations: { delegation_context: delegationContext } })!;
@@ -134,12 +130,19 @@ test("delegation routes and receipts are bounded public-safe lifecycle facts", (
   assert.equal(beforeFacts.delegation_context.projected_count, 1);
   assert.equal(beforeFacts.delegation_context.entrypoint, "loopx delegation");
   assert.equal(beforeFacts.delegation_context.routes[0].execution_profile, "model-a@high");
+  assert.equal(beforeFacts.delegation_context.operation_receipts, undefined);
   assert.ok(!JSON.stringify(before).includes("credential"));
   assert.ok(!JSON.stringify(before).includes("/private/worktree"));
   assert.ok(!JSON.stringify(before).includes("raw child material"));
 
   const after = evaluateSubagentContext({ phase: "after_delegate_result", scope,
-    orchestration: policy, observations: { delegation_context: delegationContext } })!;
+    orchestration: policy, observations: { delegation_context: {
+      ...delegationContext,
+      operation_receipts: {
+        observed: 12, accepted: 3, unavailable: 1, recovery_required: 1,
+        private_result: "raw child material",
+      },
+    } } })!;
   const afterFacts = (after.contributions as any[])[0].facts;
   assert.equal(afterFacts.delegation_context, undefined);
   assert.deepEqual(afterFacts.delegation_receipts, {
@@ -164,7 +167,7 @@ test("maximum delegation directory stays within provider budget", () => {
       delegation_context: {
         schema_version: "loopx_delegation_context_v0", configuration_state: "ready",
         observed_at: "2026-09-19T04:20:00+00:00", authorized_count: 6,
-        projected_count: 6, routes, operation_receipts: { observed: 10, accepted: 10 },
+        projected_count: 6, routes,
       },
     } })!;
   assert.deepEqual(packet.failures, []);

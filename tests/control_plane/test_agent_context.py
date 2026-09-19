@@ -5,7 +5,10 @@ import sys
 
 import pytest
 
-from loopx.control_plane.agent_context import project_agent_context
+from loopx.control_plane.agent_context import (
+    envelope_agent_context,
+    project_agent_context,
+)
 from loopx.control_plane.quota.live_decision import build_live_quota_should_run_decision
 from loopx.control_plane.quota.turn_envelope import (
     build_turn_envelope,
@@ -154,6 +157,44 @@ def test_managed_request_and_return_carry_parent_context_without_fabricating_com
         == returned
     )
     assert subagent_execution_payload_projection({"host_result": {}}) == {}
+
+
+def test_managed_return_does_not_relabel_before_plan_receipts_as_fresh():
+    before = project_agent_context(
+        phase="before_plan",
+        scope=SCOPE,
+        orchestration=POLICY,
+        observations={
+            "delegation_context": {
+                "schema_version": "loopx_delegation_context_v0",
+                "configuration_state": "ready",
+                "observed_at": "2026-09-19T00:00:00+00:00",
+                "authorized_count": 1,
+                "projected_count": 1,
+                "routes": [
+                    {
+                        "binding_id": "review",
+                        "agent_id": "reviewer",
+                        "todo_id": "todo-review",
+                        "runtime_id": "generic-cli",
+                        "readiness": "unknown",
+                    }
+                ],
+                "operation_receipts": {"observed": 1, "running": 1},
+            }
+        },
+    )
+    envelope = {"agent_context": before, "boundary": {"orchestration": POLICY}}
+
+    returned = envelope_agent_context(
+        envelope,
+        phase="after_delegate_result",
+        observations={"reconciliation_counts": {"observed": 1, "completed": 1}},
+    )
+
+    facts = returned["contributions"][0]["facts"]
+    assert facts["reconciliation_counts"] == {"observed": 1, "completed": 1}
+    assert "delegation_receipts" not in facts
 
 
 def test_host_prompt_and_durable_journal_replay_keep_lifecycle_context(tmp_path):

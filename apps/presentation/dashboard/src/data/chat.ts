@@ -850,10 +850,10 @@ export async function interruptChatTurn(sessionId: string, turnId: string) {
   );
 }
 
-export type LoopXModeSettings = { agent_id: string; token_budget: number; execution_config: string };
+export type LoopXModeSettings = { agent_id: string; token_budget: number };
 export type LoopXModeSnapshot = {
   ok: true; session_id: string; enabled: boolean; active_turn_id: string | null; conversation_busy: boolean;
-  settings: Partial<LoopXModeSettings>;
+  settings: Partial<LoopXModeSettings> & { execution_config?: string };
   native: { status: string; tokenBudget?: number; tokensUsed?: number };
   registered_agents: string[]; paused: boolean; recovery_required: boolean;
   members: Array<{id: string; agent_id: string; todo_id: string}>;

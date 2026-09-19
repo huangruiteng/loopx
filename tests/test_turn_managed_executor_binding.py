@@ -29,6 +29,7 @@ from loopx.control_plane.turn_driver.host_binding import (
     managed_executor_binding,
     managed_executor_binding_from_host_args,
     resolve_default_turn_host,
+    turn_host_arg_option,
 )
 from loopx.control_plane.turn_driver.execution_profile import (
     INVALID_REASONING_EFFORT,
@@ -63,6 +64,27 @@ def test_trusted_host_args_project_the_same_last_explicit_profile_without_raw_ar
     assert binding["available"] is True
     assert "host_args" not in binding
     assert "fixture-operator-token" not in json.dumps(binding)
+    assert (
+        turn_host_arg_option(
+            ["--host", "generic-cli", "--host=dsh"], "--host"
+        )
+        == "dsh"
+    )
+    assert turn_host_arg_option(["--host=dsh"], "--host") == "dsh"
+    assert (
+        turn_host_arg_option(
+            ["--dsh-model", "fixture-model", "--host", "dsh"], "--host"
+        )
+        == "dsh"
+    )
+    assert turn_host_arg_option(["--host", "--dsh-model", "fixture"], "--host") is None
+    assert (
+        turn_host_arg_option(
+            ["--host", "--dsh-model", "fixture", "--host=dsh"], "--host"
+        )
+        is None
+    )
+    assert turn_host_arg_option(["--dsh-model", "fixture"], "--host") is None
 
 
 def test_managed_executor_reports_the_operator_credential_and_endpoint():
