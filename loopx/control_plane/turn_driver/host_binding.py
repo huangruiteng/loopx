@@ -31,7 +31,7 @@ reject.
 from __future__ import annotations
 
 import importlib.util
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 
 from ..operator_credential import (
@@ -270,6 +270,44 @@ def managed_executor_binding(
         # branches on its presence; only a managed executor probes a runtime.
         "runtime_probe": None,
     }
+
+
+def managed_executor_binding_from_host_args(
+    host_args: Sequence[str],
+    *,
+    environ: Mapping[str, str] | None = None,
+    module_probe: Callable[[str], bool] | None = None,
+) -> dict[str, Any]:
+    """Project one trusted Turn argv binding through the existing host owner.
+
+    This is deliberately a read model: it selects no host, executes no probe
+    command and returns none of the raw argv. Optional host-specific profile
+    flags are interpreted here, beside their owning Turn host, so coordinator
+    capabilities can consume one provider-neutral executor projection.
+    """
+
+    args = [str(value) for value in host_args]
+
+    def option(name: str) -> str | None:
+        for index in range(len(args) - 1, -1, -1):
+            value = args[index]
+            if value.startswith(f"{name}="):
+                return value.partition("=")[2].strip() or None
+            if value == name:
+                if index + 1 >= len(args):
+                    return None
+                return args[index + 1].strip() or None
+        return None
+
+    host = option("--host") or "unknown"
+    return managed_executor_binding(
+        host,
+        environ=environ,
+        module_probe=module_probe,
+        provider=option("--dsh-provider"),
+        model=option("--dsh-model"),
+        reasoning_effort=option("--dsh-reasoning-effort"),
+    )
 
 
 def managed_executor_payload_entry(plan: Mapping[str, Any]) -> dict[str, Any]:

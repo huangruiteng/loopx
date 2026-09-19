@@ -490,6 +490,10 @@ def handle_registry_admin_command(
                 subagent_model=args.subagent_model,
                 subagent_reasoning_effort=args.subagent_reasoning_effort,
                 clear_subagent_model_config=args.clear_subagent_model_config,
+                subagent_execution_config=args.subagent_execution_config,
+                clear_subagent_execution_config=bool(
+                    args.clear_subagent_execution_config
+                ),
                 allowed_domains=args.allowed_domain,
                 clear_allowed_domains=bool(args.clear_allowed_domains),
                 explore_harness_enabled=args.explore_harness_enabled,

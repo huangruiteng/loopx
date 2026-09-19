@@ -143,6 +143,18 @@ def register_configure_goal_command(subparsers: argparse._SubParsersAction) -> N
         help="Remove child model and effort preferences together.",
     )
     configure_goal_parser.add_argument(
+        "--subagent-execution-config",
+        help=(
+            "Repo-relative operator binding file under .loopx/config/ used by "
+            "the existing local delegation entrypoint."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-subagent-execution-config",
+        action="store_true",
+        help="Remove the Goal's local delegation binding pointer.",
+    )
+    configure_goal_parser.add_argument(
         "--allowed-domain",
         action="append",
         default=None,

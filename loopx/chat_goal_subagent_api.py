@@ -71,6 +71,7 @@ class GoalSubagentConfigurationRequestMixin:
             "max_children",
             "allowed_domains",
             "model_config",
+            "execution_config",
         }
         if apply:
             allowed.add("preview_id")
@@ -87,6 +88,10 @@ class GoalSubagentConfigurationRequestMixin:
         if not isinstance(body.get("enabled"), bool):
             raise ValueError("enabled must be a boolean")
         enabled = body["enabled"]
+        if "execution_config" in body and not isinstance(
+            body.get("execution_config"), str
+        ):
+            raise ValueError("execution_config must be a string")
 
         if enabled:
             max_children = body.get("max_children")
@@ -129,6 +134,18 @@ class GoalSubagentConfigurationRequestMixin:
             "max_children": max_children,
             "allowed_domains": allowed_domains,
             **(
+                {
+                    "subagent_execution_config": str(
+                        body.get("execution_config") or ""
+                    ).strip()
+                }
+                if "execution_config" in body
+                and str(body.get("execution_config") or "").strip()
+                else {"clear_subagent_execution_config": True}
+                if "execution_config" in body
+                else {}
+            ),
+            **(
                 subagent_model_configuration_options(body["model_config"])
                 if "model_config" in body
                 else {}
@@ -156,6 +173,8 @@ class GoalSubagentConfigurationRequestMixin:
                     "subagent_model",
                     "subagent_reasoning_effort",
                     "clear_subagent_model_config",
+                    "subagent_execution_config",
+                    "clear_subagent_execution_config",
                 )
                 if key in values
             },
