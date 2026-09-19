@@ -37,6 +37,57 @@ const transitions: Record<Observation, readonly Observation[]> = {
   prepared: ["running", "rejected"], running: ["turn_returned", "rejected"],
   turn_returned: ["accepted", "rejected"], accepted: [], rejected: [],
 };
+
+/** Page only the caller's existing journal. A cursor is not a fleet snapshot. */
+export function delegationInventoryQuery(params: JsonObject): JsonObject {
+  const limit = params.limit ?? 20;
+  const cursor = params.cursor ?? null;
+  requireThat(Number.isInteger(limit) && Number(limit) >= 1 && Number(limit) <= 50,
+    "delegation inventory limit must be between 1 and 50");
+  requireThat(cursor === null || (typeof cursor === "string" && /^[a-f0-9]{64}$/.test(cursor)),
+    "invalid delegation inventory cursor");
+  return {limit, cursor};
+}
+
+/** The host supplies a fresh Delegations.read result, never a saved status. */
+export function delegationInventoryItem(params: JsonObject): JsonObject {
+  const record = requireJsonObject(params.record, "delegation inventory record");
+  requireThat(typeof record.record_id === "string" && /^[a-f0-9]{64}$/.test(record.record_id),
+    "invalid delegation record address");
+  requireThat(record.operation_id === null || (typeof record.operation_id === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(record.operation_id)), "invalid delegation operation identity");
+  if (params.observation === null) return {
+    record_id: record.record_id, operation_id: record.operation_id,
+    status: "unavailable", recovery_required: null,
+    error: "delegation_readback_unavailable",
+  };
+  const observation = requireJsonObject(params.observation, "current delegation readback");
+  requireThat(observation.operation_id === record.operation_id && record.operation_id !== null,
+    "delegation inventory identity mismatch");
+  requireThat(Object.hasOwn(transitions, String(observation.status)), "invalid delegation observation");
+  requireThat([observation.request_id, observation.agent_id, observation.todo_id].every(text),
+    "delegation request and task identities required");
+  requireThat(typeof observation.worker_active === "boolean"
+    && typeof observation.recovery_required === "boolean", "current worker observation required");
+  const result: JsonObject = {
+    record_id: record.record_id, operation_id: observation.operation_id,
+    request_id: observation.request_id, agent_id: observation.agent_id, todo_id: observation.todo_id,
+    status: observation.status, worker_active: observation.worker_active,
+    recovery_required: observation.recovery_required,
+  };
+  if (observation.status === "accepted") {
+    requireThat(Array.isArray(observation.artifacts) && observation.artifacts.length > 0,
+      "accepted inventory requires current artifacts");
+    result.artifacts = observation.artifacts.map(value => {
+      const artifact = requireJsonObject(value, "accepted artifact");
+      requireThat(text(artifact.ref) && typeof artifact.sha256 === "string"
+        && /^[a-f0-9]{64}$/.test(artifact.sha256), "invalid accepted artifact reference");
+      return {ref: artifact.ref, sha256: artifact.sha256};
+    });
+  }
+  return result;
+}
+
 export function transitionDelegationObservation(params: JsonObject): JsonObject {
   const from = params.from as Observation, to = params.to as Observation;
   requireThat(Object.hasOwn(transitions, from) && Object.hasOwn(transitions, to), "invalid delegation observation");

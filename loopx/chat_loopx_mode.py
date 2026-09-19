@@ -33,11 +33,13 @@ TOOL = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["bindings", "start", "read", "wait", "resume", "messages"],
+                "enum": ["bindings", "operations", "start", "read", "wait", "resume", "messages"],
             },
             "binding_id": {"type": "string"},
             "operation_id": {"type": "string"},
             "brief": {"type": "object"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+            "cursor": {"type": "string"},
         },
         "required": ["action"],
     },
@@ -51,6 +53,8 @@ GUIDANCE = (
     "service when authorized. Only current accepted results returned by that service establish "
     "member completion. Synthesize their actual artifacts and report remaining gaps here. "
     "Read action=messages between work steps for owner inbox additions. "
+    "After context loss, use action=operations to recover this identity's durable work before "
+    "starting new work. Follow next_cursor for more; unavailable means reconcile, not redispatch. "
     "Do not claim the whole canonical Goal is complete. Keep independent analysis substantive. "
     "Before completing or blocking, return a self-contained report with substantive accepted findings, "
     "exact artifact hashes and remaining gaps; do not require readers to reconstruct earlier streamed replies. "
@@ -505,9 +509,13 @@ class ChatLoopXMode:
                 "binding_id",
                 "operation_id",
                 "brief",
+                "limit",
+                "cursor",
             }:
                 raise ValueError("invalid collaboration arguments")
             action = arguments.get("action")
+            if action != "operations" and ("limit" in arguments or "cursor" in arguments):
+                raise ValueError("pagination is only valid for operations")
             operation_id = arguments.get("operation_id", "")
             if action == "messages":
                 rows = [
@@ -525,6 +533,8 @@ class ChatLoopXMode:
                 }
             elif action == "bindings":
                 result = service.directory()
+            elif action == "operations":
+                result = service.operations(limit=arguments.get("limit", 20), cursor=arguments.get("cursor"))
             elif action == "start":
                 result = service.start(
                     arguments.get("binding_id", ""),

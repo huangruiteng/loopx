@@ -156,6 +156,11 @@ class Delegations:
     def path(self, operation_id: str) -> Path:
         return _root(self.root) / "executions" / _hash([self.goal_id, self.agent_id]) / (_hash(operation_id) + ".json")
 
+    def operations(self, *, limit: int = 20, cursor: str | None = None) -> dict:
+        from .control_plane.collaboration.delegation_inventory import read_delegation_inventory
+
+        return read_delegation_inventory(self, limit=limit, cursor=cursor)
+
     def start(self, binding_id: str, operation_id: str, brief: dict,
               parent_request_id: str | None = None) -> dict:
         binding = self.binding(binding_id, require_active=True)
@@ -379,6 +384,15 @@ def register_delegation_tools(server, delegations: Delegations) -> None:
     def list_execution_bindings() -> dict:
         """Read operator-authorized peer task bindings; registration alone cannot launch."""
         return delegations.directory()
+
+    @server.tool()
+    def list_delegations(limit: int = 20, cursor: str | None = None) -> dict:
+        """Recover this requester's work after context loss. Follow next_cursor for more.
+
+        Accepted items are rechecked; unavailable requires reconciliation, not duplicate
+        dispatch. Read the original operation for full artifacts. Listing starts no work.
+        """
+        return delegations.operations(limit=limit, cursor=cursor)
 
     @server.tool()
     def start_delegation(binding_id: str, operation_id: str, brief: dict,

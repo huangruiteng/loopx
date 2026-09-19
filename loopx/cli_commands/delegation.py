@@ -17,7 +17,7 @@ def register_delegation(subparsers, add_format):
         "delegation", help="Launch and recover authorized peer work; returns JSON."
     )
     add_format(parser)
-    parser.add_argument("delegation_action", choices=("list", "start", "read", "wait", "resume"))
+    parser.add_argument("delegation_action", choices=("list", "operations", "start", "read", "wait", "resume"))
     parser.add_argument("--goal-id", required=True)
     parser.add_argument("--agent-id", required=True, help="Calling registered Agent, not the worker.")
     parser.add_argument("--execution-config", type=Path, required=True,
@@ -26,6 +26,8 @@ def register_delegation(subparsers, add_format):
     parser.add_argument("--binding-id", help="For start: an authorized binding from list.")
     parser.add_argument("--brief-file", type=Path, help="For start: collaboration_brief_v0 JSON file.")
     parser.add_argument("--parent-request-id", help="For start: the request received by this coordinator.")
+    parser.add_argument("--limit", type=int, help="For operations: page size, 1–50 (default 20).")
+    parser.add_argument("--cursor", help="For operations: next_cursor returned by the previous page.")
     parser.add_argument("--execute", action="store_true", help="Required for start/resume; grants no additional authority.")
 
 
@@ -39,10 +41,12 @@ def handle_delegation(args, registry_path, runtime_root):
             raise ValueError(f"delegation {action} requires --execute")
         if action not in {"start", "resume"} and args.execute:
             raise ValueError("--execute is only valid for start/resume")
-        if action != "list" and not args.operation_id:
+        if action not in {"list", "operations"} and not args.operation_id:
             raise ValueError(f"delegation {action} requires --operation-id")
-        if action == "list" and args.operation_id:
-            raise ValueError("list does not select an operation; use read")
+        if action in {"list", "operations"} and args.operation_id:
+            raise ValueError(f"{action} does not select an operation; use read")
+        if action != "operations" and (args.limit is not None or args.cursor is not None):
+            raise ValueError("limit and cursor are only supplied on operations")
         if action != "start" and (args.binding_id or args.brief_file or args.parent_request_id):
             raise ValueError("binding, brief and parent request are only supplied on start")
         service = Delegations(runtime_root, registry_path, args.goal_id, args.agent_id,
@@ -58,6 +62,8 @@ def handle_delegation(args, registry_path, runtime_root):
                                    args.parent_request_id)
         elif action == "list":
             result = service.directory()
+        elif action == "operations":
+            result = service.operations(limit=20 if args.limit is None else args.limit, cursor=args.cursor)
         elif action == "read":
             result = service.read(args.operation_id)
         elif action == "wait":
