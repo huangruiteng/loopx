@@ -139,6 +139,15 @@ changes.
 
 ## Planning, Research, And Adaptive Intelligence
 
+- [Optional Semantic Assistance — TypeSafe/Jev v0](optional-semantic-assistance-jev-v0.md)
+  ([中文版](optional-semantic-assistance-jev-v0.zh-CN.md))
+  - **RFC status:** Draft, proposed for maintainer review.
+  - **Delivery on `main`:** Proposal only; no Jev integration or qualification.
+  - **Current boundary:** Six directions retain existing domain owners. Recommends
+    a Decision Context operator CLI pilot with explicit opt-in, no-key/failure
+    degradation, private readback and separate live/value qualification. No new
+    control-plane authority, mandatory provider or automatic worker adoption.
+
 - [Frontier Science Research Program v0](frontier-science-research-program-v0.md)
   ([中文版](frontier-science-research-program-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
