@@ -64,6 +64,14 @@ export function ChannelHeader({
         : t("header.managerExecutorKindRegistered")
     : null;
   const managerExecutionUnavailable = managerChannelBinding?.available === false;
+  const managerOutputTokenBudget = managerChannelBinding?.output_token_budget;
+  const managerOutputTokenBudgetLabel = managerOutputTokenBudget?.scope === "per_model_request"
+    && managerOutputTokenBudget.valid
+    && typeof managerOutputTokenBudget.max_tokens === "number"
+    ? t("header.managerOutputTokenBudget", {
+      tokens: new Intl.NumberFormat(locale).format(managerOutputTokenBudget.max_tokens),
+    })
+    : null;
   // Name the reason instead of one hardcoded host: the channel can hold the
   // managed host through its segment transport now, so "this channel needs
   // codex" would be both wrong and unactionable. An unknown reason stays
@@ -77,6 +85,8 @@ export function ChannelHeader({
       ? "header.managerExecutionUnavailableRuntime"
       : managerExecutionUnavailableReason === "invalid_reasoning_effort"
         ? "header.managerExecutionUnavailableEffort"
+        : managerExecutionUnavailableReason === "invalid_output_token_limit"
+          ? "header.managerExecutionUnavailableOutputBudget"
         : "header.managerExecutionUnavailable";
   // The shipped default is one endpoint, so the chip names it and the one way
   // to move it; without this a steward the operator selected looks identical to
@@ -128,6 +138,7 @@ export function ChannelHeader({
               <span className="personal-execution-chip-endpoint">{managerChannelBinding.executor_endpoint}</span>
               {managerExecutionKindLabel ? <span className="personal-execution-chip-kind">{managerExecutionKindLabel}</span> : null}
               <span className="personal-execution-chip-model">{managerChannelBinding.model}</span>
+              {managerOutputTokenBudgetLabel ? <span className="personal-execution-chip-budget">{managerOutputTokenBudgetLabel}</span> : null}
             </span>
             {managerExecutionUnavailable ? (
               <span className="personal-execution-note">

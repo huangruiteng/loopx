@@ -113,6 +113,15 @@ export const managerChannelBindingSchema = z.object({
   model_source: z.string(),
   credential_env_var: z.string(),
   operator_credential_configured: z.boolean(),
+  output_token_budget: z.object({
+    schema_version: z.literal("dsh_output_token_budget_v0"),
+    scope: z.literal("per_model_request"),
+    max_tokens: z.number().int().positive().nullable(),
+    valid: z.boolean(),
+    source: z.enum(["product_default", "explicit_argument"]),
+    final_response_reserve_supported: z.boolean(),
+    hard_tool_budget_supported: z.boolean(),
+  }).nullable().optional(),
   available: z.boolean().nullable(),
   unavailable_reason: z.string().nullable(),
 });
