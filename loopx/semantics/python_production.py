@@ -440,6 +440,31 @@ def scan_python_production(
         for statement in body:
             collect(statement)
         assigned = Counter(n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store))
+        # Not every binding reaches the tree as ``Name(Store)``. A ``match``
+        # pattern keeps its captured name as a string on the pattern node, and a
+        # nested scope can rebind an enclosing name through ``nonlocal``. Both
+        # write the name without adding a store the plain-assignment scan can
+        # order, so they are counted here: ``definitions`` below keeps a name
+        # only while every store of it is one of those recorded writes, and an
+        # extra count is exactly what drops an unorderable name out of it.
+        for node in nodes:
+            if isinstance(node, ast.MatchAs) and node.name:
+                assigned[node.name] += 1
+            elif isinstance(node, ast.MatchStar) and node.name:
+                assigned[node.name] += 1
+            elif isinstance(node, ast.MatchMapping) and node.rest:
+                assigned[node.rest] += 1
+        for child in nested:
+            declares: set[str] = set()
+            for inner in ast.walk(child):
+                if isinstance(inner, (ast.Global, ast.Nonlocal)):
+                    declares.update(inner.names)
+            if not declares:
+                continue
+            for inner in ast.walk(child):
+                if isinstance(inner, ast.Name) and isinstance(inner.ctx, (ast.Store, ast.Del)):
+                    if inner.id in declares:
+                        assigned[inner.id] += 1
         local_owner_names = {owner.split('::')[1] for owner in enums if owner.split('::')[0] == source.path}
         nested_names = {n.name for n in nested}
         if scope == '<module>':
@@ -481,9 +506,14 @@ def scan_python_production(
                     for name in node.names}
         # Every store of the name must be one of those plain writes, so a value
         # this scan cannot order never masquerades as a finite selection.
+        # A later ``import as``, ``except as`` or nested ``def``/``class`` takes
+        # the name away from the value the plain assignment gave it, so the
+        # initializer is no longer the whole story for this scope.
+        rebound_by_other_forms = imported | exception_targets | nested_names
         definitions = {name: values for name, values in plain.items()
                        if assigned[name] == len(values) and name not in parameters
-                       and name not in declared and name not in deleted}
+                       and name not in declared and name not in deleted
+                       and name not in rebound_by_other_forms}
 
         # Resolve only local containers that have not been mutated through an
         # unrecognized path or escaped. A direct literal-key subscript write is
@@ -676,6 +706,21 @@ def scan_python_production(
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                     and node.func.id == 'str' and node.func.id not in shadows
                     and len(node.args) == 1 and not node.keywords):
+                # ``str`` is not a transparent pass-through. ``str(None)`` is
+                # the text ``"None"``, not "no value", and ``str`` of a
+                # ``str``-mixin enum *member* is its qualified name rather than
+                # its value, so inheriting the argument's resolution there
+                # would report a registered value where the field actually
+                # carries an unregistered one. A ``.value`` read, a literal or
+                # anything else already carrying text converts to itself.
+                argument, _ = bound(node.args[0], seen)
+                if isinstance(argument, ast.Constant):
+                    text = str(argument.value)
+                    return ({text} if text and not enum_only else set()), False
+                if (isinstance(argument, ast.Attribute) and argument.attr != 'value'
+                        and isinstance(argument.value, ast.Name)
+                        and argument.value.id in local_bindings):
+                    return set(), blocked('string_conversion')
                 return resolve(node.args[0], seen, enum_only=enum_only)
             if isinstance(node, ast.Attribute):
                 member = node.value if node.attr == 'value' else node
