@@ -40,7 +40,8 @@ LoopX 已经区分阻塞性的 `user_gate` todo 与非阻塞的 `user_action` to
 - heartbeat 指南要求记录高价值候选，却没有定义 wishlist 写命令或生命周期；
 - `todo_write_hint` 提供 gate、user-action 和 agent-todo 模板，却没有“不通知的可选人类请求”模板；
 - 一个打开的 `user_action` 即使非阻塞，也可能进入用户通知通道；
-- `todo suggest` 只产生只读候选队列，还需要后续 promotion；`todo capture-followups` 则只写 agent work；
+- `todo suggest` 只产生只读候选队列，还需要后续 promotion；已退役的
+  `todo capture-followups` 只写 agent work，从未提供 human wish 路由；
 - compact turn envelope 带有必须执行的动作和写回，却没有签名过的可选 sidecar 提示。
 
 结果是一种可以避免的生产偏差：agent 要么把可选价值升级成 blocker，要么制造提醒噪音，要么遗忘它。
@@ -124,7 +125,9 @@ loopx todo capture-wishes \
 - 限制每个 agent 的活跃 wish 数，并返回 typed `max_items_exceeded` 或 `duplicate_updated` 结果；
 - 自身不 spend quota，也不声明 delivery progress。
 
-精确命令名留给实现评审。以上行为才是协议；只有在能保持 agent follow-up 与 human wish 路由显式、且不会静默改变 role/task class 时，才可选择扩展 `todo capture-followups`。
+精确命令形态留给实现评审。以上行为才是协议。已退役的
+`todo capture-followups` 批量命令不再作为扩展点；未来实现必须使用 wish 专属的
+typed helper，或为 canonical `todo add` 增加不会静默改变 role/task class 的显式选项。
 
 ## 5. Skill 与 Heartbeat 生成规则
 
@@ -292,7 +295,7 @@ v0 拒绝。它会扩大每个 task-class switch、CLI validator、state project
 
 ## 14. 开放问题
 
-1. Helper 应命名为 `todo capture-wishes`，还是让现有 `capture-followups` 接受显式 destination kind？
+1. Helper 应命名为 `todo capture-wishes`，还是让 canonical `todo add` 接受显式 human-attention kind？
 2. v0 应按 agent、按 goal，还是同时限制 active wish？
 3. Piggyback 呈现应进入初始切片，还是第一版只通过 status/review packet 暴露 wish？
 4. 在专用 typed outcome 出现前，哪一个 public-safe lifecycle field 最适合记录用户的显式 decline？

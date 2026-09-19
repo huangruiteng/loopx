@@ -2107,16 +2107,16 @@ Per stage, this increment implements:
   failures, and zero skips.
 - Stage 2C observation foundation: seven `s2c1.*` rows port the local-shadow CLI
   E2E and migration assertions and pin the single-lineage guarantee. The configure round trip previews, enables,
-  reads back, and disables the observer; every writer family (handoff-mode,
-  todo add/update/complete/supersede/capture-followups/archive-completed,
+  reads back, and disables the observer; every retained writer family (handoff-mode,
+  todo add/update/complete/supersede/archive-completed,
   task-lease acquire/renew/transfer) captures with
   `primary_writeback_preserved`, `provider_to_local_writes=false`, and
   `candidate_read_for_decision=false`, while an idempotent re-acquire does not
   observe; default-off goals stay isolated; candidate failure preserves the
   primary commit; a POSIX SIGKILL in the crash gap loses only that
   observation; a `--runtime-root` override that differs from
-  `common_runtime_root` keeps todo add, task-lease acquire, todo update,
-  follow-up capture, and a leased completion in one store identity while the
+  `common_runtime_root` keeps two todo adds, task-lease acquire, todo update,
+  and a leased completion in one store identity while the
   registry root gains neither a candidate lineage nor lease state; and
   `migrate-state` seeds a fresh lineage without legacy bytes.
 - Stage 2C parity half: ten `s2c2.*` rows drive one explicitly enabled
@@ -2133,8 +2133,8 @@ Per stage, this increment implements:
   as `bootstrap_required`, rebootstraps a fresh lineage and replays; three
   cycles of interleaved writers (add, note update with a no-change repeat,
   explicit exclusion set and clear with a no-change repeat, acquire, renew,
-  transfer, leased complete and supersede with their fence closes,
-  capture-followups) keep every bounded qualification matched with
+  transfer, leased complete and supersede with their fence closes, and a
+  second add) keep every bounded qualification matched with
   `sustained_parity_verdict=not_evaluated`; a
   direct primary edit reports `shadow_projection_drift`, a later write holds
   on `source_partition_continuity_unproved`, and only rollback plus rebootstrap
@@ -2801,6 +2801,15 @@ qualified shadow capture; after cutover, the selected canonical provider feeds
 one-way projections. Do not add a third TS-Markdown backend, bidirectional
 live synchronization, or per-command split authority. Unsupported post-cutover
 commands fail closed; they do not fall back to the old writer.
+
+The 2026-09-19 command-retirement checkpoint removes the unconsumed
+`coordination.local_authority.mutate` and Todo compatibility-edit execution
+wrappers while retaining `prepareCoordinationProjectionCommit` and the shared
+reducer used by live domain transactions. It also removes the unrelated public
+`todo capture-followups` product command. That command retirement does not
+remove, weaken, or rename the runtime shadow-capture mechanism described here.
+`todo suggest` remains a manual read-only discovery entrypoint and is not part
+of provider promotion qualification.
 
 #### Refactoring roadmap overview
 

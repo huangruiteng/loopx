@@ -9,6 +9,12 @@ frequency limits. The project agent reads the current repo and returns
 `suggested_todos`; those candidates are not formal LoopX todos until the user
 or primary controller promotes one.
 
+This is intentionally a manual, read-only discovery surface. It is retained
+even without automatic product callers because an explicit operator request is
+its product entrypoint. It is not a provider-default or TypeScript-migration
+prerequisite, and it should not gain a dedicated write path unless a real
+replacement interaction is first accepted.
+
 ## Command
 
 ```bash

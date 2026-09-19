@@ -975,6 +975,16 @@ readers but does not finish Todo writers, retention/compaction or promotion.
 
 **T4 — collect full-writer retirement after durability cutover.**
 
+- The 2026-09-19 command audit retires two already-typed but unconsumed
+  execution surfaces: `coordination.local_authority.todo_compatibility_edit`
+  and `coordination.local_authority.mutate`. Shared projection reduction and
+  commit preparation remain because live claim, lease, update, archive,
+  monitor, and team-plan transactions use them. The same audit retires the
+  unused public `todo capture-followups` batch command instead of migrating it;
+  ordinary `todo add` remains available but is not claimed to preserve the
+  retired command's atomic batch, deduplication, or replay contract. The
+  read-only, manually invoked `todo suggest` surface remains, but is not a
+  provider-default prerequisite.
 - Depends on T1–T3 and the shared RFC's [D1–D3](shared-goal-authority-state-provider-v0.md#durability-execution-cards), including owner approval
   and the explicit legacy migration window. Search remaining imports and
   public command routes before deleting old Markdown business writers,

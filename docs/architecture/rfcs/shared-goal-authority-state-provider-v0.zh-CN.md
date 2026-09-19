@@ -1678,14 +1678,14 @@ CLI runner、observation-lock 窗口、候选回读）、只读 TypeScript 探�
   PostgreSQL 集成测试文件，要求至少九个 pass、零 fail、零 skip。
 - Stage 2C 观察基础：七个 `s2c1.*` 行移植本地 shadow CLI E2E 与迁移断言，并钉住单一
   lineage 保证。
-  configure 往返先预览、再开启、回读、最后关闭 observer；每个 writer family
-  （handoff-mode、todo add/update/complete/supersede/capture-followups/
+  configure 往返先预览、再开启、回读、最后关闭 observer；每个保留的 writer family
+  （handoff-mode、todo add/update/complete/supersede/
   archive-completed、task-lease acquire/renew/transfer）都以
   `primary_writeback_preserved`、`provider_to_local_writes=false`、
   `candidate_read_for_decision=false` 完成 capture，而幂等 re-acquire 不产生
   observation；default-off goal 保持隔离；候选失败不推翻主写；POSIX SIGKILL
   落在崩溃间隙时只丢失该次 observation；`--runtime-root` 与 `common_runtime_root`
-  不同时，todo add、task-lease acquire、todo update、follow-up 捕获与带 lease 的
+  不同时，两次 todo add、task-lease acquire、todo update 与带 lease 的
   complete 仍落入同一个 store identity，registry root 既不产生候选 lineage 也不
   产生 lease 状态；`migrate-state` 在不携带 legacy 字节的前提下建立新 lineage。
 - Stage 2C parity 后半段：十个 `s2c2.*` 行只通过公开 CLI 驱动一个显式开启
@@ -1699,7 +1699,7 @@ CLI runner、observation-lock 窗口、候选回读）、只读 TypeScript 探�
   条目、把 capture 置于 `bootstrap_required`、重新 bootstrap 出新 lineage 并可重放；
   三轮交错 writer（add、note update 及其无变化重复、显式 exclusion 设置与清除及其
   无变化重复、acquire、renew、transfer、带 lease 的 complete 与 supersede 及其
-  fence close、capture-followups）让每次有界 qualification 都保持 matched，且
+  fence close，以及第二次 add）让每次有界 qualification 都保持 matched，且
   `sustained_parity_verdict=not_evaluated`；
   直接改主文件会报告 `shadow_projection_drift`，其后的写入以
   `source_partition_continuity_unproved` 挂起，只有 rollback 加重新 bootstrap 才能恢复；
@@ -2222,6 +2222,13 @@ CLI / Agent / Dashboard → 唯一 TS Todo 事务 owner → canonical authority
 每个 goal 只有两个 authority 阶段：cutover 前，Markdown 向已资格化 shadow capture
 供数；cutover 后，所选 canonical provider 向单向投影供数。不增加第三种 TS-Markdown
 backend、实时双向同步或按命令拆开的权威；晋升后不支持的命令 fail closed，不能回退旧 writer。
+
+2026-09-19 命令退役检查点删除了无人消费的
+`coordination.local_authority.mutate` 与 Todo compatibility-edit 执行包装，同时保留
+实际领域事务仍复用的 `prepareCoordinationProjectionCommit` 与共享 reducer；另行删除
+无关的公开产品命令 `todo capture-followups`。后一个命令的退役不删除、不削弱、也不
+重命名本 RFC 的 runtime shadow-capture 机制。`todo suggest` 继续作为人工触发的只读
+发现入口，不纳入 provider promotion 资格。
 
 #### 重构主线总览
 

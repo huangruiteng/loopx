@@ -59,7 +59,8 @@ The current seams do not compose into that outcome:
 - an open `user_action` can enter the user notification channel even when it is
   non-blocking;
 - `todo suggest` creates a read-only candidate queue that requires later
-  promotion, while `todo capture-followups` writes only agent work;
+  promotion; the retired `todo capture-followups` command wrote only agent
+  work and never provided a human-wish route;
 - the compact turn envelope carries required execution and writeback actions,
   but no signed optional sidecar hint.
 
@@ -168,10 +169,11 @@ It must:
   `duplicate_updated` result;
 - perform no quota spend and claim no delivery progress by itself.
 
-The exact command name is open to implementation review. The behavior above is
-the contract; extending `todo capture-followups` is acceptable only if it keeps
-agent follow-up and human-wish routing explicit and cannot silently change the
-role or task class.
+The exact command shape is open to implementation review. The behavior above
+is the contract. The retired `todo capture-followups` batch command is not an
+extension point; a future implementation must use a typed wish-specific helper
+or an explicit canonical `todo add` option that cannot silently change role or
+task class.
 
 ## 5. Skill and Heartbeat Generation Rule
 
@@ -400,8 +402,8 @@ contract.
 
 ## 14. Open Questions
 
-1. Should the helper be `todo capture-wishes`, or should the existing
-   `capture-followups` command accept an explicit destination kind?
+1. Should the helper be `todo capture-wishes`, or should canonical `todo add`
+   accept an explicit human-attention kind?
 2. Should v0 cap active wishes per agent, per goal, or both?
 3. Should piggyback delivery be part of the initial slice, or should the first
    implementation expose wishes only through status/review packets?
