@@ -785,6 +785,12 @@ def _execution_payload(
         "execution_mode": planned_host.get("execution_mode"),
         "host": journal.get("host"),
         **managed_executor_payload_entry(plan),
+        # Preview admission is an observation; execution receipts stay unchanged.
+        **({"route": {
+            "kind": plan["route"]["kind"],
+            "selected_todo_id": (plan["route"].get("selected_todo") or {}).get("todo_id"),
+            "would_invoke_host": plan["route"]["would_invoke_host"],
+        }} if not execute else {}),
         "result_kind": journal.get("result_kind"),
         "validation": journal.get("task_validation"),
         "receipt": journal.get("receipt"),

@@ -2,6 +2,7 @@ import {useEffect, useState} from "react";
 import {Pause, Play, Settings2} from "lucide-react";
 import {fetchLoopXMode, updateLoopXMode, type LoopXModeSnapshot, type LoopXModeSettings} from "../../data/chat";
 import {useWorkspaceI18n} from "./i18n";
+import {GoalTeamWork} from "./goal-team-work";
 import "./goal-loopx-mode.css";
 
 export function GoalLoopXMode({sessionId, onPrepare, onExecute, onChange}: {
@@ -98,6 +99,7 @@ export function GoalLoopXMode({sessionId, onPrepare, onExecute, onChange}: {
     {snapshot?.enabled && snapshot.native.tokensUsed !== undefined ? <p className="goal-loopx-mode-usage">{zh ? "协调员累计用量" : "Coordinator usage"} {snapshot.native.tokensUsed.toLocaleString()} / {snapshot.native.tokenBudget?.toLocaleString() ?? "—"} tokens</p> : null}
     {snapshot?.enabled && snapshot.ingress.some(row => row.status !== "delivered") ? <p role="status">{zh ? "待处理消息：" : "Pending messages: "}{snapshot.ingress.filter(row => row.status !== "delivered").map(row => `${row.mode === "loopx_queue" ? "queue" : "inbox"} · ${row.status}`).join(" / ")}</p> : null}
     {snapshot?.enabled && snapshot.deliveries.length ? <div className="goal-loopx-mode-members" aria-label={zh ? "最近一次成员回读" : "Last member observations"}><span>{zh ? "成员最近回读" : "Last observations"}</span>{snapshot.deliveries.map(row => <span key={row.operation_id}>{row.agent_id} · {row.status === "accepted" ? (zh ? "已通过验收" : "Accepted") : row.status === "rejected" ? (zh ? "未通过验收" : "Rejected") : row.status === "unavailable" ? (zh ? "需要重新核验" : "Recheck required") : (zh ? "执行中" : "Working")}</span>)}</div> : null}
+    {configured && sessionId ? <GoalTeamWork key={`${sessionId}:${snapshot?.settings.agent_id}:${snapshot?.settings.execution_config}`} sessionId={sessionId} members={snapshot?.members ?? []} zh={zh}/> : null}
     {error ? <p className="personal-composer-error" role="alert">{error}</p> : null}
   </section>;
 }

@@ -864,6 +864,27 @@ export type LoopXModeSnapshot = {
 export function fetchLoopXMode(sessionId: string) {
   return requestJson<LoopXModeSnapshot>(`/api/chat/sessions/${sessionId}/loopx`);
 }
+export type DelegationInventory = {
+  items: Array<{record_id: string; operation_id: string | null; agent_id?: string; todo_id?: string;
+    status: string; worker_active?: boolean; recovery_required: boolean | null;
+    artifacts?: Array<{ref: string; sha256: string}>}>;
+  has_more: boolean; next_cursor: string | null; page_readback_complete: boolean;
+};
+export type DelegationPreflight = {
+  state: "turn_blocked" | "acceptance_unavailable" | "runtime_unavailable" | "runtime_unverified" | "launchable";
+  turn_eligible: boolean; acceptance_ready: boolean; turn_route: string;
+  executor: {host: string; available: boolean | null; reason: string | null; profile: string | null};
+};
+export function fetchLoopXTeamWork(sessionId: string, cursor?: string) {
+  return requestJson<DelegationInventory>(`/api/chat/sessions/${sessionId}/loopx`, {
+    method: "POST", body: JSON.stringify({operation: "operations", limit: 10, ...(cursor ? {cursor} : {})}),
+  });
+}
+export function inspectLoopXMember(sessionId: string, bindingId: string) {
+  return requestJson<DelegationPreflight>(`/api/chat/sessions/${sessionId}/loopx`, {
+    method: "POST", body: JSON.stringify({operation: "inspect", binding_id: bindingId}),
+  });
+}
 export function updateLoopXMode(sessionId: string, operation: string, settings?: LoopXModeSettings, operationId = crypto.randomUUID()) {
   return requestJson<LoopXModeSnapshot>(`/api/chat/sessions/${sessionId}/loopx`, {
     method: "POST", body: JSON.stringify({operation, operation_id: operationId, ...(settings ? {settings} : {})}),

@@ -32,14 +32,14 @@ TOOL = {
     "(relative ref, description, optional sha256), acceptance (strings), return_requirement. "
     "Read/wait/resume use the original operation_id. Running is not failure; do not duplicate it. "
     "After context loss, action=operations recovers this requester's durable work. Follow "
-    "next_cursor for more; unavailable means reconcile, not redispatch.",
+    "next_cursor for more; unavailable means reconcile, not redispatch. Action=inspect with binding_id checks the actual Turn/profile before new dispatch; unknown availability is not readiness.",
     "inputSchema": {
         "type": "object",
         "additionalProperties": False,
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["bindings", "operations", "start", "read", "wait", "resume", "messages"],
+                "enum": ["bindings", "operations", "inspect", "start", "read", "wait", "resume", "messages"],
             },
             "binding_id": {"type": "string"},
             "operation_id": {"type": "string"},
@@ -247,7 +247,21 @@ class ChatLoopXMode:
             ],
         }
 
+    def read_team(self, session_id, body):
+        """Owner readback stays available while paused; no model Turn is submitted."""
+        operation = body.get("operation")
+        allowed = {"operation", "binding_id"} if operation == "inspect" else {"operation", "limit", "cursor"}
+        if operation not in {"inspect", "operations"} or set(body) - allowed:
+            raise ValueError("invalid team readback request")
+        session = self._session(session_id)
+        service, _, _ = self._execution(session, (session.get("loopx_mode") or {}).get("settings") or {})
+        result = (service.inspect(body.get("binding_id", "")) if operation == "inspect" else
+                  service.operations(limit=body.get("limit", 10), cursor=body.get("cursor")))
+        return {"ok": True, **result}
+
     def apply(self, session_id, body, *, work_dir, objective):
+        if body.get("operation") in {"inspect", "operations"}:
+            return self.read_team(session_id, body)
         if set(body) - {
             "operation",
             "settings",
@@ -617,6 +631,10 @@ class ChatLoopXMode:
                 }
             elif action == "bindings":
                 result = service.directory()
+            elif action == "inspect":
+                if set(arguments) != {"action", "binding_id"}:
+                    raise ValueError("inspect requires only binding_id")
+                result = service.inspect(arguments["binding_id"])
             elif action == "operations":
                 result = service.operations(limit=arguments.get("limit", 20), cursor=arguments.get("cursor"))
             elif action == "start":
