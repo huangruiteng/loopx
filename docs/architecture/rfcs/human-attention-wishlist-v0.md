@@ -58,9 +58,9 @@ The current seams do not compose into that outcome:
   non-notifying optional-human template;
 - an open `user_action` can enter the user notification channel even when it is
   non-blocking;
-- `todo suggest` creates a read-only candidate queue that requires later
-  promotion; the retired `todo capture-followups` command wrote only agent
-  work and never provided a human-wish route;
+- the retired `todo suggest` command only emitted an advisory prompt; the
+  retired `todo capture-followups` command wrote only agent work. Neither
+  provided a durable human-wish route;
 - the compact turn envelope carries required execution and writeback actions,
   but no signed optional sidecar hint.
 
@@ -369,11 +369,11 @@ ownership, and lifecycle are already those of a non-blocking user action.
 Rejected. Current interaction behavior can notify every visible user action,
 and substring or prose classification would make routing authority ambiguous.
 
-### Keep wishes only in `todo suggest`
+### Keep wishes only in an advisory suggestion
 
-Rejected. The suggestion surface is intentionally read-only and requires later
-promotion, so it cannot preserve a small opportunity discovered as a normal
-turn side effect.
+Rejected. An advisory proposal requires later promotion, so it cannot preserve
+a small opportunity discovered as a normal turn side effect. Retiring the
+standalone suggestion command does not close this lifecycle gap.
 
 ### Write every opportunity as an agent todo
 
@@ -394,7 +394,6 @@ Only after the first slice produces real usage evidence should LoopX consider:
 - a user preference or digest policy for wishlist visibility;
 - accept/decline convenience commands and atomic agent-todo promotion;
 - value/acceptance metrics based on typed lifecycle events;
-- teaching `todo suggest` to return separate agent candidates and human wishes;
 - external projection sinks that render the existing wishlist lane.
 
 These are not required for v0 and must not delay the non-blocking authoring

@@ -40,8 +40,8 @@ LoopX 已经区分阻塞性的 `user_gate` todo 与非阻塞的 `user_action` to
 - heartbeat 指南要求记录高价值候选，却没有定义 wishlist 写命令或生命周期；
 - `todo_write_hint` 提供 gate、user-action 和 agent-todo 模板，却没有“不通知的可选人类请求”模板；
 - 一个打开的 `user_action` 即使非阻塞，也可能进入用户通知通道；
-- `todo suggest` 只产生只读候选队列，还需要后续 promotion；已退役的
-  `todo capture-followups` 只写 agent work，从未提供 human wish 路由；
+- 已退役的 `todo suggest` 只生成 advisory prompt；已退役的
+  `todo capture-followups` 只写 agent work。两者都没有提供持久化 human wish 路由；
 - compact turn envelope 带有必须执行的动作和写回，却没有签名过的可选 sidecar 提示。
 
 结果是一种可以避免的生产偏差：agent 要么把可选价值升级成 blocker，要么制造提醒噪音，要么遗忘它。
@@ -269,9 +269,9 @@ v0 拒绝。它会扩大每个 task-class switch、CLI validator、state project
 
 拒绝。当前 interaction behavior 可能通知每个可见 user action；substring/prose classification 还会让 routing authority 变得模糊。
 
-### 只把 wish 放在 `todo suggest`
+### 只把 wish 留在 advisory suggestion 中
 
-拒绝。Suggestion surface 刻意只读且需要后续 promotion，无法保存在普通 turn 中发现的小机会。
+拒绝。Advisory proposal 需要后续 promotion，无法保存在普通 turn 中发现的小机会。退役独立 suggestion 命令不等于补齐这一生命周期。
 
 ### 把每个机会都写成 agent todo
 
@@ -288,7 +288,6 @@ v0 拒绝。它会扩大每个 task-class switch、CLI validator、state project
 - 用户层的 wishlist visibility/digest preference；
 - accept/decline convenience command 与原子 agent-todo promotion；
 - 基于 typed lifecycle event 的 value/acceptance metric；
-- 教会 `todo suggest` 分开返回 agent candidate 与 human wish；
 - 渲染既有 wishlist lane 的 external projection sink。
 
 这些都不是 v0 必需项，不应延迟非阻塞写入协议。

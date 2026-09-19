@@ -36,7 +36,6 @@ them directly.
 | `connection_state` | `loopx connect`, `bootstrap`, `doctor`, `sync-global` | Whether the repo is connected, read-only, bootstrapped, stale, or missing local state. |
 | `local_state_boundary` | `.gitignore`, `loopx check`, getting-started docs | Keep `.loopx/`, `.codex/goals/`, `.local/`, raw logs, credentials, and private paths out of public commits. |
 | `todo_item_v0` | `loopx todo`, active-state todo sections, `loopx/status.py` | Formal work unit with role, status, task class, action kind, claim, dependency, resume, and evidence metadata. |
-| `suggested_todo` | `loopx todo suggest`, `todo_suggestion_prompt_v0` | Candidate decision queue; not formal backlog until promoted by user/controller. |
 | `interaction_contract_v0` | `loopx quota should-run`, `docs/quota-allocation.md` | Splits user, agent, and CLI obligations before an automated turn spends compute. |
 | `agent_lane_next_action_v0` | `loopx quota should-run --agent-id ...`, `docs/project-agent-todo-contract.md` | Per-agent selected runnable todo without replacing the goal-level next action. |
 | `agent_workspace_guard_v1` | `loopx quota should-run`, selected todo and repository policy | Blocks repository delivery until the current peer uses a compliant worktree/branch. |
@@ -46,6 +45,29 @@ them directly.
 | `human_reward` | `loopx reward`, `loopx/history.py`, `loopx/status.py` | Run-bound human judgment overlay; not generic write-control. |
 | `delivery_outcome` | `loopx/delivery_outcome.py`, `loopx/history.py`, `loopx/status.py` | Machine-readable result tier: surface-only, outcome gap, outcome progress, or primary goal outcome. |
 | `rollback_packet_v0` | `docs/reference/protocols/rollback-packet-v0.md` | Compensating action record linking todo, commit, event, decision, external resource, and validation plan. |
+
+### Candidate discovery and command retirement
+
+`todo suggest` and its `todo_suggestion_prompt_v0` packet are retired. The
+command only emitted instructions for the current agent; it did not inspect
+the repository or persist candidates. There is no replacement discovery
+command, nested packet, or compatibility alias.
+
+Read existing work with `loopx todo list --goal-id <goal-id> --role agent
+--status open --limit 50`. This is a bounded view: an open Todo is not proof of
+current execution eligibility, and a limited view is not the complete frontier.
+Keep the existing quota/Turn revalidation before selecting work.
+
+Ask the current project agent to analyze uncovered work using the relevant
+repository evidence and existing Todos. Proposals remain advisory until the
+user or authorized controller selects them for `loopx todo add`; analysis
+does not grant execution authority. `todo plan` remains the existing Goal's
+caller-invoked planning checkpoint, not a drop-in suggestion replacement.
+
+Scripts that parsed the retired prompt must remove that step and use their
+existing agent interaction. The former Todo `--from` and `--trigger` options
+are removed; `--limit` retains its existing `todo list` meaning. No persisted
+Todo, journal or provider state migration is required.
 
 ## Projection Protocol
 
@@ -272,8 +294,6 @@ Partially aligned:
 - `task_graph_projection_v0` is specified but not yet a stable dashboard input.
 - Commit-to-todo linkage is convention-based through PR text, commit messages,
   todo evidence, and rollout refs.
-- `todo suggest` produces a prompt packet for the user's agent; it is not a
-  fully autonomous repo analyzer.
 - External-resource partial success is not yet a generic protocol.
 
 Not yet aligned:

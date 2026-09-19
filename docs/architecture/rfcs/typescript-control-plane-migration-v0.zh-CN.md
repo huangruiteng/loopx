@@ -763,8 +763,9 @@ T3/D1 reader，未完成全部 Todo writer、retention/compaction 或 promotion�
   和 team-plan 事务仍复用 projection reduction 与 commit preparation，因此这些
   公共内核保留。同一审计直接退役无实际调用的公开批量命令
   `todo capture-followups`，不再为它继续迁移；普通 `todo add` 仍可用，但不宣称保留
-  已退役命令的批量原子性、去重或 replay 合同。人工触发、只读的 `todo suggest`
-  保留，但不是 provider 默认切换的前置条件。
+  已退役命令的批量原子性、去重或 replay 合同。独立 prompt 命令 `todo suggest`
+  也直接退役；候选分析由当前 Agent 结合既有 Todo 读取和写入路径完成，不增加改名命令
+  或包装协议。见[发现与兼容边界](../../reference/protocols/long-horizon-agent-state-protocol-v0.md#candidate-discovery-and-command-retirement)。
 - 前提是 T1–T3 和 shared RFC 的 [D1–D3](shared-goal-authority-state-provider-v0.zh-CN.md#持久化执行卡)，包括 owner 批准及明确的 legacy 迁移窗口。
   搜索剩余 import 和公开路由后，删除旧 Markdown 业务 writer、capture-only adapter、
   重复 reference aggregate。

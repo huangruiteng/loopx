@@ -25,7 +25,6 @@ scanning a chronological list.
 - [`typed_date_resume_trigger_v0`](typed-date-resume-trigger-v0.md): timezone-aware one-shot Todo resume and stable due receipt v0
 - [`typed_date_resume_trigger_v0`](typed-date-resume-trigger-v0.zh-CN.md): timezone-aware one-shot Todo resume and stable due receipt v0 (中文)
 - [`todo_detail_cold_path_v0`](todo-detail-cold-path-v0.md): Todo detail cold path v0
-- [`todo_suggestion_prompt_v0`](todo-suggestion-prompt-v0.md): Todo suggestion prompt v0
 - [`turn_envelope_v0`](turn-envelope-v0.md): Turn envelope v0
 - [`loop_turn_loop_disposition_v0`](turn-loop-controller-v0.md): Loop Turn Loop Disposition v0
 

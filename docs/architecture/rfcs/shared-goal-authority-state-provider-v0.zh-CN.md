@@ -2227,8 +2227,9 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
 `coordination.local_authority.mutate` 与 Todo compatibility-edit 执行包装，同时保留
 实际领域事务仍复用的 `prepareCoordinationProjectionCommit` 与共享 reducer；另行删除
 无关的公开产品命令 `todo capture-followups`。后一个命令的退役不删除、不削弱、也不
-重命名本 RFC 的 runtime shadow-capture 机制。`todo suggest` 继续作为人工触发的只读
-发现入口，不纳入 provider promotion 资格。
+重命名本 RFC 的 runtime shadow-capture 机制。独立 prompt 命令 `todo suggest` 也退役；
+候选分析复用当前 Agent 与既有 Todo 读取/写入路径，不新增 discovery 包装或 provider
+promotion 前置条件。两个公开命令的退役都不删除已保存的 Todo 或 authority 历史。
 
 #### 重构主线总览
 

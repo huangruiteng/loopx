@@ -2808,8 +2808,10 @@ wrappers while retaining `prepareCoordinationProjectionCommit` and the shared
 reducer used by live domain transactions. It also removes the unrelated public
 `todo capture-followups` product command. That command retirement does not
 remove, weaken, or rename the runtime shadow-capture mechanism described here.
-`todo suggest` remains a manual read-only discovery entrypoint and is not part
-of provider promotion qualification.
+The standalone `todo suggest` prompt command is also retired; candidate
+analysis uses the current agent and existing Todo read/authoring paths, without
+adding a discovery wrapper or provider-promotion prerequisite. No stored Todo
+or authority history is removed by either public command retirement.
 
 #### Refactoring roadmap overview
 

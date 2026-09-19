@@ -983,8 +983,10 @@ readers but does not finish Todo writers, retention/compaction or promotion.
   unused public `todo capture-followups` batch command instead of migrating it;
   ordinary `todo add` remains available but is not claimed to preserve the
   retired command's atomic batch, deduplication, or replay contract. The
-  read-only, manually invoked `todo suggest` surface remains, but is not a
-  provider-default prerequisite.
+  standalone `todo suggest` prompt command is also retired. Candidate analysis
+  stays with the current agent and existing Todo read/authoring paths; it does
+  not need a renamed command or a new wrapper protocol. See the
+  [discovery and compatibility boundary](../../reference/protocols/long-horizon-agent-state-protocol-v0.md#candidate-discovery-and-command-retirement).
 - Depends on T1–T3 and the shared RFC's [D1–D3](shared-goal-authority-state-provider-v0.md#durability-execution-cards), including owner approval
   and the explicit legacy migration window. Search remaining imports and
   public command routes before deleting old Markdown business writers,
