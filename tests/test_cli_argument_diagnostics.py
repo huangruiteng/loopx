@@ -15,7 +15,6 @@ from loopx.cli_commands.todo_argument_validation import (
     validate_todo_claim_options,
     validate_todo_complete_options,
     validate_todo_list_options,
-    validate_todo_suggest_options,
     validate_todo_supersede_options,
     validate_todo_update_options,
     validate_shared_todo_options,
@@ -23,28 +22,18 @@ from loopx.cli_commands.todo_argument_validation import (
 from loopx.control_plane.work_items.task_lease import TaskLeaseError
 
 
-def test_todo_handler_expands_shared_paths_and_keeps_suggest_project_only(
+def test_todo_list_handler_expands_shared_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     captured_list: dict[str, object] = {}
-    captured_suggest: dict[str, object] = {}
 
     def fake_list_goal_todos(**kwargs: object) -> dict[str, object]:
         captured_list.update(kwargs)
         return {"ok": True, "dry_run": True}
 
-    def fake_suggestion_packet(**kwargs: object) -> dict[str, object]:
-        captured_suggest.update(kwargs)
-        return {"ok": True}
-
     monkeypatch.setattr(todo_command, "list_goal_todos", fake_list_goal_todos)
-    monkeypatch.setattr(
-        todo_command,
-        "build_todo_suggestion_prompt_packet",
-        fake_suggestion_packet,
-    )
     common = {
         "registry_path": tmp_path / "registry.json",
         "runtime_root_arg": None,
@@ -67,20 +56,6 @@ def test_todo_handler_expands_shared_paths_and_keeps_suggest_project_only(
     assert todo_command.handle_todo_command(list_args, **common) == 0
     assert captured_list["project"] == tmp_path / "project"
     assert captured_list["state_file"] == tmp_path / "ACTIVE_GOAL_STATE.md"
-
-    suggest_args = build_parser().parse_args(
-        [
-            "todo",
-            "suggest",
-            "--goal-id",
-            "example-goal",
-            "--project",
-            "~/project",
-        ]
-    )
-    assert todo_command.handle_todo_command(suggest_args, **common) == 0
-    assert captured_suggest["project"] == tmp_path / "project"
-    assert "state_file" not in captured_suggest
 
 
 def test_todo_requires_explicit_command_without_mutating_state(
@@ -977,66 +952,33 @@ def test_todo_archive_completed_validation_accepts_role_and_limit() -> None:
     validate_todo_archive_completed_options(args)
 
 
-def test_todo_suggest_validation_preserves_exact_unsupported_diagnostic(
+@pytest.mark.parametrize("command", ["capture-followups", "suggest"])
+def test_retired_todo_command_is_rejected_before_state_access(
+    command: str,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    exit_code = main(
-        [
-            "--format",
-            "json",
-            "todo",
-            "suggest",
-            "--goal-id",
-            "example-goal",
-            "--todo-id",
-            "todo_example",
-            "--note",
-            "not accepted",
-        ]
-    )
+    def unexpected_dispatch(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("retired command reached the Todo handler")
 
-    assert exit_code == 1
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["error"] == (
-        "todo suggest only accepts --goal-id, optional --project, --agent-id, "
-        "--from, --limit, --trigger, --dry-run, and --format; unsupported: "
-        "--todo-id, --note"
-    )
-
-
-def test_todo_suggest_validation_accepts_suggestion_scope_options() -> None:
-    args = build_parser().parse_args(
-        [
-            "todo",
-            "suggest",
-            "--goal-id",
-            "example-goal",
-            "--agent-id",
-            "codex-example",
-            "--from",
-            "recent-repo",
-            "--limit",
-            "3",
-            "--trigger",
-            "quality-watch",
-        ]
-    )
-
-    validate_todo_suggest_options(args)
-
-
-def test_todo_capture_followups_is_not_a_registered_command(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+    monkeypatch.setattr(todo_command, "handle_todo_command", unexpected_dispatch)
     with pytest.raises(SystemExit) as exc_info:
-        build_parser().parse_args(
-            ["todo", "capture-followups", "--goal-id", "example-goal"]
-        )
+        main(["todo", command, "--goal-id", "example-goal"])
 
     assert exc_info.value.code == 2
     diagnostic = capsys.readouterr().err
     assert "invalid choice" in diagnostic
-    assert "capture-followups" in diagnostic
+    assert command in diagnostic
+
+
+@pytest.mark.parametrize("option,value", [("--from", "recent-repo"), ("--trigger", "quality-watch")])
+def test_retired_suggestion_options_are_not_silently_accepted(
+    option: str, value: str, capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["todo", "list", "--goal-id", "example-goal", option, value])
+    assert exc_info.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
