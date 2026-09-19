@@ -745,8 +745,8 @@ action without calling the tool, or issuing an unallowlisted command fails.
 
 replan semantic action 另有一条 function-tool 行为资格门，因为 no-tool JSON 决策不能
 证明模型会使用覆盖账本选择新方向并完成真实写回。资格门创建一个包含两个等价 typed
-progress observation 的隔离、public-safe 临时 Goal；真实模型只看到正式 thin Codex App
-heartbeat task body 和普通 `exec_command` tool。真实 quota 必须投影 host coverage context
+progress observation 的隔离、public-safe 临时 Goal；模型接收正式 thin Codex App
+heartbeat task body、受限执行环境说明和 `exec_command` tool。真实 quota 必须投影 host coverage context
 与最小 action packet，模型随后提交的 typed semantic delta 还要通过独立语义判定和真实
 写时闸门。若模型选择新 successor，资格门要求它以当前 `obligation_id` 调用真实
 `todo add`，验证 Todo 原子 receipt 与 `host_action=end_current_heartbeat`，且不得在同一
@@ -787,13 +787,24 @@ python3 scripts/qualify-doubao-capability-monitor-repair-tool-live.py \
 ```
 
 The regular live suite is
-`actual_default_model_behavior_portfolio_v0`: nineteen one-arm scenarios and two
+`actual_default_model_behavior_portfolio_v0`: twenty-one one-arm scenarios and two
 attempts each. Its selected-Todo case starts from a production thin heartbeat,
 executes real quota, and requires the model to perform the selected Todo's
 read-only target action. Its required-vision replan case independently builds a
-hermetic missing-vision state, executes real quota, and requires the model to
-use host-projected frontier/work-source context and submit a typed semantic
-action through the real write path. The other turn cases remain
+hermetic required-profile/missing-vision state with a future monitor and
+peer-owned work. The actor must author an evidence-linked vision, execute the
+projected bound refresh and spend, and pass durable checkpoint, one-spend and
+next-Turn readback. Readback must clear the original missing-baseline obligation;
+a legitimate new successor requirement is allowed. Source alignment includes trigger kinds, accepted outcomes
+and qualification scope; a successful ordinary `typed_progress_repeat` refresh
+cannot qualify this journey. The narrow semantic-action gate remains useful
+but does not prove full closeout. Run this focused journey with
+`uv run --extra test python scripts/qualify-doubao-replan-semantic-action-live.py --required-vision --qualification-id <public-safe-run-id>`.
+Its seven-call bound is unchanged. The hermetic host supports bounded reads,
+real LoopX CLI calls and single-file `apply_patch` JSON authoring; it does not
+execute arbitrary model shell programs or add missing semantic fields.
+Receipts distinguish accepted writeback from settled closeout, retain bounded
+failure-stage codes, and never persist raw model conversations. The other turn cases remain
 bounded packet-interpretation checks. Nine core-contract scenarios cover
 onboarding, agent identity and goal selection, selected todo, peer identity
 routing, same-agent continuation, final human gate, healthy continuation, and
