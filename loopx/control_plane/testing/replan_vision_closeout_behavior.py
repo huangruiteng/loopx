@@ -26,7 +26,11 @@ REQUIRED_VISION_CLOSEOUT_MAX_CALLS = 16
 
 
 class VisionHostAdmissionRejected(ValueError):
-    """Pre-execution host rejection; no file or CLI effect has run."""
+    """Reject the current operation before execution, not prior compound steps."""
+
+    def __init__(self, code: str, detail: str = "") -> None:
+        super().__init__(code)
+        self.detail = detail
 
 
 VISION_HOST_INSTRUCTION = (
@@ -47,13 +51,15 @@ VISION_EXEC_TOOL_DESCRIPTION = (
     "loopx --help and loopx refresh-state --help are read-only queries and may "
     "be combined with reads or piped to head (at most 200 lines). Author a new "
     "relative JSON file via apply_patch Add File or cat with a quoted heredoc; "
+    "these operations may revise your own JSON drafts, never original fixture files. "
     "a heredoc may be followed by up to two bound LoopX closeout commands using "
     "newlines or &&. Other LoopX commands must be separate single invocations. "
     "Returns stdout on success; nonzero workspace reads and unsupported command "
     "shapes return exit_code and output for correction within the same call "
     "budget. Rejected file-authoring operations also return errors without "
-    "creating a file or executing any suffix. Unsupported programs never run; "
-    "semantic and identity errors fail qualification. No external network "
+    "creating a file or executing any suffix. CLI validation errors return "
+    "their diagnostics; identity and durable-verification errors fail "
+    "qualification. Unsupported programs never run. No external network "
     "or outside-fixture writes."
 )
 
@@ -100,7 +106,7 @@ def required_vision_scenario_contract(
     }
 
 
-def _authored_file(command: str, project: Path) -> str:
+def _authored_file(command: str, project: Path, *, authored_paths: set[Path] | None = None) -> str:
     # Accept data, never execute the model's shell program. JSON quotes and
     # shell metacharacters inside added lines remain literal file content.
     match = re.fullmatch(
@@ -113,16 +119,16 @@ def _authored_file(command: str, project: Path) -> str:
     lines = match[3].splitlines()
     if not lines or any(not line.startswith("+") for line in lines):
         raise VisionHostAdmissionRejected("vision_authoring_requires_added_lines")
-    return _write_json_file(project, match[2], "\n".join(line[1:] for line in lines) + "\n")
+    return _write_json_file(project, match[2], "\n".join(line[1:] for line in lines) + "\n", authored_paths=authored_paths)
 
 
-def _write_json_file(project: Path, name: str, content: str) -> str:
+def _write_json_file(project: Path, name: str, content: str, *, authored_paths: set[Path] | None = None) -> str:
     relative = Path(name)
     if relative.is_absolute() or relative.suffix != ".json" or ".." in relative.parts:
-        raise VisionHostAdmissionRejected("vision_authoring_path_outside_fixture")
+        raise VisionHostAdmissionRejected("vision_authoring_path_outside_fixture", "The JSON path must be relative to the project, without parent traversal; absolute temporary paths are not writable.")
     target = (project / relative).resolve()
-    if not target.is_relative_to(project.resolve()) or target.exists():
-        raise VisionHostAdmissionRejected("vision_authoring_path_outside_fixture")
+    if not target.is_relative_to(project.resolve()) or (target.exists() and target not in (authored_paths or set())):
+        raise VisionHostAdmissionRejected("vision_authoring_path_outside_fixture", "Only new JSON files or this actor's own drafts are writable; existing fixture inputs are immutable.")
     try:
         value = json.loads(content)
     except json.JSONDecodeError:
@@ -131,6 +137,8 @@ def _write_json_file(project: Path, name: str, content: str) -> str:
         raise VisionHostAdmissionRejected("vision_authoring_requires_json_object")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
+    if authored_paths is not None:
+        authored_paths.add(target)
     return json.dumps({"ok": True, "path": relative.as_posix()})
 
 
@@ -172,15 +180,15 @@ def _json_heredoc(command: str) -> tuple[str, str, list[str]] | None:
         if token == "&&" or token.strip("\n") == "":
             if argv:
                 if Path(argv[0]).name != "loopx":
-                    raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx")
+                    raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx", f"The command after the heredoc delimiter starts with {argv[0]!r}; only literal LoopX closeout commands are admitted there. Submit the heredoc alone; other operations need separate tool calls.")
                 commands.append(shlex.join(argv))
                 argv = []
         elif token in {";", "|", "||", "&"}:
-            raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx")
+            raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx", f"The heredoc suffix contains unsupported operator {token!r}; use a standalone heredoc or literal LoopX commands separated by newlines or &&.")
         else:
             argv.append(token)
     if len(commands) > 2:
-        raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx")
+        raise VisionHostAdmissionRejected("vision_authoring_suffix_requires_loopx", "A heredoc permits at most two literal LoopX closeout commands; issue other operations in separate tool calls.")
     return name, "".join(lines[:end]), commands
 
 
@@ -198,7 +206,7 @@ def dispatch_vision_closeout(
         if not state.seen_quota:
             raise ValueError("vision_authoring_before_quota")
         name, content, suffix = heredoc
-        result: tuple[str, str, bool] = (_write_json_file(state.fixture.project_root, name, content), "vision_file_authoring", False)
+        result: tuple[str, str, bool] = (_write_json_file(state.fixture.project_root, name, content, authored_paths=state.authored_paths), "vision_file_authoring", False)
         for following in suffix:
             if result[2]:
                 raise ValueError("vision_authoring_suffix_requires_loopx")
@@ -210,7 +218,7 @@ def dispatch_vision_closeout(
     if command.startswith("apply_patch"):
         if not state.seen_quota:
             raise ValueError("vision_authoring_before_quota")
-        return _authored_file(command, state.fixture.project_root), "vision_file_authoring", False
+        return _authored_file(command, state.fixture.project_root, authored_paths=state.authored_paths), "vision_file_authoring", False
     tokens = loopx_command_tokens(command) or []
     if "refresh-state" not in tokens and "spend-slot" not in tokens:
         return None
@@ -243,7 +251,7 @@ def dispatch_vision_closeout(
             raise ValueError("vision_closeout_evidence_not_observed")
         refs = set(refs)
         if not refs.intersection(observed_refs):
-            raise ValueError("vision_closeout_evidence_not_observed")
+            raise VisionHostAdmissionRejected("vision_closeout_evidence_not_observed", "No refresh was executed: path_delta.evidence_refs must identify the source evidence actually read. Accepted references: " + json.dumps(sorted(observed_refs)))
         output = execute(command, fixture=state.fixture, turn_instance_id=state.turn_instance_id)
         row = _rows(state)[-1]
         semantic = dict(row.get("autonomous_replan_ack") or {}).get("semantic_delta") or {}

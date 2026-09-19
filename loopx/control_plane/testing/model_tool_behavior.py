@@ -547,8 +547,13 @@ def execute_loopx_cli(
         bounded_detail = (
             detail if len(detail) <= 1_000 else detail[:500] + "\n...\n" + detail[-500:]
         )
-        raise RuntimeError(
-            "LoopX CLI command failed with "
-            f"exit={completed.returncode}: {bounded_detail}"
-        )
+        raise LoopxCliExecutionError(completed.returncode, bounded_detail)
     return completed.stdout
+
+
+class LoopxCliExecutionError(RuntimeError):
+    """An executed CLI returned nonzero; this does not imply state rollback."""
+
+    def __init__(self, returncode: int, detail: str) -> None:
+        super().__init__(f"LoopX CLI command failed with exit={returncode}: {detail}")
+        self.returncode = returncode

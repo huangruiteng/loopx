@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from .doubao_model_behavior_actor import (
     _direct_ark_transport,
 )
 from .model_tool_behavior import (
+    LoopxCliExecutionError,
     DoubaoExecToolClient,
     argument_value,
     digest_text,
@@ -99,6 +100,7 @@ class _QualificationState:
     successor_reentry_observation: dict[str, Any] | None = None
     semantic_reentry_observation: dict[str, Any] | None = None
     vision_closeout: dict[str, Any] | None = None
+    authored_paths: set[Path] = dataclass_field(default_factory=set)
 
     @property
     def tool_call_limit(self) -> int:
@@ -692,16 +694,21 @@ def _execute_loopx(
         tokens[1:1] = ["--registry", str(fixture.global_registry_path)]
     if "refresh-state" in tokens:
         tokens.extend(["--no-global-sync", "--suppress-external-sinks"])
-    return execute_loopx_cli(
-        shlex.join(tokens),
-        source_root=fixture.source_root,
-        project_root=fixture.project_root,
-        argument_overrides={
-            "--registry": str(fixture.global_registry_path),
-            "--runtime-root": str(fixture.runtime_root),
-            "--turn-instance-id": turn_instance_id,
-        },
-    )
+    try:
+        return execute_loopx_cli(
+            shlex.join(tokens),
+            source_root=fixture.source_root,
+            project_root=fixture.project_root,
+            argument_overrides={
+                "--registry": str(fixture.global_registry_path),
+                "--runtime-root": str(fixture.runtime_root),
+                "--turn-instance-id": turn_instance_id,
+            },
+        )
+    except LoopxCliExecutionError as exc:
+        if not fixture.required_vision:
+            raise
+        raise _HostToolError("loopx_cli_nonzero", str(exc), exc.returncode) from None
 
 
 def _bounded_workspace_read_plan(
@@ -1292,8 +1299,9 @@ def _run_qualification_loop(
         except (VisionHostAdmissionRejected, _HostToolError) as exc:
             if isinstance(exc, VisionHostAdmissionRejected):
                 exc = _HostToolError(
-                    str(exc), "Command not executed: " + str(exc) + ". "
-                    "Use literal LoopX arguments, new relative JSON files and the declared grammar; "
+                    str(exc), "Rejected operation not executed: " + str(exc) + ". " + exc.detail + " "
+                    "Earlier successful steps, if any, are not rolled back. "
+                    "Use literal LoopX arguments, relative JSON drafts and the declared grammar; "
                     "other operations can be issued as separate tool calls.", 2,
                 )
             _record_tool_step(state, kind=kind, command=tool_call.command,
