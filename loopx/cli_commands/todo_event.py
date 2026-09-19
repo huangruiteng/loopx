@@ -33,9 +33,7 @@ TODO_EVENT_KINDS = {
 def todo_error_payload(args: argparse.Namespace, exc: Exception) -> dict[str, object]:
     payload: dict[str, object] = {
         "ok": False,
-        "dry_run": True
-        if args.todo_command == "suggest"
-        else not bool(args.execute)
+        "dry_run": not bool(args.execute)
         if args.todo_command in {"archive-completed", "project-markdown"}
         else bool(args.dry_run),
         "added": False,

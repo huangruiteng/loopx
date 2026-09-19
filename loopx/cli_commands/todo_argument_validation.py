@@ -73,10 +73,8 @@ TODO_OPTION_FIELDS = (
     ("--next-excluded-agent", "next_excluded_agents"),
     ("--self-merged", "self_merged"),
     ("--agent-id", "agent_id"),
-    ("--from", "suggestion_sources"),
     ("--limit", "todo_limit"),
     ("--thin", "todo_thin"),
-    ("--trigger", "suggestion_trigger"),
     ("--state-file", "state_file"),
     ("--execute", "execute"),
     ("--provider-revision", "provider_revision"),
@@ -458,15 +456,6 @@ def validate_todo_archive_completed_options(args: argparse.Namespace) -> None:
             raise ValueError(message)
 
 
-def validate_todo_suggest_options(args: argparse.Namespace) -> None:
-    _validate_todo_option_subset(
-        args,
-        {"agent_id", "suggestion_sources", "todo_limit", "suggestion_trigger"},
-        "todo suggest only accepts --goal-id, optional --project, --agent-id, "
-        "--from, --limit, --trigger, --dry-run, and --format; unsupported: ",
-    )
-
-
 def validate_shared_todo_options(args: argparse.Namespace) -> None:
     agent_id_allowed_for_user_authoring = (
         args.todo_command == "add"
@@ -531,7 +520,7 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
             "--authority-reason is supported only by todo update/complete/supersede"
         )
     if (
-        args.todo_command not in {"suggest", "plan"}
+        args.todo_command != "plan"
         and args.agent_id
         and not agent_id_allowed_for_user_authoring
         and not agent_id_allowed_for_read
@@ -546,7 +535,7 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
             )
         raise ValueError(
             f"todo {args.todo_command} does not support --agent-id; --agent-id "
-            "scopes todo list/suggest, user-todo authoring, and lifecycle actor "
+            "scopes todo list, user-todo authoring, and lifecycle actor "
             "attribution only."
         )
     if args.global_gate and not global_gate_allowed:
@@ -564,16 +553,11 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
             "todo update accepts either --resume-when or --clear-resume-when, not both"
         )
     if (
-        args.todo_command != "suggest"
-        and (args.suggestion_sources or args.suggestion_trigger)
-    ):
-        raise ValueError("--from and --trigger are supported only by todo suggest")
-    if (
-        args.todo_command not in {"suggest", "list"}
+        args.todo_command != "list"
         and args.todo_limit is not None
     ):
         raise ValueError(
-            "--limit is supported only by todo suggest and todo list"
+            "--limit is supported only by todo list"
         )
     if args.todo_thin and args.todo_command != "list":
         raise ValueError("--thin is supported only by todo list")

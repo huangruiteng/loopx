@@ -25,10 +25,6 @@ from ..registry import registry_goals
 from ..control_plane.work_items.semantic_replan_writeback import (
     qualify_replan_writeback,
 )
-from ..todo_suggestion_prompt import (
-    build_todo_suggestion_prompt_packet,
-    render_todo_suggestion_prompt_markdown,
-)
 from ..control_plane.goals.task_planning import (
     build_task_planning_packet,
     render_task_planning_packet,
@@ -51,7 +47,6 @@ from .todo_argument_validation import (
     validate_todo_complete_options,
     validate_todo_list_options,
     validate_todo_project_markdown_options,
-    validate_todo_suggest_options,
     validate_todo_plan_options,
     validate_todo_supersede_options,
     validate_todo_update_options,
@@ -200,9 +195,6 @@ def handle_todo_command(
     renderer = (
         render_task_planning_packet
         if args.todo_command == "plan"
-        else
-        render_todo_suggestion_prompt_markdown
-        if args.todo_command == "suggest"
         else render_todo_markdown
     )
     try:
@@ -573,17 +565,6 @@ def handle_todo_command(
                 **_todo_path_args(args),
                 dry_run=not bool(args.execute),
             )
-        elif args.todo_command == "suggest":
-            validate_todo_suggest_options(args)
-            payload = build_todo_suggestion_prompt_packet(
-                goal_id=args.goal_id,
-                project=Path(args.project).expanduser() if args.project else None,
-                agent_id=args.agent_id,
-                sources=args.suggestion_sources,
-                limit=args.todo_limit,
-                trigger=args.suggestion_trigger,
-            )
-            payload["dry_run"] = True
         else:
             raise ValueError("unsupported todo command")
     except Exception as exc:
