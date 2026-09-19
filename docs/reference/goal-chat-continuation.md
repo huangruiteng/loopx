@@ -22,6 +22,13 @@ executable, workspace or acceptance rule. The same delegation service supports
 an authorized member coordinating further members. Results returned as
 `accepted` require current canonical task completion and unchanged artifacts.
 
+After losing context, `action=operations` recovers the configured sender's
+durable work with the same [paged inventory](local-delegation.md#recover-work-without-remembered-operation-ids)
+as CLI/MCP. It includes work started outside this conversation. Follow
+`next_cursor`, read the original operations and reconcile unavailable entries
+before starting replacements. The recent member chips remain conversation
+observations, not the complete inventory. Pausing still fences this tool.
+
 The composer shows native state, accumulated coordinator usage and last member
 observations. **Pause** stops the coordinator, while already delegated members
 continue under their independent deadlines and acceptance rules. **Continue**

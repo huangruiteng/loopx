@@ -243,8 +243,10 @@ These priorities do not change live Goal quota or authorize experiments/cloud re
 priorities and attention; a project coordinator is an ordinary registered Agent
 accountable for a scoped objective, substantive investigation and synthesis.
 Members may coordinate narrower work through the same operations. Local Goal Chat
-now reuses scoped evidence, semantic handoff and original-conversation return;
-it is not the persistent coordinator or an implicit worker launch. See
+reuses scoped evidence, semantic handoff and original-conversation return.
+Explicit [Goal Chat LoopX mode](../../reference/goal-chat-continuation.md) now
+adds native continuation, authorized member delegation and pause/recovery;
+ordinary conversation does not implicitly launch workers. See
 [shared capabilities, local path and implementation order](../../reference/project-coordination.md).
 This advances R3's local entrypoint without closing R2/G1 or new Lark qualification.
 
@@ -282,7 +284,7 @@ sessions, generic Agent creation, dynamic governed work derivation, complete
 inbox/queue/steer, authenticated remote authority and packaged frontend/Lark
 companion work remain R2/R3/R4/R6 boundaries. Existing Goals are not promoted.
 
-An existing shell-capable coordinator can now use `delegation list/start/read/wait/resume` without replacing its session or loading new MCP tools. The synthetic example's `prepare` path creates only isolated operator bindings; the existing Agent chooses and starts the work. This completes the attached-caller entrypoint over the existing execution owner. Dynamic identity/profile provisioning, unattended lead wakeup and full inbox/queue/steer remain separate R2/R3 requirements; fixed binding readback is not fleet readiness.
+An existing shell-capable coordinator uses `delegation list/operations/start/read/wait/resume` without replacing its session. Requester-scoped `operations` recovers durable work after context loss, independently rechecks accepted results and preserves unavailable branches and pagination; enabled MCP and Goal Chat use the same read model. It starts no work and does not infer overall readiness from a display list. The example's `prepare` still only provisions isolated operator bindings. Next, feed actual execution/acceptance facts into existing R2 readiness, then extend existing registration/runtime configuration for approved identity/profile provisioning and qualify original-request return/lead continuation. Unattended wake, full cross-host inbox/queue/steer and Lark parity remain separate requirements; no G1/G3 promotion follows from this recovery entrypoint.
 
 ### R3: Semantic Requests and Automatic Return
 

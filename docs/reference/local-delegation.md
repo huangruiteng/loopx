@@ -98,6 +98,50 @@ turn. The conversation remains persistent independently of whether autonomous
 LoopX mode is enabled. Current Dashboard/Lark setup is unchanged; those surfaces
 keep their existing conversation and runtime owners.
 
+### Recover work without remembered operation ids
+
+After reconnecting or losing conversation context, use the same registered
+requester and execution configuration:
+
+```bash
+delegate operations --limit 10
+# When has_more is true, copy next_cursor from that response:
+delegate operations --limit 10 --cursor "$NEXT_CURSOR"
+delegate read --operation-id "$ORIGINAL_OPERATION_ID"
+```
+
+This reads the existing requester-scoped journal, including work created from
+another conversation under that identity. Each item includes its original
+operation/request/task identity and current execution readback. Accepted items
+are independently rechecked against current canonical completion and artifacts;
+the page includes artifact references/hashes, while `read` supplies full content.
+One changed binding, corrupt record or invalid artifact yields `unavailable`
+for that item and `page_readback_complete: false`; healthy siblings remain
+visible. This is a reconciliation case, not permission to dispatch a replacement.
+Failure to read the journal itself fails the command instead of returning empty.
+
+Pages contain at most 50 items. `has_more` is independent of page readback
+completeness. Accepted-item checks rerun the existing pinned validators; use a
+smaller page when those checks are expensive. Inventory is requested on demand,
+not added to the dashboard polling loop. The cursor follows stable record addresses, not business priority;
+this is a live listing, so restart paging to discover new records inserted before
+the cursor. An empty page for one requester says nothing about other members or
+whether the Goal is complete. Only explicit `start`/`resume` can launch execution.
+
+Enabled MCP exposes the same operation as `list_delegations`. Enabled Goal Chat
+uses `loopx_collaboration` with `action=operations`, optional `limit` and `cursor`.
+It retains its existing sender/configuration pin and pause fence. Both the lead
+and a coordinating member recover their own operations; creation ancestry grants
+no access to another requester's journal. No new settings or background polling
+are required, and disabling execution tools removes this tool with them.
+
+中文：原对话重连后执行 `delegate operations`，不用先记住每个 operation ID。
+主力与承担协调的成员各自找回自己的工作，再用原 ID 读取完整结果；需要恢复时
+仍显式调用 `resume --execute`。分页回读会重新核验 accepted，单条失效显示
+`unavailable`，不能当成失败重派或静默隐藏。`has_more` 表示还有下一页，
+`page_readback_complete` 只表示本页是否均成功读取；二者都不代表整个团队已完成。
+此入口不创建 Agent、不扩大授权，也不唤醒闲置的 Codex 对话。
+
 ## Use the same bindings through MCP
 
 Start the existing stdio server with the explicit opt-in:

@@ -234,8 +234,9 @@ R2 的一条依赖必须通过真实 LoopX Agent 间的请求/产物交接完成
 
 **产品职责。** 管家负责所有者跨项目的上下文、取舍和注意力；项目 coordinator 是
 对有范围目标、实质调查与综合负责的普通注册 Agent。成员可以用同一操作协调更小
-范围的工作。本地 Goal Chat 已复用范围内证据、语义交接和原对话返回；它不等于
-持久 coordinator，也不隐式启动 worker。见[共用能力、本地路径与实施顺序](../../reference/project-coordination.md)。
+范围的工作。本地 Goal Chat 复用范围内证据、语义交接和原对话返回；显式开启
+[LoopX 模式](../../reference/goal-chat-continuation.md)后支持原生持续推进、授权成员
+委派和暂停恢复，普通对话不隐式启动 worker。见[共用能力、本地路径与实施顺序](../../reference/project-coordination.md)。
 这一进展补齐 R3 本地入口，不关闭 R2/G1，也不新增 Lark 资格声明。
 
 - **入口与 owner：** 现有 session binding、Turn driver、quota/scheduler、manager runtime 配置；复用已有设置 editor，不新建 profile。
@@ -263,7 +264,7 @@ Todo 完成入口分别执行当前 pinned 检查，accepted 返回读 canonical
 完成。长期 attached 会话、通用 Agent 创建、动态受治理工作派生、完整 inbox/queue/steer、
 认证远端权威与 packaged frontend/Lark 配套仍归 R2/R3/R4/R6；不晋升已有 Goal。
 
-有 shell 能力的原 coordinator 现在可通过 `delegation list/start/read/wait/resume` 调用已有执行 owner，无需替换会话或重新加载 MCP 工具。合成示例的 `prepare` 只准备隔离绑定，由原 Agent 自行选择并启动工作。这闭合原会话调用入口；动态身份/profile 创建、无人值守唤醒和完整 inbox/queue/steer 仍按 R2/R3 推进，固定绑定读回不等于团队全部就绪。
+有 shell 能力的原 coordinator 可通过 `delegation list/operations/start/read/wait/resume` 调用已有执行 owner，无需替换会话。`operations` 从自身持久记录找回上下文丢失前的工作，重新核验 accepted，保留不可用分支与分页；已启用的 MCP 和 Goal Chat 共用该读模型。读取不启动工作，也不把展示列表当整体 readiness。合成示例 `prepare` 仍只准备隔离绑定。下一步先将实际执行/验收事实接入已有 R2 readiness，再沿现有注册及 runtime 配置扩展经授权的身份/profile 创建，并验证原请求返回与主力继续推进。无人值守唤醒、完整跨宿主 inbox/queue/steer 和 Lark 等价仍分别验收，不因新增恢复入口晋升 G1/G3。
 
 ### R3：语义请求与自动回报
 
