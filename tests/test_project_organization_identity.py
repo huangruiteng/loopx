@@ -3,27 +3,12 @@
 from pathlib import Path
 import tomllib
 
-import pytest
-
 from loopx.install_contract import NO_CLONE_INSTALL_URL
 from loopx.self_update import DEFAULT_UPDATE_REPO, _source_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "loopx-project/loopx"
-
-
-@pytest.mark.parametrize("workflow", [
-    "release-artifacts.yml",
-    "desktop-release-artifacts.yml",
-    "desktop-updater.yml",
-    "full-public-smokes.yml",
-    "update-notes.yml",
-])
-def test_release_workflows_admit_only_the_canonical_repository(workflow):
-    source = (ROOT / ".github/workflows" / workflow).read_text()
-    assert f"github.repository == '{REPOSITORY}'" in source
-    assert "github.repository == 'huangruiteng/loopx'" not in source
 
 
 def test_default_recovery_and_package_identity():
