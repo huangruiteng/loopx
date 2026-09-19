@@ -7,7 +7,10 @@ import {
   NoKVTransportProtocolError,
   NoKVTransportUnavailableError,
 } from "../../loopx/control_plane/coordination/nokv_authority_store.ts";
-import { NoKVJsonLinesTransport } from "../../loopx/control_plane/coordination/nokv_jsonl_transport.ts";
+import {
+  NoKVHelperOpenRefusedError,
+  NoKVJsonLinesTransport,
+} from "../../loopx/control_plane/coordination/nokv_jsonl_transport.ts";
 import { registerAuthorityStoreConformance } from "./authority_store_conformance.ts";
 
 const PYTHON = process.env.LOOPX_TEST_PYTHON ?? "python3";
@@ -31,7 +34,10 @@ const ETCD_ROUTING = {
 // NoKV metadata-runtimes line, which drops the etcd constructor.
 const SEEDS_ROUTING = { kind: "seeds", endpoints: ["127.0.0.1:7750"] };
 
-async function openSdkHelper(routing: Record<string, unknown> = ETCD_ROUTING) {
+async function openSdkHelper(
+  routing: Record<string, unknown> = ETCD_ROUTING,
+  extraEnv: Record<string, string> = {},
+) {
   return await NoKVJsonLinesTransport.open({
     argv: [PYTHON, SDK_HELPER],
     config: {
@@ -41,6 +47,7 @@ async function openSdkHelper(routing: Record<string, unknown> = ETCD_ROUTING) {
     },
     env: {
       ...process.env,
+      ...extraEnv,
       PYTHONPATH: process.env.PYTHONPATH
         ? `${FAKE_SDK_ROOT}:${process.env.PYTHONPATH}`
         : FAKE_SDK_ROOT,
@@ -225,5 +232,41 @@ test("JSON-lines transport surfaces an unknown routing kind as a typed protocol 
     (error: unknown) =>
       error instanceof NoKVTransportProtocolError && /routing kind/.test(error.message),
   );
+});
+
+test("JSON-lines transport records the SDK wire schema from the ready handshake", async () => {
+  const release = await openSdkHelper();
+  try {
+    assert.equal(release.sdkProtocolSchema, null, "the 0.11.0-shaped wheel exports no schema");
+  } finally {
+    await release.close();
+  }
+  const newer = await openSdkHelper(SEEDS_ROUTING, {
+    LOOPX_FAKE_NOKV_PROTOCOL_SCHEMA: "nokv.workspace.rpc.v10",
+  });
+  try {
+    assert.equal(newer.sdkProtocolSchema, "nokv.workspace.rpc.v10");
+  } finally {
+    await newer.close();
+  }
+});
+
+test("JSON-lines transport types a helper open refused for a wheel that lacks the routing kind", async () => {
+  await assert.rejects(
+    openSdkHelper(SEEDS_ROUTING, { LOOPX_FAKE_NOKV_RELEASE_SHAPE: "1" }),
+    (error: unknown) =>
+      error instanceof NoKVHelperOpenRefusedError
+      && error instanceof NoKVTransportProtocolError
+      && error.reasonCode === "nokv_sdk_capability_mismatch"
+      && /RoutingConfig\.seeds/.test(error.message)
+      && !/7750/.test(error.message),
+  );
+  // The same narrowed wheel still opens with the routing kind it does provide.
+  const release = await openSdkHelper(ETCD_ROUTING, { LOOPX_FAKE_NOKV_RELEASE_SHAPE: "1" });
+  try {
+    assert.equal(release.sdkProtocolSchema, null);
+  } finally {
+    await release.close();
+  }
 });
 

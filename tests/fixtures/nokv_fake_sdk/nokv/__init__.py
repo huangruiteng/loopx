@@ -1,17 +1,28 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 __version__ = "0.11.0"
 API_VERSION = 1
 
+# The 0.11.0 release exports no wire schema; the metadata-runtimes wheels do.
+# Tests opt into the newer shape by setting this variable for the helper process.
+_schema = os.environ.get("LOOPX_FAKE_NOKV_PROTOCOL_SCHEMA")
+if _schema:
+    WORKSPACE_PROTOCOL_SCHEMA = _schema
+
 
 class RoutingConfig:
     # Union of the two real wheels the helper is qualified against: the 0.11.0
     # release provides etcd/static, the metadata-runtimes line provides seeds.
-    @staticmethod
-    def seeds(endpoints: list[str]) -> object:
-        return ("seeds", endpoints)
+    # LOOPX_FAKE_NOKV_RELEASE_SHAPE=1 narrows the fixture to the release shape
+    # so a seeds configuration reaches the helper's capability-mismatch path.
+    if os.environ.get("LOOPX_FAKE_NOKV_RELEASE_SHAPE") != "1":
+
+        @staticmethod
+        def seeds(endpoints: list[str]) -> object:
+            return ("seeds", endpoints)
 
     @staticmethod
     def etcd(endpoints: list[str], key_prefix: str, lease_ttl_seconds: int) -> object:

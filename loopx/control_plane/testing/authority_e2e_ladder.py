@@ -15,6 +15,7 @@ product path of its own.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import subprocess
@@ -95,9 +96,8 @@ EXIT_POLICY_RULE = (
 
 POSTGRES_URL_VARIABLE = "LOOPX_TEST_POSTGRES_URL"
 NOKV_LIVE_FLAG = "NOKV_COORDINATION_LIVE"
+# Stack variables every NoKV live row needs regardless of how the client routes.
 NOKV_STACK_VARIABLES: tuple[str, ...] = (
-    "NOKV_ETCD",
-    "NOKV_ETCD_PREFIX",
     "NOKV_ROOT_ID",
     "NOKV_BUCKET",
     "NOKV_OBJECT_ENDPOINT",
@@ -106,6 +106,16 @@ NOKV_STACK_VARIABLES: tuple[str, ...] = (
     "NOKV_OBJECT_SECRET",
 )
 NOKV_SECRET_VARIABLES: tuple[str, ...] = ("NOKV_OBJECT_KEY", "NOKV_OBJECT_SECRET")
+# Exactly one routing group must be complete: seed routing (comma-separated
+# ``IP:PORT`` owners, the NoKV metadata-runtimes line) or etcd routing (the
+# 0.11.0 release line). Both complete is ambiguous, neither is missing.
+NOKV_SEEDS_VARIABLE = "NOKV_SEEDS"
+NOKV_ETCD_VARIABLES: tuple[str, ...] = ("NOKV_ETCD", "NOKV_ETCD_PREFIX")
+NOKV_ROUTING_GROUPS: dict[str, tuple[str, ...]] = {
+    "seeds": (NOKV_SEEDS_VARIABLE,),
+    "etcd": NOKV_ETCD_VARIABLES,
+}
+NOKV_ROUTING_VARIABLES: tuple[str, ...] = (NOKV_SEEDS_VARIABLE, *NOKV_ETCD_VARIABLES)
 # Stage 2A qualification inputs: the probe writes durable test data into an
 # existing workbench, so it needs an explicit opt-in flag plus the ignored
 # client configuration file, the Python executable that resolves the qualified
@@ -142,6 +152,9 @@ NOKV_QUALIFICATION_REPORT_SCHEMA = "loopx_nokv_authority_live_qualification_v0"
 NOKV_QUALIFICATION_SCOPE = "stage_2a_single_node_store_conformance"
 QUALIFIED_NOKV_SDK_VERSION = "0.11.0"
 QUALIFIED_NOKV_API_VERSION = 1
+# Typed helper code shared by the Stage 0 matrix and the Stage 2A probe when the
+# installed wheel lacks the constructor for the configured routing kind.
+NOKV_SDK_CAPABILITY_MISMATCH = "nokv_sdk_capability_mismatch"
 PROBE_SOURCES: tuple[Path, ...] = (
     LIVE_E2E_SCRIPT,
     TS_READBACK_PROBE,
@@ -288,6 +301,9 @@ def _row_nokv_live_matrix(context: RowContext) -> RowOutcome:
     nokv_rows = _matrix_rows(matrix, "nokv_provider")
     if "unverified" in nokv_rows:
         reason = str(nokv_rows["unverified"])
+        typed = nokv_rows.get("reason_code")
+        if isinstance(typed, str) and typed:
+            return unverified(typed)
         code = "nokv_sdk_missing" if "SDK" in reason else "nokv_matrix_unverified"
         return unverified(code)
     expected = {*FILE_MATRIX_ROWS, NOKV_ONLY_MATRIX_ROW}
@@ -297,11 +313,22 @@ def _row_nokv_live_matrix(context: RowContext) -> RowOutcome:
     expect(parity.get("identical_row_outcomes") is True, "file and NoKV rows must be identical")
     expect(parity.get("rows") == len(FILE_MATRIX_ROWS), "parity must cover the twelve shared rows")
     expect(matrix["_exit_code"] == 0, "live matrix script must exit 0")
+    sdk = matrix.get("nokv_sdk")
+    sdk_facts = sdk if isinstance(sdk, dict) else {}
+    routing_kind = sdk_facts.get("routing_kind")
+    routing_group = (
+        NOKV_ROUTING_GROUPS[routing_kind][0]
+        if isinstance(routing_kind, str) and routing_kind in NOKV_ROUTING_GROUPS
+        else None
+    )
     return passed(
         nokv_rows=len(nokv_rows),
         parity_rows=parity.get("rows"),
         restored_lineage_fails_closed=True,
         script_exit_code=matrix["_exit_code"],
+        nokv_routing_group=routing_group,
+        nokv_seed_count=sdk_facts.get("seed_count"),
+        nokv_protocol_schema=sdk_facts.get("protocol_schema"),
     )
 
 
@@ -447,6 +474,10 @@ def _row_nokv_live_qualification(context: RowContext) -> RowOutcome:
             failure = parse_json_object(completed.stderr.strip().splitlines()[-1])
         except (CliOutputError, IndexError):
             pass
+        if failure.get("reason_code") == NOKV_SDK_CAPABILITY_MISMATCH:
+            # The installed wheel cannot build the configured routing kind: the
+            # row could not run, exactly like the Stage 0 matrix reports it.
+            return unverified(NOKV_SDK_CAPABILITY_MISMATCH)
         raise RowAssertionError(
             f"qualification probe exited {completed.returncode}: "
             f"{failure.get('reason_code') or 'no typed failure on stderr'}"
@@ -488,6 +519,7 @@ def _row_nokv_live_qualification(context: RowContext) -> RowOutcome:
         final_cursor=report.get("final_cursor"),
         nokv_sdk_version=report.get("nokv_sdk_version"),
         nokv_api_version=report.get("nokv_api_version"),
+        nokv_protocol_schema=report.get("nokv_protocol_schema"),
         config_sha256_prefix=_nokv_authority_config_sha256(config_path)[:12],
         workbench_sha256_prefix=sha256_hex(workbench)[:12],
         tenant_id=tenant_id,
@@ -791,10 +823,47 @@ def gate_unverified_reason(gate: str, environ: Mapping[str, str]) -> tuple[str, 
     missing = sorted(name for name in required if not environ.get(name))
     if missing:
         return GATE_UNVERIFIED_REASON[gate], {"missing_variables": missing}
+    if gate == "env:nokv_legacy":
+        complete = complete_nokv_routing_groups(environ)
+        if not complete:
+            return GATE_UNVERIFIED_REASON[gate], {
+                "missing_one_of": [list(names) for names in NOKV_ROUTING_GROUPS.values()],
+            }
+        if len(complete) > 1:
+            return "nokv_routing_env_ambiguous", {"routing_kinds": complete}
     for flag in LIVE_OPT_IN_FLAGS:
         if flag in required and environ.get(flag) != "1":
             return f"{flag.lower()}_not_enabled", {"flag": flag}
     return None
+
+
+def complete_nokv_routing_groups(environ: Mapping[str, str]) -> list[str]:
+    """Routing kinds whose every variable is set, sorted by kind name."""
+
+    return sorted(
+        kind
+        for kind, names in NOKV_ROUTING_GROUPS.items()
+        if all(environ.get(name) for name in names)
+    )
+
+
+def nokv_routing_kind(environ: Mapping[str, str]) -> str | None:
+    """The one selected routing kind, or ``None`` when absent or ambiguous."""
+
+    complete = complete_nokv_routing_groups(environ)
+    return complete[0] if len(complete) == 1 else None
+
+
+def nokv_routing_group(environ: Mapping[str, str]) -> str | None:
+    """The selected routing group named by its first variable, for reports.
+
+    Reports name the variable (``NOKV_SEEDS`` / ``NOKV_ETCD``) rather than the
+    kind: the kind literal is also a string leaf of the client configuration,
+    which makes it a forbidden privacy token in every report.
+    """
+
+    kind = nokv_routing_kind(environ)
+    return NOKV_ROUTING_GROUPS[kind][0] if kind is not None else None
 
 
 def default_forbidden_tokens(roots: Iterable[Path], environ: Mapping[str, str]) -> list[str]:
@@ -808,7 +877,12 @@ def default_forbidden_tokens(roots: Iterable[Path], environ: Mapping[str, str]) 
     tokens.update({str(temp_root), str(temp_root.resolve())})
     tokens.add(environ.get("HOME") or str(Path.home()))
     tokens.update({str(REPO_ROOT), str(REPO_ROOT.resolve())})
-    for name in (POSTGRES_URL_VARIABLE, *NOKV_STACK_VARIABLES, *NOKV_AUTHORITY_VARIABLES):
+    for name in (
+        POSTGRES_URL_VARIABLE,
+        *NOKV_STACK_VARIABLES,
+        *NOKV_ROUTING_VARIABLES,
+        *NOKV_AUTHORITY_VARIABLES,
+    ):
         value = environ.get(name)
         if value:
             tokens.add(value)
@@ -962,6 +1036,17 @@ def _nokv_sdk_version() -> str | None:
     return None
 
 
+def _nokv_protocol_schema() -> str | None:
+    """The wire schema the importable SDK declares; the 0.11.0 release has none."""
+
+    try:
+        module = importlib.import_module("nokv")
+    except ImportError:
+        return None
+    schema = getattr(module, "WORKSPACE_PROTOCOL_SCHEMA", None)
+    return schema if isinstance(schema, str) and schema else None
+
+
 def collect_bindings(environ: Mapping[str, str]) -> JsonObject:
     """Pin what the report was produced against; ``None`` means unknown."""
 
@@ -974,6 +1059,8 @@ def collect_bindings(environ: Mapping[str, str]) -> JsonObject:
         "probe_sha256": _probe_digests(),
         "nokv_client_config_sha256": _nokv_client_config_digest(environ),
         "nokv_sdk_version": _nokv_sdk_version(),
+        "nokv_protocol_schema": _nokv_protocol_schema(),
+        "nokv_routing_group": nokv_routing_group(environ),
         "postgres_url_sha256_prefix": sha256_hex(postgres_url)[:12] if postgres_url else None,
         "pg_package_version": _pg_package_version(),
     }

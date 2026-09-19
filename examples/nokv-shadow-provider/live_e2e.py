@@ -324,15 +324,72 @@ def file_matrix(root: Path) -> dict:
     )
 
 
-def nokv_matrix() -> tuple[dict | None, str | None]:
+NOKV_SEEDS_VARIABLE = "NOKV_SEEDS"
+NOKV_ETCD_VARIABLES = ("NOKV_ETCD", "NOKV_ETCD_PREFIX")
+
+
+def nokv_routing(nokv, env) -> tuple[object | None, dict | None, tuple[str, str] | None]:
+    """Build the SDK routing from exactly one routing variable group.
+
+    ``NOKV_SEEDS`` (comma-separated ``IP:PORT``) selects seed routing, the kind
+    of the NoKV metadata-runtimes line; ``NOKV_ETCD`` plus ``NOKV_ETCD_PREFIX``
+    selects etcd routing, the kind of the 0.11.0 release line. Both set is a
+    configuration error, and a kind the installed wheel cannot build is a
+    capability mismatch, never an outage. Returns ``(routing, sdk_facts,
+    None)`` or ``(None, None, (reason, reason_code))``; the facts carry counts
+    and kinds only, never endpoint values.
+    """
+    seeds_raw = env.get(NOKV_SEEDS_VARIABLE)
+    etcd_complete = all(env.get(name) for name in NOKV_ETCD_VARIABLES)
+    if seeds_raw and etcd_complete:
+        return None, None, (
+            "NOKV_SEEDS and NOKV_ETCD/NOKV_ETCD_PREFIX are both set; choose one routing kind",
+            "nokv_routing_env_ambiguous",
+        )
+    if seeds_raw:
+        kind = "seeds"
+        seeds = [item.strip() for item in seeds_raw.split(",") if item.strip()]
+        arguments: tuple = (seeds,)
+    elif etcd_complete:
+        kind = "etcd"
+        arguments = ([env["NOKV_ETCD"]], env["NOKV_ETCD_PREFIX"], 10)
+    else:
+        return None, None, (
+            "neither NOKV_SEEDS nor NOKV_ETCD/NOKV_ETCD_PREFIX is set",
+            "nokv_routing_env_missing",
+        )
+    constructor = getattr(nokv.RoutingConfig, kind, None)
+    if not callable(constructor):
+        return None, None, (
+            f"the installed nokv SDK does not provide RoutingConfig.{kind}",
+            "nokv_sdk_capability_mismatch",
+        )
+    try:
+        routing = constructor(*arguments)
+    except (TypeError, ValueError):
+        return None, None, ("NoKV routing configuration is invalid", "nokv_routing_invalid")
+    schema = getattr(nokv, "WORKSPACE_PROTOCOL_SCHEMA", None)
+    facts = {
+        "version": getattr(nokv, "__version__", None),
+        "api_version": getattr(nokv, "API_VERSION", None),
+        "protocol_schema": schema if isinstance(schema, str) and schema else None,
+        "routing_kind": kind,
+        "seed_count": len(arguments[0]) if kind == "seeds" else None,
+    }
+    return routing, facts, None
+
+
+def nokv_matrix() -> tuple[dict | None, tuple[str, str] | None, dict | None]:
     if os.environ.get("NOKV_COORDINATION_LIVE") != "1":
-        return None, "NOKV_COORDINATION_LIVE unset"
+        return None, ("NOKV_COORDINATION_LIVE unset", "nokv_live_flag_unset"), None
     try:
         import nokv
     except ImportError:
-        return None, "nokv SDK not installed"
+        return None, ("nokv SDK not installed", "nokv_sdk_missing"), None
     env = os.environ
-    routing = nokv.RoutingConfig.etcd([env["NOKV_ETCD"]], env["NOKV_ETCD_PREFIX"], 10)
+    routing, sdk_facts, skip = nokv_routing(nokv, env)
+    if routing is None:
+        return None, skip, None
 
     def make_client():
         objects = nokv.ObjectStoreConfig.s3(
@@ -367,7 +424,7 @@ def nokv_matrix() -> tuple[dict | None, str | None]:
     rows["restored_lineage_fails_closed"] = _restored_lineage_fails_closed(
         make_client
     )
-    return rows, None
+    return rows, None, sdk_facts
 
 
 def _restored_lineage_fails_closed(make_client) -> bool:
@@ -435,11 +492,15 @@ def main() -> int:
     matrix: dict[str, dict] = {}
     with tempfile.TemporaryDirectory() as root:
         matrix["file_provider"] = file_matrix(Path(root))
-    nokv_rows, skip_reason = nokv_matrix()
+    nokv_rows, skip, sdk_facts = nokv_matrix()
     if nokv_rows is None:
-        matrix["nokv_provider"] = {"unverified": skip_reason}
+        assert skip is not None
+        reason, reason_code = skip
+        matrix["nokv_provider"] = {"unverified": reason, "reason_code": reason_code}
     else:
         matrix["nokv_provider"] = nokv_rows
+        # Wheel facts the ladder pins into its bindings: kinds and counts only.
+        matrix["nokv_sdk"] = sdk_facts or {}
         shared = {
             row: value
             for row, value in nokv_rows.items()

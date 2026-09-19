@@ -85,7 +85,7 @@ TypeScript store read.
 | --- | --- | --- |
 | `deterministic` | none (needs `node` on `PATH` for the CLI's TypeScript runtime and the read-back probe) | `node_missing` when the probe cannot run |
 | `env:postgresql` | `LOOPX_TEST_POSTGRES_URL` plus `node_modules/pg` (`npm ci`) | `postgres_url_missing`, `pg_dependency_missing`, `node_missing` |
-| `env:nokv_legacy` | `NOKV_COORDINATION_LIVE=1` and `NOKV_ETCD`, `NOKV_ETCD_PREFIX`, `NOKV_ROOT_ID`, `NOKV_BUCKET`, `NOKV_OBJECT_ENDPOINT`, `NOKV_OBJECT_ROOT`, `NOKV_OBJECT_KEY`, `NOKV_OBJECT_SECRET`; the `nokv` SDK importable | `nokv_live_env_missing`, `nokv_coordination_live_not_enabled`, `nokv_sdk_missing` |
+| `env:nokv_legacy` | `NOKV_COORDINATION_LIVE=1`, `NOKV_ROOT_ID`, `NOKV_BUCKET`, `NOKV_OBJECT_ENDPOINT`, `NOKV_OBJECT_ROOT`, `NOKV_OBJECT_KEY`, `NOKV_OBJECT_SECRET`, plus exactly one routing group: `NOKV_SEEDS` (comma-separated `IP:PORT` owners, the NoKV metadata-runtimes line) or `NOKV_ETCD` + `NOKV_ETCD_PREFIX` (the 0.11.0 release line); the `nokv` SDK importable | `nokv_live_env_missing` (`missing_one_of` names both routing groups), `nokv_routing_env_ambiguous`, `nokv_sdk_capability_mismatch` (the installed wheel cannot build the configured routing kind), `nokv_sdk_missing`, `nokv_matrix_unverified` |
 | `env:nokv_authority` | `LOOPX_NOKV_AUTHORITY_LIVE=1` (the probe writes durable test data), `LOOPX_NOKV_AUTHORITY_CONFIG_JSON` (absolute path to the ignored NoKV client configuration), `LOOPX_NOKV_AUTHORITY_PYTHON` (absolute path to the Python executable that resolves NoKV SDK 0.11.0), `LOOPX_NOKV_AUTHORITY_WORKBENCH` (an existing workbench); `node` on `PATH` | `nokv_authority_env_missing`, `loopx_nokv_authority_live_not_enabled`, `nokv_authority_config_missing`, `nokv_authority_python_missing`, `node_missing` |
 
 POSIX-only rows report `unverified/posix_only` on Windows.
@@ -96,8 +96,8 @@ The report schema is `loopx_shared_goal_authority_e2e_report_v0`:
 `rows[]` (`status in {pass, fail, unverified}`, `reason_code`, public-safe
 `evidence`, `duration_ms`), `pending[]`, `summary{pass, fail, unverified,
 pending, executed, privacy_violations}`, `bindings{loopx_commit, loopx_tree_dirty, probe_sha256[],
-nokv_client_config_sha256, nokv_sdk_version, postgres_url_sha256_prefix,
-pg_package_version}` (`null` when unknown), and `exit_policy`.
+nokv_client_config_sha256, nokv_sdk_version, nokv_protocol_schema,
+nokv_routing_group, postgres_url_sha256_prefix, pg_package_version}` (`null` when unknown), and `exit_policy`.
 
 Exit code is `0` iff `fail == 0` and `privacy_violations == 0` and
 (`unverified == 0` or `--allow-unverified`) and (`pending == 0` or

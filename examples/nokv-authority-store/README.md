@@ -136,7 +136,7 @@ unfenced, pre-existing, or unreadable state exits nonzero with a compact JSON
 reason; provider stderr, endpoints, credentials, and raw SDK errors are not
 copied into that result. A successful JSON report includes
 `"qualification_scope":"stage_2a_single_node_store_conformance"`,
-`"nokv_sdk_version":"0.11.0"`, and `"nokv_api_version":1`. The two version
+`"nokv_sdk_version":"0.11.0"`, `"nokv_api_version":1`, and `"nokv_protocol_schema"` (the wheel's `WORKSPACE_PROTOCOL_SCHEMA`, or `null` for the 0.11.0 release, which exports none). The two version
 fields are the helper's admission constants: the helper refuses to open a client
 for any other SDK version or API version, so a successful report implies them,
 but they are not values read back from the NoKV server. The report is Stage
