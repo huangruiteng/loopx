@@ -1,3 +1,4 @@
+import {evaluateUserCompletion} from "./todos/user_completion.ts";
 import {projectTodoSummaryLanes, projectLegacyTodoWorkCounts} from "./todos/summary_lanes.ts";
 import {delegationInventoryItem, delegationInventoryQuery, delegationPreflight, selectDelegationBinding, transitionDelegationObservation} from "./collaboration/delegation.ts";
 import {planChatMode} from "./collaboration/chat_mode.ts";
@@ -412,6 +413,7 @@ export function createEffectRuntimeHandlers(
     ["todo.summary_lanes.project", projectTodoSummaryLanes],
     ["todo.work_counts.project", projectLegacyTodoWorkCounts],
     ["todo.decision_scope.evaluate", evaluateDecisionScope],
+    ["todo.user_completion.plan", evaluateUserCompletion],
     ["agent.capability_gate.evaluate", evaluateCapabilityGate],
     ["agent.capability_memory", agentCapabilityMemory],
     ["todo.archive.capture_dependencies", captureArchivedTodoDependencies],
