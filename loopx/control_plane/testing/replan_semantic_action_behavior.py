@@ -32,12 +32,23 @@ from .model_tool_behavior import (
     loopx_command_tokens,
 )
 from .selected_todo_tool_behavior import bounded_workspace_read_plan
-from .replan_vision_closeout_behavior import dispatch_vision_closeout, VISION_HOST_INSTRUCTION
+from .replan_vision_closeout_behavior import (
+    dispatch_vision_closeout, VISION_HOST_INSTRUCTION, VISION_EXEC_TOOL_DESCRIPTION,
+)
 
 REPLAN_SEMANTIC_ACTION_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
     "replan_semantic_action_behavior_receipt_v0"
 )
 REPLAN_SEMANTIC_ACTION_BEHAVIOR_MAX_CALLS = 7
+
+
+class _WorkspaceReadFailed(RuntimeError):
+    """An admitted read's exit status is a tool result, not a semantic verdict."""
+
+    def __init__(self, output: str, exit_code: int) -> None:
+        super().__init__("workspace_read_nonzero")
+        self.output = output
+        self.exit_code = exit_code
 
 _FIXTURE_GOAL_ID = "replan-semantic-action-fixture"
 _FIXTURE_AGENT_ID = "codex-replan-semantic-action"
@@ -690,7 +701,7 @@ def _bounded_workspace_read_plan(
     *,
     fixture: _ReplanSemanticActionFixture,
 ) -> list[Any] | None:
-    return bounded_workspace_read_plan(command, fixture=fixture)
+    return bounded_workspace_read_plan(command, fixture=fixture, allow_loopx_help=fixture.required_vision)
 
 
 def _bounded_refresh_state_help_limit(command: str) -> int | None:
@@ -728,7 +739,7 @@ def _execute_workspace_read(
     command: str,
     *,
     fixture: _ReplanSemanticActionFixture,
-) -> tuple[str, bool, bool]:
+) -> tuple[str, bool, bool, int]:
     plan = _bounded_workspace_read_plan(command, fixture=fixture)
     if plan is None:
         raise ValueError("workspace read is outside the hermetic fixture")
@@ -744,16 +755,21 @@ def _execute_workspace_read(
         )
         if not should_run:
             continue
-        completed = subprocess.run(
-            list(step.argv),
-            cwd=fixture.project_root,
-            check=False,
-            capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-            timeout=10,
-        )
-        status = completed.returncode
-        output = completed.stdout
+        if step.kind == "loopx_help":
+            output = execute_loopx_cli(
+                shlex.join(step.argv), source_root=fixture.source_root,
+                project_root=fixture.project_root, timeout_seconds=10,
+            )
+            status = 0
+        else:
+            completed = subprocess.run(
+                list(step.argv), cwd=fixture.project_root, check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+            )
+            status = completed.returncode
+            output = completed.stdout
+            if fixture.required_vision and not step.suppress_stderr:
+                output += completed.stderr
         if step.line_limit is not None:
             output = "".join(output.splitlines(keepends=True)[: step.line_limit])
         outputs.append(output)
@@ -767,9 +783,9 @@ def _execute_workspace_read(
             and step.target is not None
             and step.target.resolve() == fixture.work_source_target.resolve()
         )
-    if status != 0:
+    if status != 0 and not fixture.required_vision:
         raise RuntimeError(f"workspace read failed with exit={status}")
-    return "".join(outputs), frontier_read, work_source_read
+    return "".join(outputs), frontier_read, work_source_read, status
 
 
 def _receipt(
@@ -855,12 +871,14 @@ def _record_tool_step(
     *,
     kind: str,
     command: str,
+    exit_code: int | None = None,
 ) -> None:
     state.steps.append(
         {
             "ordinal": len(state.steps) + 1,
             "kind": kind,
             "command_digest": _digest(command),
+            **({"exit_code": exit_code, "error_code": "workspace_read_nonzero"} if exit_code else {}),
         }
     )
 
@@ -894,13 +912,17 @@ def _handle_clock_command(output: str, state: _QualificationState) -> str:
 
 
 def _handle_workspace_read(command: str, state: _QualificationState) -> str:
-    output, read_frontier, read_work_source = _execute_workspace_read(
+    if state.fixture.required_vision and not state.seen_quota:
+        raise ValueError("workspace_read_before_quota")
+    output, read_frontier, read_work_source, exit_code = _execute_workspace_read(
         command,
         fixture=state.fixture,
     )
     state.frontier_context_read = state.frontier_context_read or read_frontier
     state.work_source_read = state.work_source_read or read_work_source
     state.read_only_host_commands_executed = True
+    if exit_code:
+        raise _WorkspaceReadFailed(output, exit_code)
     return output
 
 
@@ -1141,6 +1163,7 @@ def _behavior_command_kind(
 
 _EXPECTED_BEHAVIOR_FAILURES = frozenset(
     {
+        "workspace_read_before_quota",
         "required_vision_fixture_trigger_mismatch",
         "vision_authoring_requires_single_add_file_patch",
         "vision_authoring_path_outside_fixture",
@@ -1228,7 +1251,10 @@ def _run_qualification_loop(
     qualification_id: str,
 ) -> dict[str, Any]:
     for _ in range(REPLAN_SEMANTIC_ACTION_BEHAVIOR_MAX_CALLS):
-        tool_call = client.next_tool_call(state.messages)
+        tool_call = client.next_tool_call(
+            state.messages,
+            tool_description=VISION_EXEC_TOOL_DESCRIPTION if state.fixture.required_vision else None,
+        )
         if tool_call is None:
             return _qualification_receipt(
                 state,
@@ -1244,6 +1270,13 @@ def _run_qualification_loop(
                 state,
             )
             kind = dispatched_kind
+        except _WorkspaceReadFailed as exc:
+            _record_tool_step(state, kind=kind, command=tool_call.command, exit_code=exc.exit_code)
+            _append_tool_response(state, tool_call=tool_call, output=json.dumps({
+                "error_code": "workspace_read_nonzero", "exit_code": exc.exit_code,
+                "output": exc.output[:4096], "truncated": len(exc.output) > 4096,
+            }))
+            continue
         except (RuntimeError, ValueError, json.JSONDecodeError) as exc:
             _record_tool_step(state, kind=kind, command=tool_call.command)
             return _qualification_receipt(

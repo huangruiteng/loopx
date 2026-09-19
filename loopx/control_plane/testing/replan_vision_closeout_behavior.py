@@ -31,6 +31,20 @@ VISION_HOST_INSTRUCTION = (
     "from the evidence; file creation alone is not delivery."
 )
 
+VISION_EXEC_TOOL_DESCRIPTION = (
+    "Execute bounded fixture commands, not an unrestricted shell. Workspace reads "
+    "support pwd, ls (-a/-l), find (maxdepth at most 4), rg --files, cat, head and "
+    "sed -n, optionally joined with &&, || or ; (at most 8 statements). Root "
+    "loopx --help and loopx refresh-state --help are read-only queries and may "
+    "be combined with reads or piped to head (at most 200 lines). Author a new "
+    "relative JSON file via apply_patch Add File or cat with a quoted heredoc; "
+    "a heredoc may be followed by up to two bound LoopX closeout commands using "
+    "newlines or &&. Other LoopX commands must be separate single invocations. "
+    "Returns stdout on success; nonzero workspace reads return exit_code and "
+    "output for correction within the same call budget. Unsupported programs "
+    "or syntax are never executed. No external network or outside-fixture writes."
+)
+
 
 def required_vision_scenario_contract(
     source_packet: Mapping[str, Any], contract: Mapping[str, Any],

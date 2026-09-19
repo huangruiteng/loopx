@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -76,6 +76,7 @@ class BoundedWorkspaceReadStep:
     target: Path | None = None
     operator: str = ";"
     line_limit: int | None = None
+    suppress_stderr: bool = False
 
 
 def _build_fixture(
@@ -409,11 +410,22 @@ def _is_fixture_metadata_target(
     return target.resolve() in allowed
 
 
+def _loopx_help_argv(tokens: list[str]) -> tuple[str, ...] | None:
+    if tokens[-3:] == ["2", ">&", "1"]:
+        tokens = tokens[:-3]
+    if tokens and Path(tokens[0]).name == "loopx" and tokens[1:] in (
+        ["--help"], ["refresh-state", "--help"],
+    ):
+        return ("loopx", *tokens[1:])
+    return None
+
+
 def _metadata_pipeline_step(
     segment: list[str],
     *,
     fixture: _SelectedTodoToolFixture,
     operator: str,
+    allow_loopx_help: bool = False,
 ) -> BoundedWorkspaceReadStep | None:
     pipe_indices = [index for index, token in enumerate(segment) if token == "|"]
     if len(pipe_indices) not in {1, 2}:
@@ -448,6 +460,8 @@ def _metadata_pipeline_step(
         return None
     if limit < 1 or limit > 200:
         return None
+    if allow_loopx_help and len(pipe_indices) == 1 and (help_argv := _loopx_help_argv(left)):
+        return BoundedWorkspaceReadStep("loopx_help", help_argv, operator=operator, line_limit=limit)
     discovery_argv = _discovery_tokens(left, fixture=fixture)
     if discovery_argv is not None:
         return BoundedWorkspaceReadStep(
@@ -480,7 +494,8 @@ def _metadata_pipeline_step(
     )
 
 
-def _read_plan_tokens(command: str) -> list[str] | None:
+def _read_plan_segments(command: str) -> list[tuple[str, list[str]]] | None:
+    """Decode the bounded read grammar before admitting any executable step."""
     lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
     lexer.whitespace = " \t\r"
     lexer.whitespace_split = True
@@ -488,15 +503,6 @@ def _read_plan_tokens(command: str) -> list[str] | None:
         tokens = list(lexer)
     except ValueError:
         return None
-    return tokens or None
-
-
-def bounded_workspace_read_plan(
-    command: str,
-    *,
-    fixture: _SelectedTodoToolFixture,
-) -> list[BoundedWorkspaceReadStep] | None:
-    tokens = _read_plan_tokens(command)
     if not tokens:
         return None
     segments: list[list[str]] = [[]]
@@ -515,15 +521,28 @@ def bounded_workspace_read_plan(
             segments[-1].append(token)
     if not segments[-1] or len(segments) > 8:
         return None
+    return list(zip(operators, segments, strict=True))
+
+
+def bounded_workspace_read_plan(
+    command: str,
+    *,
+    fixture: _SelectedTodoToolFixture,
+    allow_loopx_help: bool = False,
+) -> list[BoundedWorkspaceReadStep] | None:
+    segments = _read_plan_segments(command)
+    if segments is None:
+        return None
 
     plan: list[BoundedWorkspaceReadStep] = []
-    for operator, raw_segment in zip(operators, segments, strict=True):
+    for operator, raw_segment in segments:
         segment = list(raw_segment)
         if "|" in segment:
             pipeline_step = _metadata_pipeline_step(
                 segment,
                 fixture=fixture,
                 operator=operator,
+                allow_loopx_help=allow_loopx_help,
             )
             if pipeline_step is None:
                 return None
@@ -531,6 +550,9 @@ def bounded_workspace_read_plan(
             continue
         if len(segment) >= 3 and segment[-3:] == ["2", ">", "/dev/null"]:
             segment = segment[:-3]
+        if allow_loopx_help and (help_argv := _loopx_help_argv(segment)):
+            plan.append(BoundedWorkspaceReadStep("loopx_help", help_argv, operator=operator, line_limit=200))
+            continue
         if not segment or any(
             token in {"&", "|", "<", ">", "<<", ">>", "<<<"}
             for token in segment
@@ -626,6 +648,10 @@ def bounded_workspace_read_plan(
                 operator,
             )
         )
+    for index, (_, segment) in enumerate(segments):
+        left = segment[:segment.index("|")] if "|" in segment else segment
+        if left[-3:] == ["2", ">", "/dev/null"]:
+            plan[index] = replace(plan[index], suppress_stderr=True)
     return plan
 
 

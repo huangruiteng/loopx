@@ -9,10 +9,11 @@ from typing import Any
 import pytest
 
 from loopx.control_plane.testing.model_tool_behavior import (
-    ScriptedAssistantAction, ScriptedDoubaoExecTransport, ScriptedExecToolAction,
+    EXEC_COMMAND_TOOL, ScriptedAssistantAction, ScriptedDoubaoExecTransport, ScriptedExecToolAction,
 )
 from loopx.control_plane.testing.replan_semantic_action_behavior import (
     DoubaoReplanSemanticActionBehaviorActor, _build_fixture,
+    _bounded_workspace_read_plan, _execute_workspace_read,
 )
 from loopx.control_plane.testing.replan_vision_closeout_behavior import _authored_file, _json_heredoc
 
@@ -161,3 +162,109 @@ def test_heredoc_is_inert_json_and_never_an_arbitrary_shell_program() -> None:
         with pytest.raises(ValueError, match="suffix_requires_loopx"):
             _json_heredoc(command + tail)
     assert _json_heredoc(command.replace("<<'JSON'", "<<JSON")) is None
+
+
+def test_host_composes_bounded_reads_and_real_cli_help(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path, required_vision=True)
+    command = f'ls {shlex.quote(str(fixture.runtime_root))} 2>/dev/null && echo "---" && loopx --help 2>&1 | head -60'
+    plan = _bounded_workspace_read_plan(command, fixture=fixture)
+    assert plan is not None
+    assert plan[-1].kind == "loopx_help"
+    output, frontier_read, source_read, exit_code = _execute_workspace_read(command, fixture=fixture)
+    assert "usage:" in output.lower() and "loopx" in output
+    assert exit_code == 0 and not frontier_read and not source_read
+    # Adding an unadmitted effect rejects the entire plan before execution.
+    assert _bounded_workspace_read_plan(command + " && touch injected", fixture=fixture) is None
+    with pytest.raises(ValueError, match="outside the hermetic fixture"):
+        _execute_workspace_read(command + " && touch injected", fixture=fixture)
+    assert not (fixture.project_root / "injected").exists()
+
+
+@pytest.mark.parametrize("command", ["loopx --help", "cat replan-frontier.json && loopx refresh-state --help"])
+def test_read_and_help_extension_preserves_quota_first(command: str, tmp_path: Path) -> None:
+    transport = ScriptedDoubaoExecTransport([ScriptedExecToolAction(command)])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="read-before-quota", fixture_root=tmp_path, required_vision=True,
+    )
+    assert receipt["qualification_passed"] is False
+    assert receipt["failure_code"] == "workspace_read_before_quota"
+    assert receipt["semantic_action_accepted"] is False
+
+
+def test_read_error_reaches_model_and_recovery_still_requires_full_closeout(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    def recover(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        error = json.loads(request["messages"][-1]["content"])
+        assert error["exit_code"] != 0
+        assert error["error_code"] == "workspace_read_nonzero"
+        assert "missing.json" in error["output"]
+        return ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json")
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat missing.json"), recover,
+        vision_patch_action, projected_refresh, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="read-error-recovery", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is True
+    assert receipt["vision_closeout"]["spend_count"] == 1
+    assert receipt["tool_call_count"] == 6
+    assert receipt["tool_call_receipts"][1]["error_code"] == "workspace_read_nonzero"
+    assert "bounded" in transport.requests[0]["tools"][0]["function"]["description"]
+
+
+def test_read_failures_consume_the_unchanged_call_budget(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        *[ScriptedExecToolAction("cat missing.json") for _ in range(6)],
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="read-errors-exhaust-budget", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is False
+    assert receipt["failure_code"] == "tool_call_budget_exhausted"
+    assert receipt["tool_call_count"] == 7
+    assert receipt["semantic_action_accepted"] is False
+
+
+def test_help_host_extension_does_not_change_narrow_actor_contract(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path)
+    assert _bounded_workspace_read_plan("loopx --help", fixture=fixture) is None
+    with pytest.raises(RuntimeError, match="workspace read failed"):
+        _execute_workspace_read("cat missing.json", fixture=fixture)
+
+
+def test_failed_read_does_not_supply_source_evidence(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat replan-frontier.json"),
+        ScriptedExecToolAction("cat missing.json"), vision_patch_action, projected_refresh,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="failed-read-is-not-evidence", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is False
+    assert receipt["failure_code"] == "vision_closeout_requires_observed_source_and_authored_decision"
+    assert receipt["semantic_action_accepted"] is False
+
+
+def test_read_short_circuit_and_stderr_suppression_are_preserved(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path, required_vision=True)
+    output, _, _, code = _execute_workspace_read("cat missing.json 2>/dev/null && loopx --help", fixture=fixture)
+    assert code != 0 and output == ""
+    output, _, _, code = _execute_workspace_read("cat missing.json 2>/dev/null || loopx --help", fixture=fixture)
+    assert code == 0 and "usage:" in output.lower()
+
+
+def test_tool_description_override_is_request_local() -> None:
+    transport = ScriptedDoubaoExecTransport([ScriptedAssistantAction("done"), ScriptedAssistantAction("done")])
+    client = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport)._client
+    client.next_step([], tool_description="A bounded test host")
+    client.next_step([])
+    custom = transport.requests[0]["tools"][0]
+    assert custom["function"]["description"] == "A bounded test host"
+    assert custom["function"]["parameters"] == EXEC_COMMAND_TOOL["function"]["parameters"]
+    assert transport.requests[1]["tools"] == [EXEC_COMMAND_TOOL]

@@ -225,17 +225,24 @@ class DoubaoExecToolClient:
     def next_tool_call(
         self,
         messages: list[dict[str, Any]],
+        *,
+        tool_description: str | None = None,
     ) -> ExecToolCall | None:
-        return self.next_step(messages).tool_call
+        return self.next_step(messages, tool_description=tool_description).tool_call
 
     def next_step(
         self,
         messages: list[dict[str, Any]],
+        *,
+        tool_description: str | None = None,
     ) -> ExecToolStep:
         body = {
             "model": self._model,
             "messages": messages,
-            "tools": [EXEC_COMMAND_TOOL],
+            "tools": [EXEC_COMMAND_TOOL if tool_description is None else {
+                **EXEC_COMMAND_TOOL,
+                "function": {**EXEC_COMMAND_TOOL["function"], "description": tool_description},
+            }],
             "tool_choice": "auto",
             "thinking": {"type": "disabled"},
             "temperature": 0,
