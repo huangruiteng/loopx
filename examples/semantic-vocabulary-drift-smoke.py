@@ -99,11 +99,12 @@ FORMAL_ENFORCEMENT = {"m0", "m0_5", "m1", "advisory", "unproved"}
 FORMAL_DOMAIN_KEYS = {"quantifies_over", "verified", "registered", "evidence_bound"}
 FORMAL_DOMAIN_SELECTORS: dict[str, Callable[[dict[str, Any]], tuple[int, int]]] = {
     # ``check_producers`` walks exactly the vocabularies that declare producers.
-    # Today that predicate selects the kernel tier and nothing else, so F1/F2
-    # quantify over 6 of 26 vocabularies, not over V.
-    "vocabularies[tier=kernel].producers": lambda registry: (
-        sum(1 for entry in registry["vocabularies"].values()
-            if entry["tier"] == "kernel" and "producers" in entry),
+    # That predicate used to select the kernel tier and nothing else; it no
+    # longer does, so the selector names the predicate itself. Writing it as a
+    # tier would quietly stop describing the set the check walks the first time
+    # a cross-runtime vocabulary earns production evidence.
+    "vocabularies[producers].producers": lambda registry: (
+        sum(1 for entry in registry["vocabularies"].values() if "producers" in entry),
         len(registry["vocabularies"]),
     ),
     "vocabularies[*]": lambda registry: (
@@ -152,8 +153,8 @@ FORMAL_EVIDENCE_BOUNDS: dict[str, frozenset[str]] = {
 # in a data-only edit. Restating an invariant over a different domain is a
 # normative change and edits this literal in the same diff.
 FORMAL_DOMAIN_ANCHOR = {
-    "F1_producer_closedness": ("vocabularies[tier=kernel].producers", "producer_scan_reach"),
-    "F2_canonical_value_liveness": ("vocabularies[tier=kernel].producers", "producer_scan_reach"),
+    "F1_producer_closedness": ("vocabularies[producers].producers", "producer_scan_reach"),
+    "F2_canonical_value_liveness": ("vocabularies[producers].producers", "producer_scan_reach"),
     "F3_consumer_domain_closedness": ("vocabularies[*]", "inventory_only"),
     "F4_scope_separation": ("scope_declarations[*].contexts", "declared_defining_modules"),
     "F5_projection_totality": ("projections[*]", "executable_owner_function"),
@@ -192,9 +193,15 @@ LITERAL_SCAN_ROOTS = ["loopx"]
 INPUT_PRODUCER_ANCHOR = {
     "turn_result_kind": "loopx/control_plane/turn_driver/transaction.py::_result_kind",
     "loop_disposition": "loopx/control_plane/turn_driver/loop_controller.py::decide_loop_disposition",
+    # The settlement binding kind is decided inside the TypeScript builder, so
+    # the witness executes it rather than reading a literal out of the owner.
+    "settlement_binding_kind": "loopx/control_plane/effect_program.ts::settlementIdentity",
 }
 PRODUCER_VOCABULARY_ANCHOR = {
     "effective_action", "turn_route", "loop_disposition", "agent_scope_frontier_action", "turn_result_kind", "lease_action",
+    # First cross-runtime vocabulary carrying executed production evidence. One
+    # named boundary, not a claim about the rest of the cross-runtime set.
+    "settlement_binding_kind",
 }
 RETURN_PRODUCER_ANCHOR = {
     "turn_route": {"loopx/control_plane/turn_driver/driver.py::_typed_route", "loopx/control_plane/turn_driver/loop_controller.py::_envelope_route", "loopx/control_plane/turn_driver/driver.py::build_loopx_turn_plan"},
