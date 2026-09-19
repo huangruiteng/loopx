@@ -55,6 +55,12 @@ export const loopxModeScenario = {
       await page.getByText("普通对话", { exact: true }).waitFor({ state: "visible" });
       await page.screenshot({ path: resolve(outputDir, "goal-loopx-mode-configured.png"), fullPage: false, animations: "disabled" });
 
+      if (await page.locator(".personal-composer-tools").getAttribute("open") !== null) throw new Error("Suggestions displaced the default conversation");
+      if (await page.locator(".personal-run-row").count()) throw new Error("An idle conversation was presented as waiting execution");
+      const composer = page.getByLabel("向 LoopX 发送消息");
+      const composerBox = await composer.boundingBox();
+      if (!composerBox || composerBox.width < 300 || composerBox.y + composerBox.height > 982) throw new Error("Composer lost usable viewport space");
+      const scrollBefore = await page.locator(".personal-channel-scroll").evaluate(el => el.scrollTop);
       if (api.loopxModeRequests.some(row => row.operation === "operations")) throw new Error("Team inspection ran during ordinary polling");
       await page.getByRole("button", {name: "团队执行情况", exact: true}).click();
       const team = page.getByRole("region", {name: "团队执行详情"});
@@ -69,10 +75,44 @@ export const loopxModeScenario = {
       await page.setViewportSize({width: 390, height: 844});
       await page.screenshot({path: resolve(outputDir, "goal-team-execution-mobile.png"), fullPage: false, animations: "disabled"});
       if (api.turnRequests.length) throw new Error("Inspecting the team started a model turn");
+      const dialog = page.getByRole("dialog", {name: "团队执行情况"});
+      const dialogBox = await dialog.boundingBox();
+      if (!dialogBox || dialogBox.x < 15 || Math.abs(dialogBox.x + dialogBox.width / 2 - 195) > 1 || dialogBox.y + dialogBox.height > 844) throw new Error("Team dialog lost its centered, bounded mobile layout");
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({state: "hidden"});
+      if (!await page.locator(".goal-loopx-team-trigger").evaluate(el => el === document.activeElement)) throw new Error("Closing team details lost keyboard focus");
+      if (Math.abs(await page.locator(".personal-channel-scroll").evaluate(el => el.scrollTop) - scrollBefore) > 1) throw new Error("Team details changed conversation scroll");
+      const mobileComposer = await composer.boundingBox();
+      if (!mobileComposer || mobileComposer.width < 200 || mobileComposer.y + mobileComposer.height > 844) throw new Error("Mobile composer is not usable");
+      await page.screenshot({path: resolve(outputDir, "goal-conversation-mobile.png"), fullPage: false, animations: "disabled"});
+
+      const mode = page.__loopxRuntime.loopxModes.get(request.sessionId);
+      Object.assign(mode, {enabled: true, active_turn_id: "fixture-loopx-turn", native: {status: "active", tokensUsed: 120, tokenBudget: 100000}});
+      await page.getByText("LoopX · 正在推进", {exact: true}).waitFor();
+      await page.getByLabel("消息处理方式").selectOption("steer");
+      await page.getByRole("button", {name: "暂停协调员", exact: true}).click();
+      await page.getByText("LoopX · 已暂停", {exact: true}).waitFor();
+      if (api.loopxModeRequests.at(-1)?.operation !== "pause") throw new Error("Pause did not call the existing control boundary");
+      const paused = page.__loopxRuntime.loopxModes.get(request.sessionId);
+      paused.native.status = "blocked";
+      paused.deliveries = [{operation_id: "failed-check", agent_id: "local-analyst", todo_id: "todo_analysis", status: "rejected"}];
+      await page.getByText("LoopX · 需要处理阻塞", {exact: true}).waitFor();
+      await page.getByRole("button", {name: /最近成员回读有未通过或无法核验/}).waitFor();
+      const beforeInspect = api.turnRequests.length;
+      await page.getByRole("button", {name: /最近成员回读有未通过或无法核验/}).click();
+      await team.getByText("本页有无法核验的工作，请检查原请求；不要直接重新派工。", {exact: true}).waitFor();
+      if (api.turnRequests.length !== beforeInspect) throw new Error("Reviewing a failed result launched an Agent");
+      await page.keyboard.press("Escape");
+      await page.route("**/api/chat/sessions/*/loopx", async route => {
+        if (route.request().method() === "GET") return route.fulfill({status: 503, json: {error: "Observation unavailable"}});
+        return route.fallback();
+      });
+      await page.getByRole("alert").filter({hasText: "Observation unavailable"}).waitFor();
+      if (await page.getByRole("dialog").isVisible()) throw new Error("Observation failure opened a blocking dialog");
 
       return {
         coverageEntries: await context.close(),
-        note: "Pending-snapshot setup preserves Goal-owned bindings, while on-demand team inspection preserves scope, unknown runtime, pagination and recovery state without launching work.",
+        note: "Conversation-first desktop/mobile layout; one-step team inspection preserves unknowns, recovery, focus and scroll; active pause/steer, blocked/rejected and unavailable observations remain visible without model launch.",
       };
     } catch (error) {
       releaseSnapshot();

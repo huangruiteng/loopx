@@ -592,6 +592,7 @@ export const typedActionsScenario = {
 
       const writesBeforeEnglishPreviews = api.durableWriteCount;
       await page.locator(".personal-manager-link").first().click();
+      if (await page.locator(".personal-composer-tools").getAttribute("open") === null) await page.locator(".personal-composer-tools > summary").click();
       await page.getByRole("button", { name: "Create Goal", description: "Insert a Goal template to review before creation" }).click();
       const englishGoalDraft = await page.getByLabel("Send a message to LoopX").inputValue();
       for (const field of ["Objective:", "Completion criteria:", "Execution boundary (optional):", "Related repository (optional):", "Notification method (optional):"]) {
@@ -618,6 +619,7 @@ export const typedActionsScenario = {
 
       await page.locator(".personal-goal-link").first().click();
       const writesBeforeEnglishMonitorShortcut = api.durableWriteCount;
+      if (await page.locator(".personal-composer-tools").getAttribute("open") === null) await page.locator(".personal-composer-tools > summary").click();
       await page.getByRole("button", { name: "Configure scheduled check" }).click();
       await page.getByText("Confirm execution", { exact: true }).waitFor({ state: "visible" });
       const englishMonitorShortcut = api.actionPreviews.findLast((preview) => preview.action_kind === "monitor.create");
@@ -698,6 +700,7 @@ export const typedActionsScenario = {
       await page.getByTestId("personal-goal-home").waitFor({ state: "visible" });
 
       const writesBeforeGoalCreate = api.durableWriteCount;
+      if (await page.locator(".personal-composer-tools").getAttribute("open") === null) await page.locator(".personal-composer-tools > summary").click();
       await page.getByRole("button", { name: "创建新 Goal" }).click();
       const goalDraft = await page.getByLabel("向 LoopX 发送消息").inputValue();
       for (const field of ["目标：", "完成标准：", "执行边界（可选）：", "关联仓库（可选）：", "通知方式（可选）："]) {
@@ -797,8 +800,8 @@ export const typedActionsScenario = {
       if (fullDesktopViewport) await page.setViewportSize(fullDesktopViewport);
       await page.locator(".personal-goal-link", { hasText: "Progress Projection" }).click();
       await page.getByRole("heading", { name: "Progress Projection" }).waitFor({ state: "visible" });
-      const progressHeader = page.locator(".personal-channel-title p");
-      if (!(await progressHeader.innerText()).includes("Current Todo")) throw new Error(`Goal header did not prefer the current Todo: ${await progressHeader.innerText()}`);
+      await page.locator(".personal-task-card").getByText("Current Todo", {exact: true}).waitFor();
+      if ((await page.locator(".personal-channel-title").innerText()).includes("Current Todo")) throw new Error("Header repeated the task already shown in the workspace");
       const progressColumn = page.locator(".personal-object-list", { hasText: "待执行 / 进行中" });
       if ((await progressColumn.locator(".personal-task-card").count()) !== 5) throw new Error("Id-less long Todo was duplicated across compact and full projections");
       await progressColumn.getByText("Full queue follow-up", { exact: true }).waitFor();
@@ -872,8 +875,8 @@ export const typedActionsScenario = {
       await completedColumn.getByText('Completed A', { exact: true }).waitFor();
       if (historyRequests) throw new Error('Switching presentation replaced the completed-history snapshot');
       await page.locator(".personal-goal-link", { hasText: "Multi Agent Projection" }).click();
-      const multiAgentHeader = await page.locator(".personal-channel-title p").innerText();
-      if (!multiAgentHeader.includes("2 个工作 Agent") || multiAgentHeader.includes("codex-older-lane ·")) {
+      const multiAgentHeader = await page.locator(".personal-channel-title").innerText();
+      if (multiAgentHeader.includes("codex-older-lane")) {
         throw new Error(`Multi-Agent Goal header still implies arbitrary single-lane ownership: ${multiAgentHeader}`);
       }
       if ((await page.locator(".personal-object-list", { hasText: "待执行 / 进行中" }).locator(".personal-task-card").count()) !== 2) {
@@ -1492,7 +1495,8 @@ export const typedActionsScenario = {
       await page.getByRole("button", { name: "发送", exact: true }).click();
       const taskConversationReceipt = page.getByRole("region", { name: "最近对话" });
       await taskConversationReceipt.getByText("对话有新回复", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
-      await taskConversationReceipt.getByText("本次对话没有直接修改 Tasks。需要执行时，可先转成 Task 草稿并确认。", { exact: true }).waitFor({ state: "visible" });
+      await taskConversationReceipt.getByRole("button", { name: "转为任务草稿", exact: true }).waitFor({ state: "visible" });
+      if (await taskConversationReceipt.locator("p").count() !== 1) throw new Error("Tasks repeated the full exchange instead of one reply preview");
       if (api.actionPreviews.length !== previewCountBeforeAnalysis) throw new Error("A read-only reference to an existing Todo created another Todo preview");
       if (api.turnRequests.length <= turnCountBeforeAnalysis) throw new Error("Read-only Todo analysis did not reach the Goal Chat Session");
       await page.screenshot({ path: resolve(outputDir, "task-chat-receipt.png"), fullPage: false, animations: "disabled" });
@@ -1508,7 +1512,7 @@ export const typedActionsScenario = {
         return answerBox.top < viewportBox.bottom && answerBox.bottom > viewportBox.top;
       }, undefined, { timeout: 10_000 });
       await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: /^(Tasks|任务)$/ }).click();
-      await page.getByRole("region", { name: "最近对话" }).getByRole("button", { name: "转为 Task" }).click();
+      await page.getByRole("region", { name: "最近对话" }).getByRole("button", { name: "转为任务草稿" }).click();
       if (!(await composer.inputValue()).startsWith("创建一个 Task：")) throw new Error("Converting the latest reply did not create an editable Task draft");
       await page.getByText("已根据回复生成 Task 草稿。编辑后发送，LoopX 会先展示确认预览。", { exact: true }).waitFor({ state: "visible" });
       await composer.fill("");
@@ -1675,6 +1679,7 @@ export const typedActionsScenario = {
       await page.getByRole("dialog").filter({ hasText: "确认执行" }).waitFor({ state: "hidden" });
 
       const writesBeforeMonitorShortcut = api.durableWriteCount;
+      if (await page.locator(".personal-composer-tools").getAttribute("open") === null) await page.locator(".personal-composer-tools > summary").click();
       await page.getByRole("button", { name: "配置定时检查" }).click();
       await page.getByText("确认执行").waitFor({ state: "visible" });
       const monitorShortcut = api.actionPreviews.findLast((preview) => preview.action_kind === "monitor.create");
@@ -1749,7 +1754,12 @@ export const typedActionsScenario = {
       if ((await agentSelect.getAttribute("data-value")) !== "claude-code") throw new Error("Healthy Agent selection did not update");
       await page.getByRole("button", { name: "刷新状态" }).click();
 
-      await page.locator(".personal-run-row").first().click();
+      // Activity groups are sorted by presentation, not executor ownership.
+      // Correct the selected runtime's run; historical task Sessions keep theirs.
+      const currentRuntimeRun = page.locator(".personal-run-row").filter({has: page.locator(".personal-row-copy > small", {hasText: /^Claude Code$/})}).first();
+      await currentRuntimeRun.waitFor({state: "attached"});
+      if (!await currentRuntimeRun.isVisible()) await page.locator(".personal-activity-summary > summary").click();
+      await currentRuntimeRun.click();
       await page.getByRole("tab", { name: "详情与操作" }).click();
       const runningCorrection = page.getByLabel("输入纠偏信息");
       await runningCorrection.fill("保持运行，等我检查中断控制。 ");
@@ -1771,10 +1781,11 @@ export const typedActionsScenario = {
         throw new Error("Interrupt did not target the active Session and Turn");
       }
       await page.getByRole("button", { name: /关闭详情/ }).click();
-      await page.getByText("已中断。你可以在当前会话继续发送消息。", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+      await page.locator('[data-goal-panel="chat"]').getByText("已中断。你可以在当前会话继续发送消息。", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
 
-      await page.locator(".personal-run-row").first().click();
-      const rowHandle = page.locator(".personal-run-row").first();
+      if (!await currentRuntimeRun.isVisible()) await page.locator(".personal-activity-summary > summary").click();
+      await currentRuntimeRun.click();
+      const rowHandle = currentRuntimeRun;
       await page.getByRole("button", { name: /关闭详情/ }).press("Escape");
       await rowHandle.waitFor({ state: "visible" });
       await page.waitForFunction(

@@ -128,7 +128,8 @@ assert.match(dashboard, /NEXT_ACTION[\s\S]*下一步：/, "Session next actions 
 assert.match(tasks, /t\("tasks\.viewResult"\)/, "Tasks expose a direct result entry when a Session has answered");
 assert.match(tasks, /t\("tasks\.pendingAndRunning"\)/, "Tasks do not imply that every uncompleted Todo already has an active Run");
 assert.match(tasks, /t\("tasks\.chatRecent"\)/, "Tasks surface the latest Goal conversation without forcing a tab switch");
-assert.match(tasks, /t\("tasks\.chatUnchangedDescription"\)/, "Tasks explain that ordinary Chat does not silently mutate Todo state");
+// The browser journey verifies that ordinary Chat is read-only and the
+// explicit draft action changes only the composer, before any confirmed apply.
 assert.doesNotMatch(tasks, /personal-task-capability-callout|tab: "capabilities"/, "Goal Tasks does not spend a full-width row on capability settings");
 assert.match(header, /aria-label=\{t\("header\.goalSettings"\)\}/, "The Goal settings entry has an accessible label");
 assert.match(header, /onClick=\{onOpenGoalCapabilities\}/, "The Goal settings entry opens the existing capability owner directly");
@@ -155,8 +156,8 @@ assert.match(page, /t\("proposal\.primary\.goalCreate"\)/, "Goal creation names 
 assert.match(router, /const asksForMutation/, "Execution routing remains explicit inside the Router contract");
 assert.match(timeline, /t\("timeline\.waitingConfirmation"\)/, "Historical gated proposals are grouped into a compact summary");
 assert.match(timeline, /gatedItems\.length/, "The compact Gate summary exposes the pending count");
-assert.match(page, /Boolean\(item\.run\.sessionId\)/, "Running count requires a discovered execution Session");
-assert.match(page, /Boolean\(item\.run\.canInterrupt\)/, "Running count requires an active interruptible turn");
+assert.match(timeline, /Boolean\(item\.run\.sessionId\)/, "Running count requires a discovered execution Session");
+assert.match(timeline, /Boolean\(item\.run\.canInterrupt\)/, "Running count requires an active interruptible turn");
 assert.match(page, /accept="image\/png,image\/jpeg,image\/webp,image\/gif"/, "Composer accepts bounded image types");
 assert.match(page, /imageInputRef\.current\?\.click\(\)/, "Attachment button explicitly opens the native file chooser");
 assert.match(page, /onDrop=\{\(event\)/, "Composer accepts dragged image files");

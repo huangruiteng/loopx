@@ -1457,6 +1457,12 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       }
       const body = request.postDataJSON();
       state.loopxModeRequests.push({ sessionId, ...body });
+      if (body.operation === "pause") {
+        const paused = {...current, active_turn_id: null, paused: true, native: {...current.native, status: "paused"}};
+        loopxModes.set(sessionId, paused);
+        await route.fulfill({json: paused});
+        return;
+      }
       if (body.operation === "operations") {
         const items = body.cursor ? [{record_id: "c".repeat(64), operation_id: "needs-recovery",
           agent_id: "cloud-reviewer", todo_id: "todo_review", status: "running", worker_active: false, recovery_required: true}]
