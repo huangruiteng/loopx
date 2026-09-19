@@ -271,6 +271,28 @@ def test_unadmitted_commands_never_supply_evidence_or_success(tmp_path: Path) ->
     assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
 
 
+@pytest.mark.parametrize("premature", ["read", "author"])
+def test_pre_admission_workspace_access_is_rejected_with_recovery(premature: str, tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    def recover(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        error = json.loads(request["messages"][-1]["content"])
+        assert error["error_code"] == ("workspace_read_before_quota" if premature == "read" else "vision_authoring_before_quota")
+        assert "quota admission" in error["output"]
+        assert not (tmp_path / "actor/project/decision.json").exists()
+        return ScriptedExecToolAction(fixture.quota_guard_command)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction("cat fixture/permission-config.json") if premature == "read" else heredoc_action,
+        recover, ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json"),
+        heredoc_action, projected_refresh, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="pre-admission-recovery", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is True
+    assert receipt["tool_call_count"] == 6
+    assert receipt["vision_closeout"]["spend_count"] == 1
+
+
 @pytest.mark.parametrize("extra_reads,passed", [(11, True), (12, False)])
 def test_full_closeout_budget_boundary_never_waives_settlement(extra_reads: int, passed: bool, tmp_path: Path) -> None:
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)

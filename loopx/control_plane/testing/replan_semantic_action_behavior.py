@@ -930,7 +930,7 @@ def _handle_clock_command(output: str, state: _QualificationState) -> str:
 
 def _handle_workspace_read(command: str, state: _QualificationState) -> str:
     if state.fixture.required_vision and not state.seen_quota:
-        raise ValueError("workspace_read_before_quota")
+        raise VisionHostAdmissionRejected("workspace_read_before_quota", "Workspace access requires quota admission from the heartbeat's quota guard first. No workspace read ran or supplied evidence.")
     output, read_frontier, read_work_source, exit_code = _execute_workspace_read(
         command,
         fixture=state.fixture,

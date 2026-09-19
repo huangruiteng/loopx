@@ -45,7 +45,8 @@ VISION_HOST_INSTRUCTION = (
 )
 
 VISION_EXEC_TOOL_DESCRIPTION = (
-    "Execute bounded fixture commands, not an unrestricted shell. Workspace reads "
+    "Execute bounded fixture commands, not an unrestricted shell. Workspace access "
+    "requires quota admission first; premature access returns an error without execution. Workspace reads "
     "support pwd, ls (-a/-l), find (maxdepth at most 4), rg --files, cat, head and "
     "sed -n, optionally joined with &&, || or ; (at most 8 statements). Root "
     "loopx --help and loopx refresh-state --help are read-only queries and may "
@@ -204,7 +205,7 @@ def dispatch_vision_closeout(
     heredoc = _json_heredoc(command)
     if heredoc is not None:
         if not state.seen_quota:
-            raise ValueError("vision_authoring_before_quota")
+            raise VisionHostAdmissionRejected("vision_authoring_before_quota", "Workspace authoring requires quota admission first.")
         name, content, suffix = heredoc
         result: tuple[str, str, bool] = (_write_json_file(state.fixture.project_root, name, content, authored_paths=state.authored_paths), "vision_file_authoring", False)
         for following in suffix:
@@ -217,7 +218,7 @@ def dispatch_vision_closeout(
         return result
     if command.startswith("apply_patch"):
         if not state.seen_quota:
-            raise ValueError("vision_authoring_before_quota")
+            raise VisionHostAdmissionRejected("vision_authoring_before_quota", "Workspace authoring requires quota admission first.")
         return _authored_file(command, state.fixture.project_root, authored_paths=state.authored_paths), "vision_file_authoring", False
     tokens = loopx_command_tokens(command) or []
     if "refresh-state" not in tokens and "spend-slot" not in tokens:

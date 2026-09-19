@@ -815,6 +815,8 @@ the entire plan before execution. Ordinary nonzero reads return an exit code and
 bounded output to the model; recovery consumes the same call budget and a failed
 read supplies no evidence. Unadmitted commands likewise return a no-execution
 error instead of ending the conversation; their grammar limits are not raised.
+Workspace access before quota admission is also rejected without execution and
+returned as tool feedback; it supplies no evidence and consumes a call.
 Unsupported programs and rejected file-authoring operations never execute.
 Pre-execution path, overwrite, JSON or authoring-syntax rejection returns tool
 feedback without creating the file or running a suffix, with the rejected
