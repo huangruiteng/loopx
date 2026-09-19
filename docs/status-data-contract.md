@@ -1661,7 +1661,10 @@ Review Packet source-of-truth rule:
   output returns a minimized handoff payload instead of the full operator
   packet. To keep the hot path compact, handoff-only JSON does not expose a separate
   `handoff_followthrough_summary` prose field; that prose remains available in
-  the full Review Packet and embedded handoff text;
+  the full Review Packet and embedded handoff text. A fragmented handoff is the
+  one case where handoff-only output exceeds one shard: markdown prints every
+  shard with a relay header and JSON adds `project_agent_handoff_fragments` plus
+  `handoff_fragment_manifest`, without adding any other Review Packet content;
 - project-agent handoff commands redact local absolute registry/runtime paths
   before they enter `project_agent_command`, `project_agent_handoff`, or
   `handoff_text`;
@@ -1670,6 +1673,28 @@ Review Packet source-of-truth rule:
   block, and carry only the target goal guard, minimal-context rule, source
   label, optional compact post-handoff delivery scale, optional delivery
   contract, forwarding/execution boundary, command, and stop condition;
+- overflow handling is lossless: when the prepared handoff still exceeds the
+  16 line / 1800 character budget after the lossless command-block
+  normalization, it is split into ordered, independently verifiable shards
+  instead of dropping prefixed sections. Shard 0 stays in
+  `project_agent_handoff` with the same position and field semantics;
+  continuation shards are exposed as `project_agent_handoff_fragments`,
+  accompanied by a compact `handoff_fragment_manifest` (stable set id, total,
+  original size, per-shard sizes). Each shard starts with one
+  `<!--loopx-handoff ... -->` envelope line carrying the content-derived set
+  id, the `i`/`n` sequence, a per-shard payload checksum, the previous-shard
+  hash chain, and the full-content SHA-256. Receivers concatenate by sequence
+  only after every payload checksum, the hash chain, set consistency, and the
+  full-content digest verify; missing shards, out-of-order delivery,
+  duplicate/conflicting imports, or altered content fail with explicit errors.
+  The set id and every shard are deterministic from the handoff content, so
+  regenerating the same handoff yields identical shards and re-importing a
+  shard is a no-op. Fenced command blocks are never torn across a shard
+  boundary (an unfinished fence is closed and re-opened with strip-only
+  transport markers), and over-long single lines use continuation markers,
+  so reassembly restores the original handoff byte-for-byte. A handoff that
+  fits the budget carries no envelope and stays byte-identical to the legacy
+  single-text output;
 - `handoff_delivery_contract` is optional structured guidance derived from the
   current `handoff_readiness` plus `project_asset.execution_profile`, not a
   target-specific hack. When repeated small-scale follow-through reaches the
