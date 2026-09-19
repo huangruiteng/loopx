@@ -245,6 +245,9 @@ def test_pause_fences_dispatch_and_does_not_cancel_members(mode, monkeypatch):
             ][0]["id"]
             == "review"
         )
+        inventory = adapter.session.read_tool_handler(TOOL["name"], {"action": "operations"})
+        assert inventory["ok"] and inventory["items"] == []
+        assert inventory["page_readback_complete"] and not inventory["has_more"]
 
         # Pause persists before attempting potentially slow provider interruption.
         def interrupt(**_):
@@ -258,6 +261,7 @@ def test_pause_fences_dispatch_and_does_not_cancel_members(mode, monkeypatch):
 
         monkeypatch.setattr(service.controller, "interrupt_turn", interrupt)
         apply(mode, "pause")
+        assert adapter.session.read_tool_handler(TOOL["name"], {"action": "operations"})["error"] == "conversation_execution_inactive"
         with pytest.raises(Exception, match="active conversation execution"):
             apply(mode, "message", delivery_mode="queue", message="After pause")
         assert adapter.session.read_tool_handler("loopx_context_read", {}) == {

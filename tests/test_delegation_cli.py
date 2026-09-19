@@ -60,6 +60,17 @@ def test_attached_cli_disconnect_retry_and_verified_return(service):
     assert demo.canonical_tasks(root)["todo_analyst-initial"]["done"]
     assert result["artifacts"][0]["sha256"]
 
+    # A fresh CLI needs only the requester binding, not remembered operation ids.
+    status, inventory = cli(runner, "operations")
+    assert status == 0 and inventory["page_readback_complete"]
+    assert inventory["items"][0]["operation_id"] == "cli-work"
+    assert inventory["items"][0]["status"] == "accepted"
+    assert inventory["items"][0]["artifacts"][0]["sha256"] == result["artifacts"][0]["sha256"]
+    assert "text" not in inventory["items"][0]["artifacts"][0]
+    assert (root / "analyst" / "initial" / "host-invocations").read_text() == "1"
+    status, other = cli(runner, "operations", actor="reviewer")
+    assert status == 0 and other["items"] == []
+
     status, denied = cli(runner, "read", "--operation-id", "cli-work", actor="reviewer")
     assert status == 1 and not denied["ok"]
     # Changing an accepted artifact cannot be hidden behind the saved result.
@@ -67,6 +78,10 @@ def test_attached_cli_disconnect_retry_and_verified_return(service):
     output.write_text("{}")
     status, stale = cli(runner, "read", "--operation-id", "cli-work")
     assert status == 1 and not stale["ok"]
+    status, inventory = cli(runner, "operations")
+    assert status == 0 and not inventory["page_readback_complete"]
+    assert inventory["items"][0]["status"] == "unavailable"
+    assert "artifacts" not in inventory["items"][0]
 
 
 def test_cli_invalid_inputs_do_not_launch_work(service):
@@ -84,6 +99,11 @@ def test_cli_invalid_inputs_do_not_launch_work(service):
     status, result = cli(runner, "resume", "--operation-id", "missing")
     assert status == 1 and "--execute" in result["error"]
     assert not (root / "host-started").exists()
+    for arguments in [("--limit", "0"), ("--cursor", "invalid"), ("--execute",), ("--operation-id", "wrong")]:
+        status, result = cli(runner, "operations", *arguments)
+        assert status == 1 and not result["ok"]
+    status, result = cli(runner, "list", "--limit", "5")
+    assert status == 1 and not result["ok"]
 
 
 def test_shared_execution_host_does_not_require_optional_mcp():

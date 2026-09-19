@@ -137,9 +137,14 @@ def test_detached_result_reconnects_without_duplicate_execution(service):
         async with stdio_client(params) as (reader, writer):
             async with ClientSession(reader, writer) as session:
                 await session.initialize()
+                inventory = await session.call_tool("list_delegations", {})
+                assert not inventory.isError and json.loads(inventory.content[0].text)["items"] == []
                 result = await session.call_tool("start_delegation", {
                     "binding_id": "analysis", "operation_id": "analysis-1", "brief": brief()})
                 assert not result.isError
+                inventory = await session.call_tool("list_delegations", {})
+                assert not inventory.isError
+                assert json.loads(inventory.content[0].text)["items"][0]["operation_id"] == "analysis-1"
                 return json.loads(result.content[0].text)
         # Exiting the real stdio session closes the requesting MCP process.
     first = asyncio.run(disconnect_requester())
