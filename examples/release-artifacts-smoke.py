@@ -58,11 +58,11 @@ def main() -> int:
         "project"
     ]
     assert project_metadata["urls"] == {
-        "Homepage": "https://huangruiteng.github.io/loopx/",
-        "Documentation": "https://huangruiteng.github.io/loopx/docs/",
-        "Repository": "https://github.com/huangruiteng/loopx",
-        "Issues": "https://github.com/huangruiteng/loopx/issues",
-        "Changelog": "https://github.com/huangruiteng/loopx/releases",
+        "Homepage": "https://loopx-project.github.io/loopx/",
+        "Documentation": "https://loopx-project.github.io/loopx/docs/",
+        "Repository": "https://github.com/loopx-project/loopx",
+        "Issues": "https://github.com/loopx-project/loopx/issues",
+        "Changelog": "https://github.com/loopx-project/loopx/releases",
     }
 
     invalid_tag = run("validate-tag", "v999.0.0")
