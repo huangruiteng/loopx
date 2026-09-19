@@ -759,12 +759,18 @@ def _merge_cursor_mcp(cursor_root: Path, *, uninstall: bool, execute: bool) -> s
     return "written"
 
 
-def _pi_extension_path(project_root: Path) -> Path:
-    return project_root / ".pi" / "extensions" / "loopx-goal.ts"
+def _pi_extension_root(project_root: Path, *, scope: str, user_home: Path) -> Path:
+    if scope == "user":
+        return user_home / ".pi" / "agent" / "extensions" / "loopx"
+    return project_root / ".pi" / "extensions"
 
 
-def _pi_runtime_path(project_root: Path) -> Path:
-    return project_root / ".pi" / "extensions" / "pi-goal-loop-runtime.mjs"
+def _pi_extension_path(extension_root: Path) -> Path:
+    return extension_root / "loopx-goal.ts"
+
+
+def _pi_runtime_path(extension_root: Path) -> Path:
+    return extension_root / "pi-goal-loop-runtime.mjs"
 
 
 def install_slash_commands(
@@ -785,6 +791,8 @@ def install_slash_commands(
     agy_home: str | None = None,
     kiro_home: str | None = None,
     pi_project: str | None = None,
+    pi_scope: str = "project",
+    pi_user_home: str | None = None,
 ) -> dict[str, Any]:
     specs = _command_prompt_specs(cli_bin=cli_bin, include_legacy_aliases=include_legacy_aliases)
     effective_surfaces = _normalize_surfaces(surfaces)
@@ -796,7 +804,13 @@ def install_slash_commands(
     zcode_root = _zcode_home(zcode_home or zcode_agents_home)
     agy_root = _agy_home(agy_home)
     kiro_root = _kiro_home(kiro_home)
+    if pi_scope not in {"project", "user"}:
+        raise ValueError("pi_scope must be 'project' or 'user'")
     pi_project_root = Path(pi_project or ".").expanduser().resolve()
+    pi_home = Path(pi_user_home).expanduser().resolve() if pi_user_home else Path.home()
+    pi_extension_root = _pi_extension_root(
+        pi_project_root, scope=pi_scope, user_home=pi_home
+    )
     installed: list[dict[str, Any]] = []
 
     if with_goal_bridge and "opencode" not in effective_surfaces:
@@ -1308,8 +1322,8 @@ def install_slash_commands(
                 )
 
     if "pi" in effective_surfaces:
-        extension_path = _pi_extension_path(pi_project_root)
-        runtime_path = _pi_runtime_path(pi_project_root)
+        extension_path = _pi_extension_path(pi_extension_root)
+        runtime_path = _pi_runtime_path(pi_extension_root)
         extension_content = pi_extension_source()
         runtime_content = pi_runtime_source()
         if uninstall:
@@ -1408,8 +1422,9 @@ def install_slash_commands(
             "opencode_command_dir": str(opencode_root / "commands") if "opencode" in effective_surfaces else None,
             "opencode_plugin_path": str(opencode_root / "plugins" / "loopx-goal.js") if "opencode" in effective_surfaces and with_goal_bridge else None,
             "opencode_package_path": str(opencode_root / "package.json") if "opencode" in effective_surfaces and with_goal_bridge else None,
-            "pi_extension_path": str(_pi_extension_path(pi_project_root)) if "pi" in effective_surfaces else None,
-            "pi_runtime_path": str(_pi_runtime_path(pi_project_root)) if "pi" in effective_surfaces else None,
+            "pi_scope": pi_scope if "pi" in effective_surfaces else None,
+            "pi_extension_path": str(_pi_extension_path(pi_extension_root)) if "pi" in effective_surfaces else None,
+            "pi_runtime_path": str(_pi_runtime_path(pi_extension_root)) if "pi" in effective_surfaces else None,
             "status_counts": status_counts,
             "skip_policy": (
                 "Uninstall removes only LoopX-managed files; user files without a LoopX managed marker are preserved"

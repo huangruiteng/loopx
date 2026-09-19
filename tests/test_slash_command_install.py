@@ -598,6 +598,42 @@ def test_pi_install_writes_self_contained_extension_into_project(
     assert not (tmp_path / ".pi" / "extensions" / "package.json").exists()
 
 
+def test_pi_user_scope_installs_atomic_extension_unit(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    payload = install_slash_commands(
+        execute=True,
+        surfaces=["pi"],
+        pi_scope="user",
+        pi_user_home=str(home),
+    )
+
+    root = home / ".pi" / "agent" / "extensions" / "loopx"
+    assert payload["summary"]["pi_scope"] == "user"
+    assert payload["summary"]["pi_extension_path"] == str(root / "loopx-goal.ts")
+    assert payload["summary"]["pi_runtime_path"] == str(root / "pi-goal-loop-runtime.mjs")
+    assert (root / "loopx-goal.ts").is_file()
+    assert (root / "pi-goal-loop-runtime.mjs").is_file()
+
+
+def test_pi_user_scope_preflight_blocks_both_files(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    root = home / ".pi" / "agent" / "extensions" / "loopx"
+    root.mkdir(parents=True)
+    runtime = root / "pi-goal-loop-runtime.mjs"
+    runtime.write_text("user owned\n", encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True,
+        surfaces=["pi"],
+        pi_scope="user",
+        pi_user_home=str(home),
+    )
+
+    assert payload["ok"] is False
+    assert not (root / "loopx-goal.ts").exists()
+    assert runtime.read_text(encoding="utf-8") == "user owned\n"
+
+
 def test_pi_install_does_not_touch_default_all_surfaces(tmp_path: Path) -> None:
     payload = install_slash_commands(
         execute=True,
