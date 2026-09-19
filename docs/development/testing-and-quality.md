@@ -817,8 +817,14 @@ read supplies no evidence. Unadmitted commands likewise return a no-execution
 error instead of ending the conversation; their grammar limits are not raised.
 Unsupported programs and rejected file-authoring operations never execute.
 Pre-execution path, overwrite, JSON or authoring-syntax rejection returns tool
-feedback without creating the file or running a suffix. Invalid semantic/binding
-claims and errors after an effect remain terminal failures. The host does not add missing
+feedback without creating the file or running a suffix, with the rejected
+operation and applicable restriction. An actor may revise only its own JSON
+drafts; original fixture inputs stay immutable. A rejected evidence reference
+returns the already-observed references before refresh executes, so the actor
+can correct its draft. Real CLI nonzero results return their exit code and
+bounded diagnostic; this does not imply rollback or waive original-Turn recovery
+and settlement fences. Identity and durable-verification failures remain
+terminal. The host does not add missing
 semantic fields or execute arbitrary model shell programs. These host semantics
 are explicit for required-vision qualification; other actors retain their current
 contracts. Receipts distinguish tool execution errors, accepted writeback and
