@@ -824,6 +824,9 @@ are explicit for required-vision qualification; other actors retain their curren
 contracts. Receipts distinguish tool execution errors, accepted writeback and
 settled closeout without persisting raw conversations. A host grammar rejection
 before writeback is not evidence of a core semantic-admission failure.
+Shell assignment prefixes are rejected before CLI identity checks, not silently
+discarded. An observed evidence item's id and declared source reference both
+identify that same evidence; arbitrary or unread sources do not qualify it.
 The other turn cases remain
 bounded packet-interpretation checks. Nine core-contract scenarios cover
 onboarding, agent identity and goal selection, selected todo, peer identity
