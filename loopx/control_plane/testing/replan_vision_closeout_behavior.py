@@ -20,6 +20,10 @@ from ..quota.effective_action import EffectiveAction
 if TYPE_CHECKING:
     from .replan_semantic_action_behavior import _QualificationState
 
+# Full closeout includes evidence discovery, authoring, refresh and settlement;
+# its resource bound is independent of the narrower single-action qualifier.
+REQUIRED_VISION_CLOSEOUT_MAX_CALLS = 16
+
 VISION_HOST_INSTRUCTION = (
     "You are Codex operating a hermetic LoopX project. Follow the heartbeat and "
     "the live control-plane packet, including its semantic writeback and settlement. "

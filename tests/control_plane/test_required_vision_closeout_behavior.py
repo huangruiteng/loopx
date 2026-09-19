@@ -214,18 +214,18 @@ def test_read_error_reaches_model_and_recovery_still_requires_full_closeout(tmp_
     assert "bounded" in transport.requests[0]["tools"][0]["function"]["description"]
 
 
-def test_read_failures_consume_the_unchanged_call_budget(tmp_path: Path) -> None:
+def test_read_failures_consume_the_full_closeout_call_budget(tmp_path: Path) -> None:
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
     transport = ScriptedDoubaoExecTransport([
         ScriptedExecToolAction(fixture.quota_guard_command),
-        *[ScriptedExecToolAction("cat missing.json") for _ in range(6)],
+        *[ScriptedExecToolAction("cat missing.json") for _ in range(15)],
     ])
     receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
         qualification_id="read-errors-exhaust-budget", fixture_root=tmp_path / "actor", required_vision=True,
     )
     assert receipt["qualification_passed"] is False
     assert receipt["failure_code"] == "tool_call_budget_exhausted"
-    assert receipt["tool_call_count"] == 7
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
     assert receipt["semantic_action_accepted"] is False
 
 
@@ -260,7 +260,7 @@ def test_unadmitted_commands_never_supply_evidence_or_success(tmp_path: Path) ->
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
     transport = ScriptedDoubaoExecTransport([
         ScriptedExecToolAction(fixture.quota_guard_command),
-        *[ScriptedExecToolAction("find . -maxdepth 5 -type f") for _ in range(6)],
+        *[ScriptedExecToolAction("find . -maxdepth 5 -type f") for _ in range(15)],
     ])
     receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
         qualification_id="unadmitted-command-budget", fixture_root=tmp_path / "actor", required_vision=True,
@@ -268,7 +268,43 @@ def test_unadmitted_commands_never_supply_evidence_or_success(tmp_path: Path) ->
     assert receipt["qualification_passed"] is False
     assert receipt["failure_code"] == "tool_call_budget_exhausted"
     assert receipt["semantic_action_accepted"] is False
-    assert receipt["tool_call_count"] == 7
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
+
+
+@pytest.mark.parametrize("extra_reads,passed", [(11, True), (12, False)])
+def test_full_closeout_budget_boundary_never_waives_settlement(extra_reads: int, passed: bool, tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json"),
+        *[ScriptedExecToolAction("pwd") for _ in range(extra_reads)],
+        vision_patch_action, projected_refresh, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="closeout-budget-boundary", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is passed
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
+    assert receipt["semantic_action_accepted"] is True
+    assert receipt["vision_closeout"]["settled"] is passed
+    if passed:
+        assert receipt["vision_closeout"]["spend_count"] == 1
+    else:
+        assert receipt["failure_code"] == "tool_call_budget_exhausted"
+
+
+def test_narrow_semantic_action_keeps_seven_call_budget(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle")
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        *[ScriptedExecToolAction("pwd") for _ in range(7)],
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="narrow-budget-unchanged", fixture_root=tmp_path / "actor",
+    )
+    assert receipt["qualification_passed"] is False
+    assert receipt["failure_code"] == "tool_call_budget_exhausted"
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 7
 
 
 def test_help_host_extension_does_not_change_narrow_actor_contract(tmp_path: Path) -> None:

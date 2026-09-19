@@ -34,6 +34,7 @@ from .model_tool_behavior import (
 from .selected_todo_tool_behavior import bounded_workspace_read_plan
 from .replan_vision_closeout_behavior import (
     dispatch_vision_closeout, VISION_HOST_INSTRUCTION, VISION_EXEC_TOOL_DESCRIPTION,
+    REQUIRED_VISION_CLOSEOUT_MAX_CALLS,
 )
 
 REPLAN_SEMANTIC_ACTION_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
@@ -97,6 +98,11 @@ class _QualificationState:
     successor_reentry_observation: dict[str, Any] | None = None
     semantic_reentry_observation: dict[str, Any] | None = None
     vision_closeout: dict[str, Any] | None = None
+
+    @property
+    def tool_call_limit(self) -> int:
+        return (REQUIRED_VISION_CLOSEOUT_MAX_CALLS if self.fixture.required_vision
+                else REPLAN_SEMANTIC_ACTION_BEHAVIOR_MAX_CALLS)
 
 
 def _digest(value: str) -> str:
@@ -861,6 +867,7 @@ def _qualification_receipt(
     receipt["qualification_scope"] = (
         "required_vision_closeout" if state.fixture.required_vision else "semantic_action"
     )
+    receipt["tool_call_limit"] = state.tool_call_limit
     if state.vision_closeout is not None:
         receipt["vision_closeout"] = state.vision_closeout
         receipt["semantic_action_accepted"] = bool(state.semantic_delta and state.semantic_delta.get("accepted"))
@@ -1261,7 +1268,7 @@ def _run_qualification_loop(
     *,
     qualification_id: str,
 ) -> dict[str, Any]:
-    for _ in range(REPLAN_SEMANTIC_ACTION_BEHAVIOR_MAX_CALLS):
+    for _ in range(state.tool_call_limit):
         tool_call = client.next_tool_call(
             state.messages,
             tool_description=VISION_EXEC_TOOL_DESCRIPTION if state.fixture.required_vision else None,
