@@ -800,11 +800,12 @@ and qualification scope; a successful ordinary `typed_progress_repeat` refresh
 cannot qualify this journey. The narrow semantic-action gate remains useful
 but does not prove full closeout. Run this focused journey with
 `uv run --extra test python scripts/qualify-doubao-replan-semantic-action-live.py --required-vision --qualification-id <public-safe-run-id>`.
-The complete required-vision journey has a 16-call bound; the narrow
+The complete required-vision journey has a 32-call bound; the narrow
 single-semantic-action qualifier retains seven. The increased budget covers
-evidence discovery, JSON authoring, refresh, settlement and bounded recovery;
+evidence discovery, JSON authoring, refresh, settlement and bounded recovery,
+including multiple field-validation corrections before a final spend;
 it does not authorize more effects or weaken the checkpoint/readback oracle.
-Each receipt records `tool_call_limit` beside actual usage. Earlier seven-call
+Each receipt records `tool_call_limit` beside actual usage. Earlier seven- and sixteen-call
 failures remain failures; the revised budget defines a new qualification, not
 a retrospective pass. Limit exhaustion after refresh but before spend still
 fails. The tool description declares the actual

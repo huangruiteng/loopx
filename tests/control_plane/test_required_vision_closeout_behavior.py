@@ -182,13 +182,14 @@ def test_host_composes_bounded_reads_and_real_cli_help(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("command", ["loopx --help", "cat replan-frontier.json && loopx refresh-state --help"])
 def test_read_and_help_extension_preserves_quota_first(command: str, tmp_path: Path) -> None:
-    transport = ScriptedDoubaoExecTransport([ScriptedExecToolAction(command)])
+    transport = ScriptedDoubaoExecTransport([ScriptedExecToolAction(command), ScriptedAssistantAction("Stopped before quota admission.")])
     receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
         qualification_id="read-before-quota", fixture_root=tmp_path, required_vision=True,
     )
     assert receipt["qualification_passed"] is False
-    assert receipt["failure_code"] == "workspace_read_before_quota"
+    assert receipt["tool_call_receipts"][0]["error_code"] == "workspace_read_before_quota"
     assert receipt["semantic_action_accepted"] is False
+    assert receipt["boundary"]["read_only_host_commands_executed"] is False
 
 
 def test_read_error_reaches_model_and_recovery_still_requires_full_closeout(tmp_path: Path) -> None:
@@ -218,14 +219,14 @@ def test_read_failures_consume_the_full_closeout_call_budget(tmp_path: Path) -> 
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
     transport = ScriptedDoubaoExecTransport([
         ScriptedExecToolAction(fixture.quota_guard_command),
-        *[ScriptedExecToolAction("cat missing.json") for _ in range(15)],
+        *[ScriptedExecToolAction("cat missing.json") for _ in range(31)],
     ])
     receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
         qualification_id="read-errors-exhaust-budget", fixture_root=tmp_path / "actor", required_vision=True,
     )
     assert receipt["qualification_passed"] is False
     assert receipt["failure_code"] == "tool_call_budget_exhausted"
-    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 32
     assert receipt["semantic_action_accepted"] is False
 
 
@@ -260,7 +261,7 @@ def test_unadmitted_commands_never_supply_evidence_or_success(tmp_path: Path) ->
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
     transport = ScriptedDoubaoExecTransport([
         ScriptedExecToolAction(fixture.quota_guard_command),
-        *[ScriptedExecToolAction("find . -maxdepth 5 -type f") for _ in range(15)],
+        *[ScriptedExecToolAction("find . -maxdepth 5 -type f") for _ in range(31)],
     ])
     receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
         qualification_id="unadmitted-command-budget", fixture_root=tmp_path / "actor", required_vision=True,
@@ -268,7 +269,7 @@ def test_unadmitted_commands_never_supply_evidence_or_success(tmp_path: Path) ->
     assert receipt["qualification_passed"] is False
     assert receipt["failure_code"] == "tool_call_budget_exhausted"
     assert receipt["semantic_action_accepted"] is False
-    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 32
 
 
 @pytest.mark.parametrize("premature", ["read", "author"])
@@ -293,7 +294,7 @@ def test_pre_admission_workspace_access_is_rejected_with_recovery(premature: str
     assert receipt["vision_closeout"]["spend_count"] == 1
 
 
-@pytest.mark.parametrize("extra_reads,passed", [(11, True), (12, False)])
+@pytest.mark.parametrize("extra_reads,passed", [(27, True), (28, False)])
 def test_full_closeout_budget_boundary_never_waives_settlement(extra_reads: int, passed: bool, tmp_path: Path) -> None:
     fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
     transport = ScriptedDoubaoExecTransport([
@@ -306,7 +307,7 @@ def test_full_closeout_budget_boundary_never_waives_settlement(extra_reads: int,
         qualification_id="closeout-budget-boundary", fixture_root=tmp_path / "actor", required_vision=True,
     )
     assert receipt["qualification_passed"] is passed
-    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 16
+    assert receipt["tool_call_count"] == receipt["tool_call_limit"] == 32
     assert receipt["semantic_action_accepted"] is True
     assert receipt["vision_closeout"]["settled"] is passed
     if passed:
