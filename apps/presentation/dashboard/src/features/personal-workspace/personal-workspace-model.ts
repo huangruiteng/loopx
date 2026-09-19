@@ -1,4 +1,4 @@
-import type { CollaborationReadback } from "../../data/chat";
+import type { CollaborationReadback } from "../../data/chat-model";
 import type { TeamPlanAppliedOutcome } from "./team-plan-preview";
 import type { ActionReviewPlan } from "../../../../../../loopx/control_plane/presentation/action_review_plan.js";
 import type { GoalAcceptanceObservation } from "../../data/goal-acceptance-observation";

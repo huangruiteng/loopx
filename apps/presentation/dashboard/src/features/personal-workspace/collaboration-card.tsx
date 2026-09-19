@@ -1,4 +1,4 @@
-import type { CollaborationReadback } from "../../data/chat";
+import type { CollaborationReadback } from "../../data/chat-model";
 import { useWorkspaceI18n } from "./i18n";
 import "./collaboration-card.css";
 

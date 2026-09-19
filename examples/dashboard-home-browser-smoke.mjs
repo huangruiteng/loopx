@@ -686,6 +686,18 @@ async function assertNoPanelContentOverflow(page, label) {
   }
 }
 
+async function assertDrawerTitleFocus(page, label) {
+  try {
+    await page.waitForFunction(
+      () => document.activeElement?.id === "personal-drawer-title",
+      undefined,
+      { timeout: 2_000 },
+    );
+  } catch {
+    throw new Error(`${label} title did not receive focus.`);
+  }
+}
+
 async function assertDecisionFrameVisible(page, label) {
   const decisionFrame = page.locator('[data-testid^="share-decision-frame-"]').first();
   await decisionFrame.scrollIntoViewIfNeeded();
@@ -748,6 +760,8 @@ async function assertResearchTruthFirstScreen(page, label) {
 }
 
 async function installChatApiFixture(page, { activeTurn = false } = {}) {
+  let createdSessionId = "fixture-manager-session";
+  const createdTurnId = "fixture-manager-turn";
   const activeSession = {
     session_id: "fixture-manager-recovery",
     goal_id: "showcase-user-gate-safe-side-path",
@@ -830,6 +844,23 @@ async function installChatApiFixture(page, { activeTurn = false } = {}) {
     }
     if (url.pathname === "/api/chat/sessions" && request.method() === "POST") {
       const body = request.postDataJSON();
+      createdSessionId = activeTurn
+        ? activeSession.session_id
+        : `fixture-${body.context_kind}-${body.goal_id || "global"}`;
+      const session = activeTurn ? activeSession : {
+        session_id: createdSessionId,
+        goal_id: body.goal_id,
+        agent_id: body.agent_id,
+        adapter_kind: "codex_app_server",
+        channel_id: body.context_kind,
+        status: "ready",
+        active_turn_id: null,
+        last_error_code: null,
+        created_at: "2026-08-10T02:00:00Z",
+        updated_at: "2026-08-10T02:00:00Z",
+        last_activity_at: "2026-08-10T02:00:00Z",
+        resumable: true,
+      };
       await route.fulfill({
         contentType: "application/json",
         json: {
@@ -837,11 +868,56 @@ async function installChatApiFixture(page, { activeTurn = false } = {}) {
           goal_id: body.goal_id,
           ok: true,
           resumed: activeTurn,
-          session_id: activeTurn
-            ? activeSession.session_id
-            : `fixture-${body.context_kind}-${body.goal_id}`,
+          session_id: createdSessionId,
+          session,
         },
         status: 201,
+      });
+      return;
+    }
+    if (
+      !activeTurn
+      && url.pathname === `/api/chat/sessions/${createdSessionId}/turns`
+      && request.method() === "POST"
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          ok: true,
+          session_id: createdSessionId,
+          turn_id: createdTurnId,
+          created: true,
+          status: "queued",
+          events_url: `/api/chat/sessions/${createdSessionId}/turns/${createdTurnId}/events`,
+        },
+        status: 202,
+      });
+      return;
+    }
+    if (
+      !activeTurn
+      && url.pathname === `/api/chat/sessions/${createdSessionId}/turns/${createdTurnId}/events`
+    ) {
+      const sseEvent = (id, kind, payload) =>
+        `id: ${id}\nevent: ${kind}\ndata: ${JSON.stringify({
+          event_id: id,
+          sequence: Number(id),
+          kind,
+          created_at: "2026-08-10T02:00:01Z",
+          payload,
+        })}\n\n`;
+      await route.fulfill({
+        body: sseEvent("1", "answer.delta", { text: "LoopX 管家建议先处理：请确认 owner 选项 A/B 的取舍。" })
+          + sseEvent("2", "turn.completed", {
+            response: {
+              schema_version: "loopx_chat_agent_response_v0",
+              message: "LoopX 管家建议先处理：请确认 owner 选项 A/B 的取舍。",
+              proposals: [],
+              gate: null,
+            },
+          }),
+        contentType: "text/event-stream",
+        status: 200,
       });
       return;
     }
@@ -916,17 +992,18 @@ async function captureHomeVisualAcceptance(page, url, label) {
 
   const isMobile = label === "mobile";
   if (!isMobile) {
-    await page.getByRole("button", { name: "将“有哪些 Goal 正在等我”填入编辑框" }).click();
-    if (!await composer.inputValue().then((val) => val.includes("有哪些 Goal 正在等我"))) {
-      throw new Error("Manager advice shortcut did not prepare the expected editable draft.");
+    await page.getByRole("button", { name: "询问全局待办", exact: true }).click();
+    if (await composer.inputValue()) {
+      throw new Error("Manager advice shortcut should send immediately without leaving a draft.");
     }
-    await sendButton.click();
     const projectedAnswer = page.locator(".personal-manager-conversation-tray .is-assistant").last();
     await projectedAnswer.waitFor({ state: "visible", timeout: 10_000 });
+    await projectedAnswer.getByText("请确认 owner 选项 A/B 的取舍。", { exact: false })
+      .waitFor({ state: "visible", timeout: 10_000 });
     const projectedAnswerText = await projectedAnswer.innerText();
     for (const text of ["LoopX 管家", "先处理", "请确认 owner 选项 A/B 的取舍"]) {
       if (!projectedAnswerText.includes(text)) {
-        throw new Error(`Manager projection answer missing truthful attribution: ${text}`);
+        throw new Error(`Manager projection answer missing truthful attribution: ${text}; answer=${projectedAnswerText}`);
       }
     }
     if (projectedAnswerText.includes("showcase-user-gate-safe-side-path")) {
@@ -981,7 +1058,7 @@ async function captureHomeVisualAcceptance(page, url, label) {
   const goalTabs = page.getByRole("navigation", { name: "Goal 视图" });
   await goalTabs.waitFor({ state: "visible", timeout: 10_000 });
   const goalHeaderText = await page.locator(".personal-channel-header").innerText();
-  for (const text of [selectedGoalTitle, "Codex", "Chat", "Tasks", "Files"]) {
+  for (const text of [selectedGoalTitle, "Codex", "概览", "对话", "任务", "成果"]) {
     if (text && !goalHeaderText.includes(text)) {
       throw new Error(`${label} Goal header missing: ${text}`);
     }
@@ -991,11 +1068,11 @@ async function captureHomeVisualAcceptance(page, url, label) {
     throw new Error(`${label} Goal composer lost its Goal context: ${goalComposerPlaceholder}`);
   }
 
-  await goalTabs.getByRole("button", { name: "Tasks" }).click();
+  await goalTabs.getByRole("button", { name: "任务", exact: true }).click();
   const taskBoard = page.locator(".personal-task-kanban");
   await taskBoard.waitFor({ state: "visible", timeout: 10_000 });
   const taskBoardText = await taskBoard.innerText();
-  for (const text of ["待确认", "待执行 / 进行中", "定时与持续", "已完成", "请确认 owner 选项 A/B 的取舍", "推进与 owner 决策独立的 safe side path"]) {
+  for (const text of ["待你确认", "待执行 / 进行中", "定时与持续", "已完成", "请确认 owner 选项 A/B 的取舍", "推进与 owner 决策独立的 safe side path"]) {
     if (!taskBoardText.includes(text)) {
       throw new Error(`${label} Tasks projection missing: ${text}`);
     }
@@ -1015,29 +1092,28 @@ async function captureHomeVisualAcceptance(page, url, label) {
     }
   }
   const closeAttention = page.getByRole("button", { name: new RegExp(`关闭详情：返回${selectedGoalTitle}`) });
-  if (!await closeAttention.evaluate((element) => document.activeElement === element)) {
-    throw new Error(`${label} Needs You detail did not receive focus.`);
-  }
+  await assertDrawerTitleFocus(page, `${label} Needs You detail`);
   await closeAttention.click();
 
   await taskBoard.getByText("推进与 owner 决策独立的 safe side path，输出公开可复现证据。", { exact: true }).click();
   const todoDrawer = page.getByRole("dialog");
   await todoDrawer.waitFor({ state: "visible", timeout: 10_000 });
   const todoText = await todoDrawer.innerText();
-  for (const text of [selectedGoalTitle, "Owner", "状态", "依赖", "下一转换", "操作", "标记完成"]) {
+  for (const text of [selectedGoalTitle, "Owner", "状态", "依赖", "下一转换", "管理任务", "标记完成"]) {
     if (text && !todoText.includes(text)) {
-      throw new Error(`${label} Todo lineage detail missing: ${text}`);
+      throw new Error(`${label} Todo lineage detail missing: ${text}; detail=${todoText}`);
     }
   }
   await page.getByRole("button", { name: new RegExp(`关闭详情：返回${selectedGoalTitle}`) }).click();
 
-  await goalTabs.getByRole("button", { name: "Files" }).click();
+  await goalTabs.getByRole("button", { name: "成果", exact: true }).click();
   await page.getByText("Files & Outputs", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
-  const filesText = await page.locator(".personal-object-list").innerText();
+  const filesList = page.getByTestId("personal-goal-outputs");
+  const filesText = await filesList.innerText();
   if (!filesText.includes("最近验证") || !filesText.includes(selectedGoalTitle)) {
     throw new Error(`${label} Files projection lost its public-safe summary or Goal lineage: ${filesText}`);
   }
-  await page.locator(".personal-object-list").getByRole("button").first().click();
+  await filesList.getByRole("button").first().click();
   const outputDrawer = page.getByRole("dialog");
   await outputDrawer.waitFor({ state: "visible", timeout: 10_000 });
   const outputText = await outputDrawer.innerText();
@@ -1051,7 +1127,7 @@ async function captureHomeVisualAcceptance(page, url, label) {
   }
   await page.getByRole("button", { name: new RegExp(`关闭详情：返回${selectedGoalTitle}`) }).click();
 
-  await goalTabs.getByRole("button", { name: "Chat" }).click();
+  await goalTabs.getByRole("button", { name: "对话", exact: true }).click();
   const chatPaneText = await page.locator(".personal-channel-scroll").innerText();
   if (!chatPaneText.includes("Codex")) {
     throw new Error(`${label} Goal Chat does not expose the owning Agent.`);
@@ -1059,17 +1135,17 @@ async function captureHomeVisualAcceptance(page, url, label) {
   const goalSummary = page.locator(".personal-channel-header");
   await goalSummary.waitFor({ state: "visible", timeout: 10_000 });
   const goalSummaryText = await goalSummary.innerText();
-  const missingGoalSummary = [selectedGoalTitle, "Codex", "Chat", "Tasks", "Files"]
+  const missingGoalSummary = [selectedGoalTitle, "Codex", "概览", "对话", "任务", "成果"]
     .filter((text) => !goalSummaryText.includes(text));
   if (missingGoalSummary.length) {
     throw new Error(`${label} Goal Chat projection missing labels: ${missingGoalSummary.join(", ")}`);
   }
-  await goalTabs.getByRole("button", { name: "Tasks" }).click();
+  await goalTabs.getByRole("button", { name: "任务", exact: true }).click();
   const planRows = page.locator(".personal-task-card");
   if (await planRows.count() === 0) {
     throw new Error(`${label} Goal Chat plan did not preserve Todo lineage.`);
   }
-  await goalTabs.getByRole("button", { name: "Chat" }).click();
+  await goalTabs.getByRole("button", { name: "对话", exact: true }).click();
   const runEvidence = page.locator(".personal-output-row").first();
   await runEvidence.waitFor({ state: "visible", timeout: 10_000 });
   if (!await runEvidence.locator("time").getAttribute("datetime") && !(await runEvidence.locator("time").innerText()).trim()) {
@@ -1082,7 +1158,7 @@ async function captureHomeVisualAcceptance(page, url, label) {
       throw new Error(`${label} Goal Chat decision card missing: ${text}`);
     }
   }
-  if (!isMobile && !/(阻塞|待处理)/u.test(decisionText)) {
+  if (!isMobile && !/(受阻|阻塞|待处理)/u.test(decisionText)) {
     throw new Error(`${label} Goal Chat decision card omitted its actionable status: ${decisionText}`);
   }
   const decisionBox = await needsYou.boundingBox();
@@ -1125,9 +1201,7 @@ async function captureHomeVisualAcceptance(page, url, label) {
   const runningDetails = page.getByRole("dialog");
   await runningDetails.waitFor({ state: "visible", timeout: 10_000 });
   const closeDetails = page.getByRole("button", { name: new RegExp(`关闭详情：返回${selectedGoalTitle}`) });
-  if (!await closeDetails.evaluate((element) => document.activeElement === element)) {
-    throw new Error(`${label} running details did not receive focus.`);
-  }
+  await assertDrawerTitleFocus(page, `${label} running details`);
   const runningDetailsText = await runningDetails.innerText();
   for (const text of ["执行 Session", "执行过程与结果", "详情与操作", "Goal", "进度", "运行记录", "本次运行产出"]) {
     if (!runningDetailsText.includes(text)) {
@@ -1164,10 +1238,11 @@ async function captureHomeVisualAcceptance(page, url, label) {
     }
 
     await goalList.locator(".personal-goal-link").filter({ hasText: "LoopX meta" }).click();
-    await page.getByRole("button", { name: "Goal 详情" }).click();
+    await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "概览", exact: true }).click();
+    await page.getByRole("button", { name: "Goal 信息", exact: true }).click();
     await runningDetails.waitFor({ state: "visible", timeout: 10_000 });
     const repairDetailsText = await runningDetails.innerText();
-    for (const text of ["Goal 详情", "需修复", "刷新 LoopX 状态，确认当前进度仍然有效", "Execution Session"]) {
+    for (const text of ["Goal 详情", "需修复", "刷新 LoopX 状态，确认当前进度仍然有效", "执行 Session"]) {
       if (!repairDetailsText.includes(text)) {
         throw new Error(`Repair running details missing: ${text}`);
       }
@@ -1278,7 +1353,7 @@ async function main() {
       const recoveredAnswer = recoveryPage.locator(".personal-manager-conversation-tray .is-assistant").last();
       await recoveredAnswer.waitFor({ state: "visible", timeout: 10_000 });
       const recoveredText = await recoveredAnswer.innerText();
-      for (const text of ["恢复中的回答。", "Codex"]) {
+      for (const text of ["恢复中的回答。", "LoopX 管家"]) {
         if (!recoveredText.includes(text)) {
           throw new Error(`Active Turn recovery did not render ${text}: ${recoveredText}`);
         }
@@ -1306,11 +1381,11 @@ async function main() {
     }
 
     // Switch to Tasks tab to validate Kanban tasks columns
-    await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "Tasks" }).click();
+    await page.getByRole("navigation", { name: "Goal 视图" }).getByRole("button", { name: "任务", exact: true }).click();
     await page.locator(".personal-task-kanban").waitFor({ state: "visible", timeout: 10_000 });
     const tasksBody = await page.locator("body").innerText();
     const requiredTasksText = [
-      "待确认",
+      "待你确认",
       "待执行 / 进行中",
       "定时与持续",
       "已完成",
@@ -1342,7 +1417,7 @@ async function main() {
       const initialStatusState = page.locator('[data-testid="initial-status-state"]');
       await initialStatusState.waitFor({ state: "visible", timeout: 10_000 });
       const initialStatusText = await initialStatusState.innerText();
-      const missingInitialStatusText = ["无法加载实时状态", "重试", "使用示例"]
+      const missingInitialStatusText = ["无法加载实时状态", "重试"]
         .filter((text) => !initialStatusText.includes(text));
       if (missingInitialStatusText.length) {
         throw new Error(`Missing explicit initial status error state for ${route}: ${initialStatusText}`);
@@ -1353,14 +1428,7 @@ async function main() {
       if (syntheticDashboardCount !== 0) {
         throw new Error(`Requested live status fell back to synthetic content for ${route}.`);
       }
-      await initialStatusState.getByRole("button", { name: "使用示例" }).click();
-      const personalHome = page.locator('[data-testid="personal-goal-home"]');
-      await personalHome.waitFor({ state: "visible", timeout: 10_000 });
-      await page.waitForTimeout(300);
-      if (new URL(page.url()).searchParams.get("statusUrl")) {
-        throw new Error("Explicit example selection did not clear the requested status URL.");
-      }
-      await page.goBack({ waitUntil: "networkidle" });
+      await initialStatusState.getByRole("button", { name: "重试", exact: true }).click();
       const restoredStatusState = page.locator('[data-testid="initial-status-state"]');
       await restoredStatusState.waitFor({ state: "visible", timeout: 10_000 });
       await restoredStatusState.getByText("无法加载实时状态", { exact: true }).waitFor({
