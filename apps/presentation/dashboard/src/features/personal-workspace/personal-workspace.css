@@ -1212,7 +1212,7 @@
   .personal-sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 35; border: 0; background: rgb(20 24 32 / 28%); cursor: default; }
   .personal-icon-button.personal-mobile-menu { display: inline-grid; flex: 0 0 36px; }
   .personal-workspace-drawer { position: fixed; inset: 0 0 0 auto; z-index: 30; width: min(410px, 90vw); }
-  .personal-workspace-drawer[data-drawer-mode="inspector"], .personal-workspace-drawer[data-drawer-mode="inspector-full"] { position: fixed; inset: 0 0 0 auto; width: min(520px, 92vw); box-shadow: -18px 0 44px rgb(30 40 64 / 14%); }
+  .personal-workspace-drawer[data-drawer-mode="inspector"], .personal-workspace-drawer[data-drawer-mode="inspector-full"] { position: fixed; inset: 0 0 0 auto; z-index: 30; width: min(520px, 92vw); box-shadow: -18px 0 44px rgb(30 40 64 / 14%); }
   .personal-run-row { grid-template-columns: 36px minmax(0, 1fr) auto 16px; }
   .personal-run-identity, .personal-run-progress { display: none; }
   .personal-home-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
