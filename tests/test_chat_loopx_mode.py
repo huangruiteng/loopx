@@ -478,3 +478,17 @@ def test_pause_cannot_enable_mode_and_ordinary_turn_is_not_execution(mode):
     with pytest.raises(Exception):
         apply(mode, "resume")
     assert service.store.load_turn(sid, ordinary["turn_id"])["status"] == "queued"
+
+
+def test_owner_team_readback_is_configured_scoped_and_does_not_start_a_turn(mode):
+    service, sid, _, settings, calls = mode
+    with pytest.raises(ValueError):
+        service.read_team(sid, {"operation": "operations"})
+    apply(mode, "configure", settings=settings)
+    before = service.store.load_session(sid)
+    result = service.read_team(sid, {"operation": "operations"})
+    assert result["items"] == [] and result["page_readback_complete"]
+    assert service.store.load_session(sid) == before
+    assert calls == []
+    with pytest.raises(ValueError, match="invalid team readback"):
+        service.read_team(sid, {"operation": "operations", "agent_id": "other"})

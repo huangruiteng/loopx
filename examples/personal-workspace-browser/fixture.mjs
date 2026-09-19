@@ -1457,6 +1457,21 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       }
       const body = request.postDataJSON();
       state.loopxModeRequests.push({ sessionId, ...body });
+      if (body.operation === "operations") {
+        const items = body.cursor ? [{record_id: "c".repeat(64), operation_id: "needs-recovery",
+          agent_id: "cloud-reviewer", todo_id: "todo_review", status: "running", worker_active: false, recovery_required: true}]
+          : [{record_id: "a".repeat(64), operation_id: "accepted-analysis", agent_id: "local-analyst",
+            todo_id: "todo_analysis", status: "accepted", worker_active: false, recovery_required: false,
+            artifacts: [{ref: "report.json", sha256: "d".repeat(64)}]},
+          {record_id: "b".repeat(64), operation_id: "stale-output", status: "unavailable", recovery_required: null}];
+        await route.fulfill({json: {items, has_more: !body.cursor, next_cursor: body.cursor ? null : "b".repeat(64), page_readback_complete: Boolean(body.cursor)}});
+        return;
+      }
+      if (body.operation === "inspect") {
+        await route.fulfill({json: {state: "runtime_unverified", turn_eligible: true, acceptance_ready: true,
+          turn_route: "ready_for_host", executor: {host: "generic-cli", available: null, reason: null, profile: null}}});
+        return;
+      }
       if (body.operation !== "configure") {
         await route.fulfill({ contentType: "application/json", json: { ok: false, error: "unsupported fixture operation" }, status: 400 });
         return;
@@ -1467,6 +1482,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
           ...body.settings,
           execution_config: current.settings.execution_config,
         },
+        members: [{id: "analysis", agent_id: "local-analyst", todo_id: "todo_analysis"}],
       };
       loopxModes.set(sessionId, configured);
       await route.fulfill({ contentType: "application/json", json: configured, status: 200 });

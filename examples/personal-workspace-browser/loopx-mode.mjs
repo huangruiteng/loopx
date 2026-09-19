@@ -55,9 +55,24 @@ export const loopxModeScenario = {
       await page.getByText("普通对话", { exact: true }).waitFor({ state: "visible" });
       await page.screenshot({ path: resolve(outputDir, "goal-loopx-mode-configured.png"), fullPage: false, animations: "disabled" });
 
+      if (api.loopxModeRequests.some(row => row.operation === "operations")) throw new Error("Team inspection ran during ordinary polling");
+      await page.getByRole("button", {name: "团队执行情况", exact: true}).click();
+      const team = page.getByRole("region", {name: "团队执行详情"});
+      await team.getByText("local-analyst · 已通过当前验收", {exact: true}).waitFor();
+      await team.getByText("本页有无法核验的工作，请检查原请求；不要直接重新派工。", {exact: true}).waitFor();
+      await team.getByRole("button", {name: "检查启动条件", exact: true}).click();
+      await team.getByText(/运行时可用性尚未验证/).waitFor();
+      await page.screenshot({path: resolve(outputDir, "goal-team-execution-desktop.png"), fullPage: false, animations: "disabled"});
+      await team.getByRole("button", {name: "下一页", exact: true}).click();
+      await team.getByText("cloud-reviewer · 需要恢复原执行", {exact: true}).waitFor();
+      if (await team.getByText("cloud-reviewer · 执行中", {exact: true}).count()) throw new Error("Stopped worker was labeled executing");
+      await page.setViewportSize({width: 390, height: 844});
+      await page.screenshot({path: resolve(outputDir, "goal-team-execution-mobile.png"), fullPage: false, animations: "disabled"});
+      if (api.turnRequests.length) throw new Error("Inspecting the team started a model turn");
+
       return {
         coverageEntries: await context.close(),
-        note: "One enable click during a pending snapshot opens settings, reads Goal-owned bindings without resending them, and does not start work while configuring.",
+        note: "Pending-snapshot setup preserves Goal-owned bindings, while on-demand team inspection preserves scope, unknown runtime, pagination and recovery state without launching work.",
       };
     } catch (error) {
       releaseSnapshot();
