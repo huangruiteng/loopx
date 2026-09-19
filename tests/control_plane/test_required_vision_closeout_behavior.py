@@ -229,6 +229,48 @@ def test_read_failures_consume_the_unchanged_call_budget(tmp_path: Path) -> None
     assert receipt["semantic_action_accepted"] is False
 
 
+@pytest.mark.parametrize("command", [
+    "ls -la .codex/ && find .codex -maxdepth 5 -type f | head -50",
+    "touch injected",
+])
+def test_unadmitted_commands_return_feedback_without_execution_or_extra_budget(command: str, tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    def recover(request: Mapping[str, Any]) -> ScriptedExecToolAction:
+        error = json.loads(request["messages"][-1]["content"])
+        assert error["error_code"] == "unsupported_host_command"
+        assert error["exit_code"] != 0
+        assert "not executed" in error["output"]
+        return vision_patch_action(request)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        ScriptedExecToolAction("cat replan-frontier.json && cat fixture/permission-config.json"),
+        ScriptedExecToolAction(command), recover, projected_refresh, projected_spend,
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="unadmitted-command-recovery", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is True
+    assert receipt["vision_closeout"]["spend_count"] == 1
+    assert receipt["tool_call_count"] == 6
+    assert receipt["tool_call_receipts"][2]["error_code"] == "unsupported_host_command"
+    assert not list(tmp_path.rglob("injected"))
+
+
+def test_unadmitted_commands_never_supply_evidence_or_success(tmp_path: Path) -> None:
+    fixture = _build_fixture(tmp_path / "oracle", required_vision=True)
+    transport = ScriptedDoubaoExecTransport([
+        ScriptedExecToolAction(fixture.quota_guard_command),
+        *[ScriptedExecToolAction("find . -maxdepth 5 -type f") for _ in range(6)],
+    ])
+    receipt = DoubaoReplanSemanticActionBehaviorActor(api_key="test-only-placeholder", transport=transport).qualify(
+        qualification_id="unadmitted-command-budget", fixture_root=tmp_path / "actor", required_vision=True,
+    )
+    assert receipt["qualification_passed"] is False
+    assert receipt["failure_code"] == "tool_call_budget_exhausted"
+    assert receipt["semantic_action_accepted"] is False
+    assert receipt["tool_call_count"] == 7
+
+
 def test_help_host_extension_does_not_change_narrow_actor_contract(tmp_path: Path) -> None:
     fixture = _build_fixture(tmp_path)
     assert _bounded_workspace_read_plan("loopx --help", fixture=fixture) is None

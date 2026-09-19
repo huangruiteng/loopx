@@ -42,11 +42,12 @@ REPLAN_SEMANTIC_ACTION_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
 REPLAN_SEMANTIC_ACTION_BEHAVIOR_MAX_CALLS = 7
 
 
-class _WorkspaceReadFailed(RuntimeError):
-    """An admitted read's exit status is a tool result, not a semantic verdict."""
+class _HostToolError(RuntimeError):
+    """A host tool result that supplies no semantic acceptance or extra budget."""
 
-    def __init__(self, output: str, exit_code: int) -> None:
-        super().__init__("workspace_read_nonzero")
+    def __init__(self, code: str, output: str, exit_code: int) -> None:
+        super().__init__(code)
+        self.code = code
         self.output = output
         self.exit_code = exit_code
 
@@ -872,13 +873,14 @@ def _record_tool_step(
     kind: str,
     command: str,
     exit_code: int | None = None,
+    error_code: str | None = None,
 ) -> None:
     state.steps.append(
         {
             "ordinal": len(state.steps) + 1,
             "kind": kind,
             "command_digest": _digest(command),
-            **({"exit_code": exit_code, "error_code": "workspace_read_nonzero"} if exit_code else {}),
+            **({"exit_code": exit_code, "error_code": error_code} if error_code else {}),
         }
     )
 
@@ -922,7 +924,7 @@ def _handle_workspace_read(command: str, state: _QualificationState) -> str:
     state.work_source_read = state.work_source_read or read_work_source
     state.read_only_host_commands_executed = True
     if exit_code:
-        raise _WorkspaceReadFailed(output, exit_code)
+        raise _HostToolError("workspace_read_nonzero", output, exit_code)
     return output
 
 
@@ -1132,6 +1134,15 @@ def _dispatch_behavior_command(
         )
     if "evidence-log" in command:
         raise ValueError("manual_evidence_read_is_not_replan")
+    if state.fixture.required_vision:
+        # No handler admitted this command, so no part of it was executed.
+        # Rejection is not semantic success, nor a reason to hide tool feedback.
+        raise _HostToolError(
+            "unsupported_host_command",
+            "Command not executed: outside the bounded tool grammar. "
+            "Use the operations and limits in the exec_command description.",
+            2,
+        )
     raise ValueError("unexpected_command")
 
 
@@ -1270,10 +1281,11 @@ def _run_qualification_loop(
                 state,
             )
             kind = dispatched_kind
-        except _WorkspaceReadFailed as exc:
-            _record_tool_step(state, kind=kind, command=tool_call.command, exit_code=exc.exit_code)
+        except _HostToolError as exc:
+            _record_tool_step(state, kind=kind, command=tool_call.command,
+                              exit_code=exc.exit_code, error_code=exc.code)
             _append_tool_response(state, tool_call=tool_call, output=json.dumps({
-                "error_code": "workspace_read_nonzero", "exit_code": exc.exit_code,
+                "error_code": exc.code, "exit_code": exc.exit_code,
                 "output": exc.output[:4096], "truncated": len(exc.output) > 4096,
             }))
             continue

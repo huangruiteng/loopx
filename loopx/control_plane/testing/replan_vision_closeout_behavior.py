@@ -40,9 +40,11 @@ VISION_EXEC_TOOL_DESCRIPTION = (
     "relative JSON file via apply_patch Add File or cat with a quoted heredoc; "
     "a heredoc may be followed by up to two bound LoopX closeout commands using "
     "newlines or &&. Other LoopX commands must be separate single invocations. "
-    "Returns stdout on success; nonzero workspace reads return exit_code and "
-    "output for correction within the same call budget. Unsupported programs "
-    "or syntax are never executed. No external network or outside-fixture writes."
+    "Returns stdout on success; nonzero workspace reads and unsupported command "
+    "shapes return exit_code and output for correction within the same call "
+    "budget. Unsupported programs or syntax are never executed. Semantic, "
+    "identity and write-boundary errors fail qualification. No external network "
+    "or outside-fixture writes."
 )
 
 
