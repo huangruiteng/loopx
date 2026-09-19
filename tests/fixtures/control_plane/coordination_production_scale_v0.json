@@ -51,6 +51,10 @@
     "conflict_write_scopes": ["lease-admission/shared/**"]
   },
   "semantic_cases": {
+    "user_completion": {
+      "scope_key": "publish_artifact",
+      "other_blocker_id": "todo_zz_remaining_user_decision"
+    },
     "title_only_monitor": {
       "todo_id": "todo_fixture_title_monitor",
       "role": "agent",

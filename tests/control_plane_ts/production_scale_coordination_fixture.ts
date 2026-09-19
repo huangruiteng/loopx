@@ -542,3 +542,24 @@ export function productionScaleLeasedMonitorFixture(goalId: string,
     proof: {idempotency_key: fixture.completion_lease_idempotency_key,
       expected_version: fixture.completion_lease_expected_version}};
 }
+
+/** User decisions act on an exact dependent inside the full mixed graph.
+ * The second blocker is deliberately beyond the compact display population. */
+export function productionScaleUserCompletionFixture(goalId: string,
+  schema: AuthorityProjectionSchema = "native", otherBlocker = false) {
+  const fixture = productionScaleCoordinationFixture(goalId, schema);
+  const scenario = envelope.semantic_cases.user_completion;
+  const todos = structuredClone(fixture.projection.todos) as Record<string, unknown>[];
+  const target = todos.find(todo => todo.role === "agent" && todo.status === "blocked")!;
+  const source = todos.find(todo => todo.role === "user" && todo.status === "open")!;
+  const scope = {schema_version: "decision_scope_v0", kind: "direction", granularity: "action", scope_key: scenario.scope_key};
+  Object.assign(target, {task_class: "advancement_task", claimed_by: "agent-a", required_decision_scopes: [scope],
+    decision_scope_outcomes: [{schema_version: "todo_decision_scope_outcome_v0", outcome: "reject",
+      decision_scope: scope, source_todo_id: "todo_fixture_prior_decision"}]});
+  Object.assign(source, {task_class: "user_gate", bound_agent: "agent-a", blocks_agent: "agent-a",
+    claimed_by: "agent-a", decision_scope: scope, unblocks_todo_id: target.todo_id});
+  if (otherBlocker) todos.push({...source, todo_id: scenario.other_blocker_id, text: "Independent remaining owner decision"});
+  return {projection: authorityProjectionFixture(goalId, todos, fixture.projection.leases as Record<string, unknown>[],
+    schema, {handoff_mode: "hard_lease"}), source: String(source.todo_id), target: String(target.todo_id),
+    scope, registered_agents: fixture.registered_agents};
+}
