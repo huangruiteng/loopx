@@ -26,7 +26,9 @@ TOOL = {
     "Use action=bindings first; start requires binding_id, stable operation_id and brief with "
     "schema_version=collaboration_brief_v0, purpose, context, constraints (strings), inputs "
     "(relative ref, description, optional sha256), acceptance (strings), return_requirement. "
-    "Read/wait/resume use the original operation_id. Running is not failure; do not duplicate it.",
+    "Read/wait/resume use the original operation_id. Running is not failure; do not duplicate it. "
+    "After context loss, action=operations recovers this requester's durable work. Follow "
+    "next_cursor for more; unavailable means reconcile, not redispatch.",
     "inputSchema": {
         "type": "object",
         "additionalProperties": False,
@@ -53,8 +55,6 @@ GUIDANCE = (
     "service when authorized. Only current accepted results returned by that service establish "
     "member completion. Synthesize their actual artifacts and report remaining gaps here. "
     "Read action=messages between work steps for owner inbox additions. "
-    "After context loss, use action=operations to recover this identity's durable work before "
-    "starting new work. Follow next_cursor for more; unavailable means reconcile, not redispatch. "
     "Do not claim the whole canonical Goal is complete. Keep independent analysis substantive. "
     "Before completing or blocking, return a self-contained report with substantive accepted findings, "
     "exact artifact hashes and remaining gaps; do not require readers to reconstruct earlier streamed replies. "

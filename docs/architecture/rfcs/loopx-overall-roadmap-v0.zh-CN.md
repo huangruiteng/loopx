@@ -264,7 +264,7 @@ Todo 完成入口分别执行当前 pinned 检查，accepted 返回读 canonical
 完成。长期 attached 会话、通用 Agent 创建、动态受治理工作派生、完整 inbox/queue/steer、
 认证远端权威与 packaged frontend/Lark 配套仍归 R2/R3/R4/R6；不晋升已有 Goal。
 
-有 shell 能力的原 coordinator 可通过 `delegation list/operations/start/read/wait/resume` 调用已有执行 owner，无需替换会话。`operations` 从自身持久记录找回上下文丢失前的工作，重新核验 accepted，保留不可用分支与分页；已启用的 MCP 和 Goal Chat 共用该读模型。读取不启动工作，也不把展示列表当整体 readiness。合成示例 `prepare` 仍只准备隔离绑定。下一步先将实际执行/验收事实接入已有 R2 readiness，再沿现有注册及 runtime 配置扩展经授权的身份/profile 创建，并验证原请求返回与主力继续推进。无人值守唤醒、完整跨宿主 inbox/queue/steer 和 Lark 等价仍分别验收，不因新增恢复入口晋升 G1/G3。
+有 shell 能力的原 coordinator 可通过 `delegation list/operations/start/read/wait/resume` 调用已有执行 owner，无需替换会话。`operations` 从自身持久记录找回上下文丢失前的工作，重新核验 accepted，保留不可用分支与分页；已启用的 MCP 和新挂载工具的 Goal Chat 共用该读模型；已有原生线程恢复时保留原工具 schema。读取不启动工作，也不把展示列表当整体 readiness。合成示例 `prepare` 仍只准备隔离绑定。下一步先将实际执行/验收事实接入已有 R2 readiness，再沿现有注册及 runtime 配置扩展经授权的身份/profile 创建，并验证原请求返回与主力继续推进。无人值守唤醒、完整跨宿主 inbox/queue/steer 和 Lark 等价仍分别验收，不因新增恢复入口晋升 G1/G3。
 
 ### R3：语义请求与自动回报
 

@@ -128,12 +128,15 @@ this is a live listing, so restart paging to discover new records inserted befor
 the cursor. An empty page for one requester says nothing about other members or
 whether the Goal is complete. Only explicit `start`/`resume` can launch execution.
 
-Enabled MCP exposes the same operation as `list_delegations`. Enabled Goal Chat
+Enabled MCP exposes the same operation as `list_delegations`. Newly tool-equipped Goal Chat
 uses `loopx_collaboration` with `action=operations`, optional `limit` and `cursor`.
 It retains its existing sender/configuration pin and pause fence. Both the lead
 and a coordinating member recover their own operations; creation ancestry grants
 no access to another requester's journal. No new settings or background polling
 are required, and disabling execution tools removes this tool with them.
+Already enrolled native Chat threads keep their original tool schema on resume;
+they are not replaced to install this new operation. Recovery guidance is part
+of the new tool description, not injected into those older threads' shared prompt.
 
 中文：原对话重连后执行 `delegate operations`，不用先记住每个 operation ID。
 主力与承担协调的成员各自找回自己的工作，再用原 ID 读取完整结果；需要恢复时
