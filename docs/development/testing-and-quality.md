@@ -815,8 +815,10 @@ the entire plan before execution. Ordinary nonzero reads return an exit code and
 bounded output to the model; recovery consumes the same call budget and a failed
 read supplies no evidence. Unadmitted commands likewise return a no-execution
 error instead of ending the conversation; their grammar limits are not raised.
-Unsupported programs never execute, and detected outside-fixture authoring and
-invalid semantic/binding claims still fail qualification. The host does not add missing
+Unsupported programs and rejected file-authoring operations never execute.
+Pre-execution path, overwrite, JSON or authoring-syntax rejection returns tool
+feedback without creating the file or running a suffix. Invalid semantic/binding
+claims and errors after an effect remain terminal failures. The host does not add missing
 semantic fields or execute arbitrary model shell programs. These host semantics
 are explicit for required-vision qualification; other actors retain their current
 contracts. Receipts distinguish tool execution errors, accepted writeback and
