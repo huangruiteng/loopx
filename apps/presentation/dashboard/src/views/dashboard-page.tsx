@@ -2863,6 +2863,14 @@ function PersonalGoalHome({
               changed: preview.changed,
               configuration: {
                 allowedDomains: preview.after.orchestration.allowed_domains,
+                codexHostCapacity: {
+                  configuredChildren: preview.codex_host_capacity.configured_children,
+                  newSessionRequired: preview.codex_host_capacity.new_session_required,
+                  requiredChildren: preview.codex_host_capacity.required_children,
+                  status: preview.codex_host_capacity.status,
+                  writeRequired: preview.codex_host_capacity.write_required,
+                  written: preview.codex_host_capacity.written,
+                },
                 enabled: preview.feature_summary.multi_subagent === "enabled",
                 executionConfig: preview.after.orchestration.execution_config,
                 maxChildren: preview.after.orchestration.max_children,
@@ -2875,6 +2883,14 @@ function PersonalGoalHome({
             const result = await applyGoalSubagentConfiguration(request, previewId);
             return {
               allowedDomains: result.after.orchestration.allowed_domains,
+              codexHostCapacity: {
+                configuredChildren: result.codex_host_capacity.configured_children,
+                newSessionRequired: result.codex_host_capacity.new_session_required,
+                requiredChildren: result.codex_host_capacity.required_children,
+                status: result.codex_host_capacity.status,
+                writeRequired: result.codex_host_capacity.write_required,
+                written: result.codex_host_capacity.written,
+              },
               enabled: result.feature_summary.multi_subagent === "enabled",
               executionConfig: result.after.orchestration.execution_config,
               maxChildren: result.after.orchestration.max_children,

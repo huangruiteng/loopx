@@ -6,6 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..agent_registry import normalize_registered_agents
+from ..capabilities.multi_subagent import (
+    apply_codex_subagent_capacity,
+    plan_codex_subagent_capacity,
+)
 from ..configure_goal import configure_goal, render_configure_goal_markdown
 from ..control_plane.goals.configure_goal_service import (
     configure_goal_with_global_sync,
@@ -487,6 +491,11 @@ def handle_registry_admin_command(
                 orchestration_mode=args.orchestration_mode,
                 spawn_allowed=args.spawn_allowed,
                 max_children=args.max_children,
+                align_codex_subagent_capacity=bool(
+                    args.align_codex_subagent_capacity
+                ),
+                codex_host_capacity_planner=plan_codex_subagent_capacity,
+                codex_host_capacity_applier=apply_codex_subagent_capacity,
                 subagent_model=args.subagent_model,
                 subagent_reasoning_effort=args.subagent_reasoning_effort,
                 clear_subagent_model_config=args.clear_subagent_model_config,

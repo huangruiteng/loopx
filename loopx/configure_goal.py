@@ -1373,6 +1373,18 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- control_plane: {payload.get('control_plane_summary')}")
     if payload.get("orchestration_summary"):
         lines.append(f"- orchestration: {payload.get('orchestration_summary')}")
+    codex_capacity = payload.get("codex_host_capacity")
+    if isinstance(codex_capacity, dict):
+        lines.extend(
+            [
+                f"- codex_host_capacity: `{codex_capacity.get('status')}`",
+                f"- codex_required_children: `{codex_capacity.get('required_children')}`",
+                f"- codex_configured_children: `{codex_capacity.get('configured_children')}`",
+                f"- codex_alignment_requested: `{codex_capacity.get('alignment_requested')}`",
+                f"- codex_capacity_written: `{codex_capacity.get('written', False)}`",
+                f"- codex_new_session_required: `{codex_capacity.get('new_session_required', False)}`",
+            ]
+        )
     feature_summary = payload.get("feature_summary")
     if isinstance(feature_summary, dict):
         lines.append(

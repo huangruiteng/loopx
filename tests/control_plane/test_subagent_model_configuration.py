@@ -248,6 +248,18 @@ def test_capability_editor_model_roundtrip_and_clear(registry: Path) -> None:
         )
 
 
+def test_capability_editor_requests_one_click_codex_capacity_alignment() -> None:
+    from loopx.chat_goal_configuration_api import _goal_capability_options
+
+    options = _goal_capability_options(
+        "multi_subagent",
+        {"enabled": True, "max_children": 6, "allowed_domains": []},
+    )
+
+    assert options["align_codex_subagent_capacity"] is True
+    assert options["max_children"] == 6
+
+
 @pytest.mark.parametrize("config", [
     {"model": 42},
     {"model": "example", "reasoning_effort": True},
