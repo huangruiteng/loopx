@@ -102,9 +102,7 @@ COORDINATION_STATE_CONTRACT: Final = _freeze({'schema_version': 'loopx_coordinat
                                             'archive_state']},
  'todo_projection_metadata': {'fields': ['source_section', 'index'],
                               'required_fields': ['source_section']},
- 'local_authority_protocol': {'mutation_request_schema': 'loopx_local_coordination_mutation_request_v0',
-                              'mutation_result_schema': 'loopx_local_coordination_mutation_result_v0',
-                              'todo_read_request_schema': 'loopx_local_coordination_todo_read_request_v0',
+ 'local_authority_protocol': {'todo_read_request_schema': 'loopx_local_coordination_todo_read_request_v0',
                               'todo_read_result_schema': 'loopx_local_coordination_todo_read_result_v0',
                               'todo_list_request_schema': 'loopx_local_coordination_todo_list_request_v0',
                               'todo_list_result_schema': 'loopx_local_coordination_todo_list_result_v0',
@@ -194,8 +192,6 @@ COORDINATION_STATE_CONTRACT: Final = _freeze({'schema_version': 'loopx_coordinat
  'compatibility': {'unknown_field_policy': 'reject',
                    'field_removal_policy': 'maintainer_approval_required',
                    'markdown_role': 'human_workbench_and_compatibility_projection'}})
-LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA: Final[str] = 'loopx_local_coordination_mutation_request_v0'
-LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA: Final[str] = 'loopx_local_coordination_mutation_result_v0'
 LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA: Final[str] = 'loopx_local_coordination_todo_read_request_v0'
 LOCAL_COORDINATION_TODO_READ_RESULT_SCHEMA: Final[str] = 'loopx_local_coordination_todo_read_result_v0'
 LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA: Final[str] = 'loopx_local_coordination_todo_list_request_v0'

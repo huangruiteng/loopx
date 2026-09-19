@@ -13,20 +13,16 @@ import {
   archiveLocalCoordinationTodos,
   acknowledgeLocalCoordinationTodoArchive,
   createLocalCoordinationTodo, claimLocalCoordinationTodo,
-  mutateLocalCoordinationAuthority, editLocalCoordinationTodo,
   terminalLifecycleLocalCoordinationTodo,
   LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_CREATE_REQUEST_SCHEMA, LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA,
-  LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
 } from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 
 for (const [name, invoke, schema, requestFields] of [
   ["create", createLocalCoordinationTodo, LOCAL_COORDINATION_TODO_CREATE_REQUEST_SCHEMA, {}],
   ["claim", claimLocalCoordinationTodo, LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA, {}],
-  ["mutate", mutateLocalCoordinationAuthority, LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA, {}],
-  ["edit", editLocalCoordinationTodo, "loopx_todo_compatibility_edit_request_v0", {}],
   ["terminal", terminalLifecycleLocalCoordinationTodo,
     LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA, {
       registered_agents: [], lifecycle_grants: [], successor_intents: [],

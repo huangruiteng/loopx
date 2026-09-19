@@ -1,10 +1,6 @@
 import type { JsonObject } from "../effect_program.ts";
 import type {
-  AuthorityStore,
   AuthorityStoreCommit,
-  AuthorityStoreCommitResult,
-  AuthorityStoreReadFailure,
-  AuthorityStoreReceiptResult,
 } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
@@ -78,22 +74,6 @@ export interface CoordinationProjectionCommitInput {
   readonly projection: JsonObject;
   readonly mutations: readonly CoordinationProjectionMutation[];
 }
-
-export interface CoordinationProjectionMutationInput {
-  readonly goal_id: string;
-  readonly operation_id: string;
-  readonly expected_provider_revision: string;
-  readonly mutations: readonly CoordinationProjectionMutation[];
-}
-
-export type CoordinationProjectionMutationResult =
-  | {
-    readonly status: "applied" | "replayed" | "recovered";
-    readonly provider_revision: string;
-    readonly cursor: string;
-  }
-  | Extract<AuthorityStoreCommitResult, { status: "conflict" | "ambiguous" }>
-  | AuthorityStoreReadFailure;
 
 function sortedIds(values: Iterable<string>): string[] {
   return [...values].sort(authorityUnicodeCompare);
@@ -409,142 +389,5 @@ export function prepareCoordinationProjectionCommit(
       schema_version: COORDINATION_PROJECTION_MUTATION_RECEIPT_SCHEMA,
       ...common,
     }],
-  };
-}
-
-function expectedMutationReceiptIdentity(
-  input: CoordinationProjectionMutationInput,
-): JsonObject {
-  return canonicalAuthorityObject({
-    schema_version: COORDINATION_PROJECTION_MUTATION_RECEIPT_SCHEMA,
-    operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
-    goal_id: requireAuthorityStoreId(input.goal_id, "goal id"),
-    mutation_sha256: canonicalAuthoritySha256(input.mutations),
-  }, "coordination mutation receipt identity");
-}
-
-function receiptProvesMutation(
-  result: AuthorityStoreReceiptResult,
-  expected: JsonObject,
-): result is Extract<AuthorityStoreReceiptResult, { status: "found" }> {
-  if (result.status !== "found" || result.receipts.length !== 1) return false;
-  const receipt = result.receipts[0]!;
-  return receipt.schema_version === expected.schema_version &&
-    receipt.operation_id === expected.operation_id &&
-    receipt.goal_id === expected.goal_id &&
-    receipt.mutation_sha256 === expected.mutation_sha256;
-}
-
-function receiptIdentityMismatch(
-  result: AuthorityStoreReceiptResult,
-  expected: JsonObject,
-): CoordinationProjectionMutationResult | null {
-  if (result.status !== "found" || receiptProvesMutation(result, expected)) return null;
-  return {
-    status: "failed",
-    reason_code: "coordination_operation_identity_mismatch",
-    reason: "operation id already names a different coordination mutation",
-  };
-}
-
-/**
- * Execute one provider-first coordination mutation against the exact loaded
- * head. The caller supplies no projection, which prevents a legacy snapshot
- * from being smuggled back into the canonical write path after promotion.
- */
-export async function commitCoordinationProjectionMutation(
-  store: AuthorityStore,
-  input: CoordinationProjectionMutationInput,
-): Promise<CoordinationProjectionMutationResult> {
-  let expectedReceipt: JsonObject;
-  try {
-    expectedReceipt = expectedMutationReceiptIdentity(input);
-  } catch (error) {
-    return {
-      status: "failed",
-      reason_code: "invalid_coordination_mutation",
-      reason: error instanceof Error ? error.message : "invalid coordination mutation",
-    };
-  }
-
-  const existing = await store.readReceipt(input.operation_id);
-  if (existing.status === "found") {
-    return receiptProvesMutation(existing, expectedReceipt)
-      ? {
-        status: "replayed",
-        provider_revision: existing.provider_revision,
-        cursor: existing.cursor,
-      }
-      : {
-        status: "failed",
-        reason_code: "coordination_operation_identity_mismatch",
-        reason: "operation id already names a different coordination mutation",
-      };
-  }
-  if (existing.status !== "missing") return existing;
-
-  const head = await store.loadAuthority();
-  if (head.status === "missing") {
-    return {
-      status: "failed",
-      reason_code: "coordination_authority_missing",
-      reason: "canonical coordination authority must be initialized before mutation",
-    };
-  }
-  if (head.status !== "loaded") return head;
-
-  let commit: AuthorityStoreCommit;
-  try {
-    commit = prepareCoordinationProjectionCommit({
-      ...input,
-      projection: head.head,
-    });
-  } catch (error) {
-    return {
-      status: "failed",
-      reason_code: "invalid_coordination_mutation",
-      reason: error instanceof Error ? error.message : "invalid coordination mutation",
-    };
-  }
-  const committed = await store.commitAuthority(commit);
-  if (committed.status === "conflict" || committed.status === "ambiguous") {
-    const readback = await store.readReceipt(input.operation_id);
-    if (receiptProvesMutation(readback, expectedReceipt)) {
-      return {
-        status: "recovered",
-        provider_revision: readback.provider_revision,
-        cursor: readback.cursor,
-      };
-    }
-    const mismatch = receiptIdentityMismatch(readback, expectedReceipt);
-    if (mismatch !== null) return mismatch;
-    return committed;
-  }
-  if (committed.status === "failed") {
-    const readback = await store.readReceipt(input.operation_id);
-    if (receiptProvesMutation(readback, expectedReceipt)) {
-      return {
-        status: "recovered",
-        provider_revision: readback.provider_revision,
-        cursor: readback.cursor,
-      };
-    }
-    const mismatch = receiptIdentityMismatch(readback, expectedReceipt);
-    if (mismatch !== null) return mismatch;
-    return committed;
-  }
-
-  const readback = await store.readReceipt(input.operation_id);
-  if (!receiptProvesMutation(readback, expectedReceipt)) {
-    return {
-      status: "failed",
-      reason_code: "coordination_commit_readback_mismatch",
-      reason: "applied coordination mutation lacks its exact durable receipt",
-    };
-  }
-  return {
-    status: "applied",
-    provider_revision: readback.provider_revision,
-    cursor: readback.cursor,
   };
 }

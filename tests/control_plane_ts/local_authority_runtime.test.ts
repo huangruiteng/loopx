@@ -22,9 +22,10 @@ import {
 import {
   TODO_CANONICAL_READ_RECORD_FIELDS,
   TODO_CANONICAL_READ_RECORD_SCHEMA,
+  prepareCoordinationProjectionCommit,
+  type CoordinationProjectionMutation,
 } from "../../loopx/control_plane/coordination/coordination_projection.ts";
 import {
-  LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
@@ -33,7 +34,6 @@ import {
   archiveLocalCoordinationTodos,
   listLocalCoordinationTodos,
   claimLocalCoordinationTodo,
-  mutateLocalCoordinationAuthority,
   promoteLocalCoordinationAuthority,
   readLocalCoordinationTodo,
   terminalLifecycleLocalCoordinationTodo,
@@ -89,6 +89,24 @@ function todoRecord(overrides: Record<string, unknown> = {}): Record<string, unk
     source_section: "Agent Todo",
     ...overrides,
   };
+}
+
+async function applyTestProjectionMutation(
+  store: FileAuthorityStore,
+  operationId: string,
+  expectedProviderRevision: string,
+  mutations: readonly CoordinationProjectionMutation[],
+) {
+  const current = await store.loadAuthority();
+  assert.equal(current.status, "loaded");
+  if (current.status !== "loaded") throw new Error("canonical test fixture is missing");
+  return store.commitAuthority(prepareCoordinationProjectionCommit({
+    goal_id: "goal-a",
+    operation_id: operationId,
+    expected_provider_revision: expectedProviderRevision,
+    projection: current.head,
+    mutations,
+  }));
 }
 
 function noteFacts(note: unknown): string {
@@ -175,78 +193,6 @@ test("new file outbox qualification does not implicitly enable canonical promoti
   assert.equal((await canonical.loadAuthority()).status, "missing");
 });
 
-test("already canonical provider mutation preserves full Todo fields and receipt replay", async () => {
-  const root = await mkdtemp(join(tmpdir(), "loopx-canonical-todo-mutation-"));
-  const store = new FileAuthorityStore(join(root, "authority", "file-v0"), "goal-a");
-  const applied = await store.commitAuthority({ expected_provider_revision: null, operation_id: "canonical-seed",
-    events: [], next_projection: withTodoReadModel({goal_id: "goal-a", handoff_mode: "soft_claim",
-      todos: [todoRecord({claimed_by: "agent-a"})], leases: []}), receipts: [] });
-  assert.equal(applied.status, "applied");
-  if (applied.status !== "applied") throw new Error("canonical fixture failed");
-
-  const advanced = await mutateLocalCoordinationAuthority({
-    schema_version: LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    operation_id: "todo:goal-a:todo_a:advance-after-promotion",
-    expected_provider_revision: applied.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: todoRecord({ status: "in_progress", claimed_by: "agent-a" }),
-    }],
-  });
-  assert.equal(advanced.status, "applied");
-
-  const partialReplacement = await mutateLocalCoordinationAuthority({
-    schema_version: LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    operation_id: "todo:goal-a:todo_a:partial-after-promotion",
-    expected_provider_revision: advanced.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: {
-        schema_version: "todo_item_v0",
-        todo_id: "todo_a",
-        role: "agent",
-        status: "done",
-        done: true,
-        text: "Qualify canonical Todo semantics",
-        archive_state: "active",
-        source_section: "Agent Todo",
-      },
-    }],
-  });
-  assert.equal(partialReplacement.status, "failed");
-  assert.equal(partialReplacement.reason_code, "invalid_coordination_mutation");
-  assert.match(String(partialReplacement.reason ?? ""), /omits existing fields: claimed_by/);
-  const unchanged = await readLocalCoordinationTodo({
-    schema_version: LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    todo_id: "todo_a",
-  });
-  assert.equal(unchanged.status, "found");
-  assert.equal((unchanged.todo as Record<string, unknown>).claimed_by, "agent-a");
-  assert.equal((unchanged.todo as Record<string, unknown>).status, "in_progress");
-
-  const receipt = await store.readReceipt("todo:goal-a:todo_a:advance-after-promotion");
-  assert.equal(receipt.status, "found");
-  if (receipt.status !== "found") throw new Error("mutation receipt missing");
-  assert.equal(receipt.provider_revision, advanced.provider_revision);
-
-  const read = await readLocalCoordinationTodo({
-    schema_version: LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    todo_id: "todo_a",
-  });
-  assert.equal(read.status, "found");
-  assert.equal((read.todo as Record<string, unknown>).claimed_by, "agent-a");
-  assert.equal((read.todo as Record<string, unknown>).status, "in_progress");
-  assert.equal(read.legacy_fallback_used, false);
-});
-
 test("local promotion fences shadow revision, digest, and writer-fence identity", async () => {
   const root = await mkdtemp(join(tmpdir(), "loopx-local-authority-promote-fence-"));
   const shadow = await qualifiedShadow(root);
@@ -311,69 +257,6 @@ test("new bootstrap and provider list fail closed without exact Todo consumer se
   });
   assert.equal(listed.status, "failed");
   assert.equal(listed.reason_code, "invalid_local_coordination_todo_list_request");
-});
-
-test("local canonical runtime reads and mutates only the provider head", async () => {
-  const root = await mkdtemp(join(tmpdir(), "loopx-local-authority-runtime-"));
-  const store = new FileAuthorityStore(join(root, "authority", "file-v0"), "goal-a");
-  const initial = await store.commitAuthority({
-    expected_provider_revision: null,
-    operation_id: "promote:goal-a",
-    events: [{ schema_version: "promotion_v0" }],
-    next_projection: withTodoReadModel({
-      goal_id: "goal-a",
-      source_authority: "file_v0",
-      todos: [todoRecord()],
-      leases: [],
-    }),
-    receipts: [],
-  });
-  assert.equal(initial.status, "applied");
-  if (initial.status !== "applied") return;
-
-  const before = await readLocalCoordinationTodo({
-    schema_version: LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    todo_id: "todo_a",
-  });
-  assert.equal(before.status, "found");
-  assert.equal(before.decision_read_from_provider, true);
-  assert.equal(before.legacy_fallback_used, false);
-
-  const mutation = await mutateLocalCoordinationAuthority({
-    schema_version: LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    operation_id: "claim:goal-a:todo_a:1",
-    expected_provider_revision: initial.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: todoRecord({ claimed_by: "agent-a" }),
-    }],
-  });
-  assert.equal(mutation.status, "applied");
-  assert.equal(mutation.decision_read_from_provider, true);
-  assert.equal(mutation.legacy_fallback_used, false);
-
-  const after = await readLocalCoordinationTodo({
-    schema_version: LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-    todo_id: "todo_a",
-  });
-  assert.equal((after.todo as Record<string, unknown>).claimed_by, "agent-a");
-
-  const listed = await listLocalCoordinationTodos({
-    schema_version: LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA,
-    runtime_root: root,
-    goal_id: "goal-a",
-  });
-  assert.equal(listed.status, "loaded");
-  assert.deepEqual(listed.todo_ids, ["todo_a"]);
-  assert.equal((listed.todos as Record<string, unknown>[])[0]?.claimed_by, "agent-a");
-  assert.equal(listed.decision_read_from_provider, true);
-  assert.equal(listed.legacy_fallback_used, false);
 });
 
 test("provider-first Todo claim preserves the complete record and is replay-safe", async () => {
@@ -908,13 +791,13 @@ for (const native of [false, true]) {
     }
     // Operation B completes/archives/reassigns the Todo. A retry of A must
     // return A's receipt even after its actor registration and lease expire.
-    const completed = await mutateLocalCoordinationAuthority({
-      schema_version: LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-      runtime_root: root, goal_id: "goal-a", operation_id: "complete-b",
-      expected_provider_revision: claimed.provider_revision,
-      mutations: [{kind: "todo_upsert", todo: {...claimedTodo, status: "done", done: true,
+    const completed = await applyTestProjectionMutation(
+      store,
+      "complete-b",
+      claimed.provider_revision,
+      [{kind: "todo_upsert", todo: {...claimedTodo, status: "done", done: true,
         archive_state: "archive", claimed_by: "agent-b"}}],
-    });
+    );
     assert.equal(completed.status, "applied");
     const afterB = await store.loadAuthority();
     for (const registered_agents of [["agent-b"], []]) {
@@ -985,12 +868,12 @@ for (const native of [false, true]) {
       if (scan.status !== "page") return;
       assert.equal(scan.transactions.length, 1);
       assert.deepEqual(scan.transactions[0]?.events, []);
-      const changed = await mutateLocalCoordinationAuthority({
-        schema_version: LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-        runtime_root: root, goal_id: "goal-a", operation_id: "later-change",
-        expected_provider_revision: afterA.provider_revision,
-        mutations: [{kind: "todo_upsert", todo: {...todo, ...later}}],
-      });
+      const changed = await applyTestProjectionMutation(
+        store,
+        "later-change",
+        afterA.provider_revision,
+        [{kind: "todo_upsert", todo: {...todo, ...later}}],
+      );
       assert.equal(changed.status, "applied");
       const afterB = await store.loadAuthority();
       const replayed = await claimLocalCoordinationTodo({...request, registered_agents: [],

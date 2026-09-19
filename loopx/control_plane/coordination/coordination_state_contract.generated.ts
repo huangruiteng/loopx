@@ -8,8 +8,6 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-export const LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA = "loopx_local_coordination_mutation_request_v0";
-export const LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA = "loopx_local_coordination_mutation_result_v0";
 export const LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA = "loopx_local_coordination_todo_read_request_v0";
 export const LOCAL_COORDINATION_TODO_READ_RESULT_SCHEMA = "loopx_local_coordination_todo_read_result_v0";
 export const LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA = "loopx_local_coordination_todo_list_request_v0";
@@ -219,8 +217,6 @@ export const COORDINATION_STATE_CONTRACT = deepFreeze({
     ]
   },
   "local_authority_protocol": {
-    "mutation_request_schema": LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-    "mutation_result_schema": LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
     "todo_read_request_schema": LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
     "todo_read_result_schema": LOCAL_COORDINATION_TODO_READ_RESULT_SCHEMA,
     "todo_list_request_schema": LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA,

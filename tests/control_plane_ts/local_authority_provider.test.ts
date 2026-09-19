@@ -16,7 +16,7 @@ import { authorityStoreCommitFixture } from "./authority_store_conformance.ts";
 import * as runtime from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 import { qualifiedShadow, promotionRequest, engageFence } from "./local_promotion_fixture.ts";
 import { loadLegacyCoordinationWriterFence, legacyCoordinationWriterFencePath } from "../../loopx/control_plane/coordination/legacy_writer_fence.ts";
-import { acknowledgeLocalCoordinationTodoArchive, archiveLocalCoordinationTodos, listLocalCoordinationTodos, mutateLocalCoordinationAuthority } from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
+import { acknowledgeLocalCoordinationTodoArchive, archiveLocalCoordinationTodos, listLocalCoordinationTodos } from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 
 for (const [fault, source, reason] of [
   ["database_missing", "sqlite_v0", "local_authority_provider_missing"],
@@ -113,8 +113,6 @@ function providerCalls(directory: string, revision: string, dryRun: boolean) {
     observeLocalCoordinationOwnership: [{...input, schema_version: "loopx_local_ownership_observation_request_v0"}],
     listLocalCoordinationTodos: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA}],
     readLocalCoordinationTodo: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA}],
-    mutateLocalCoordinationAuthority: [{...input, schema_version: runtime.LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-      mutations: [{kind: "todo_remove", todo_id: "todo-a"}]}],
     createLocalCoordinationTodo: [
       {...input, schema_version: runtime.LOCAL_COORDINATION_TODO_CREATE_REQUEST_SCHEMA, todo: {}},
       {...witnessed, schema_version: runtime.LOCAL_COORDINATION_TODO_CREATE_WITNESSED_REQUEST_SCHEMA, todo: {}}],
@@ -125,7 +123,6 @@ function providerCalls(directory: string, revision: string, dryRun: boolean) {
       {...updateInput, schema_version: "loopx_local_coordination_todo_update_request_v0"},
       {...updateInput, schema_version: "loopx_local_coordination_todo_update_request_v1", planning_intent: {status: "blocked"}},
       {...witnessed, schema_version: "loopx_local_coordination_todo_update_request_v2"}],
-    editLocalCoordinationTodo: [input],
     terminalLifecycleLocalCoordinationTodo: [
       {...input, schema_version: runtime.LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA},
       {...witnessed, schema_version: runtime.LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_WITNESSED_REQUEST_SCHEMA}],

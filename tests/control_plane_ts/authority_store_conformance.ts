@@ -48,7 +48,6 @@ import type {JsonObject} from "../../loopx/control_plane/effect_program.ts";
 import {
   executeCoordinationTodoTerminalLifecycle,
 } from "../../loopx/control_plane/coordination/todo_terminal_lifecycle.ts";
-import { editCoordinationTodo, TODO_COMPATIBILITY_EDIT_SCHEMA } from "../../loopx/control_plane/coordination/todo_compatibility_edit.ts";
 import {
   PRODUCTION_SCALE_VALIDATION_DECLARATION,
   productionScaleCoordinationFixture,
@@ -1112,105 +1111,6 @@ export function registerAuthorityStoreConformance(
         {...request, operation_id: "bad-status", todo: {...todo, todo_id: "todo-done", status: "done", done: true}},
         {...request, operation_id: "bad-projection", todo: {...todo, todo_id: "todo-projection", source_section: "Agent Todo"}},
       ]) assert.equal((await executeCoordinationTodoCreate(store, invalid)).status, "failed");
-    });
-    test(`${providerName} conformance: compatibility edit cannot overwrite a concurrent claim (${native ? "native" : "v0"})`, async (t) => {
-      const {store, contender} = await factory(t);
-      const goalId = "goal-claim";
-      const projection = todoClaimProjection(goalId, native);
-      const initialized = await store.commitAuthority({
-        expected_provider_revision: null, operation_id: "init-compatibility",
-        events: [], receipts: [], next_projection: projection,
-      });
-      assert.equal(initialized.status, "applied");
-      if (initialized.status !== "applied") return;
-      const request = {
-        schema_version: TODO_COMPATIBILITY_EDIT_SCHEMA, goal_id: goalId,
-        todo_id: "todo-claim", operation_id: "edit-compatibility",
-        actor_agent_id: "agent-a", registered_agents: ["agent-a", "agent-b"],
-        expected_provider_revision: initialized.provider_revision,
-        patch: {text: "Edited through a compatibility buffer"}, dry_run: false,
-        observed_at: "2026-09-05T05:00:00Z",
-      };
-      assert.equal((await executeCoordinationTodoClaim(contender, {
-        goal_id: goalId, todo_id: "todo-claim", claimed_by: "agent-a",
-        actor_agent_id: "agent-a", expected_role: "agent", registered_agents: ["agent-a", "agent-b"],
-        operation_id: "claim-before-edit", dry_run: false, now: new Date("2026-09-05T04:30:00Z"),
-      })).status, "applied");
-      const current = await store.loadAuthority();
-      assert.equal(current.status, "loaded");
-      if (current.status !== "loaded") return;
-      assert.equal((await editCoordinationTodo(store, request)).status, "conflict");
-      assert.deepEqual(await store.loadAuthority(), current);
-      request.expected_provider_revision = current.provider_revision;
-      const preview = await editCoordinationTodo(store, {...request, dry_run: true});
-      assert.equal(preview.status, "planned");
-      assert.deepEqual(await store.loadAuthority(), current);
-      assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
-      for (const extra of [{claimed_by: "agent-b"}, {archive_state: "archive"}, {source_section: "fake"}]) {
-        assert.equal((await editCoordinationTodo(store, {...request, patch: extra})).status, "failed");
-      }
-      assert.equal((await editCoordinationTodo(store, {...request, actor_agent_id: "agent-b"})).status, "failed");
-      assert.deepEqual(await store.loadAuthority(), current);
-      const applied = await editCoordinationTodo(store, request);
-      assert.equal(applied.status, "applied", JSON.stringify(applied));
-      const after = await store.loadAuthority();
-      assert.equal(after.status, "loaded");
-      if (after.status !== "loaded") return;
-      const old = (current.head.todos as Record<string, unknown>[])[0]!;
-      assert.deepEqual(after.head.todos, [{...old, text: request.patch.text, updated_at: "2026-09-05T05:00:00.000Z"}]);
-      assert.deepEqual(after.head.leases, current.head.leases);
-      assert.equal((await editCoordinationTodo(store, {...request, registered_agents: []})).status, "replayed");
-      assert.deepEqual(await store.loadAuthority(), after);
-      assert.equal((await editCoordinationTodo(store, {...request, patch: {note: "different intent"}})).status, "failed");
-      const noop = {...request, operation_id: "edit-noop", expected_provider_revision: after.provider_revision};
-      assert.equal((await editCoordinationTodo(store, noop)).status, "no_change");
-      const afterNoop = await store.loadAuthority();
-      assert.equal(afterNoop.status, "loaded");
-      if (afterNoop.status !== "loaded") return;
-      assert.deepEqual(afterNoop.head, after.head);
-      assert.equal((await editCoordinationTodo(store, noop)).status, "replayed");
-      assert.deepEqual(await store.loadAuthority(), afterNoop);
-      // Losing the response after commit is recovered by the exact receipt.
-      const ambiguousStore: AuthorityStore = {
-        storeIdentity: () => store.storeIdentity(), loadAuthority: () => store.loadAuthority(),
-        readReceipt: (id) => store.readReceipt(id), scanCommitted: (cursor, limit) => store.scanCommitted(cursor, limit),
-        commitAuthority: async (commit) => {
-          assert.equal((await store.commitAuthority(commit)).status, "applied");
-          return {status: "ambiguous", reason_code: "lost_response", reason: "synthetic lost response"};
-        },
-      };
-      const recover = {...request, operation_id: "edit-recover",
-        expected_provider_revision: afterNoop.provider_revision, patch: {note: "Recovered edit"}};
-      assert.equal((await editCoordinationTodo(ambiguousStore, recover)).status, "recovered");
-      assert.equal((await editCoordinationTodo(store, recover)).status, "replayed");
-      const recoveredHead = await store.loadAuthority();
-      assert.equal(recoveredHead.status, "loaded");
-      if (recoveredHead.status !== "loaded") return;
-      // A competing receipt-only commit after read still invalidates the CAS.
-      const racingStore: AuthorityStore = {...ambiguousStore,
-        commitAuthority: async (commit) => {
-          assert.equal((await contender.commitAuthority({
-            ...commit, operation_id: "concurrent-writer", next_projection: recoveredHead.head,
-            events: [], receipts: [],
-          })).status, "applied");
-          return store.commitAuthority(commit);
-        },
-      };
-      assert.equal((await editCoordinationTodo(racingStore, {...recover,
-        operation_id: "edit-race", expected_provider_revision: recoveredHead.provider_revision,
-        patch: {note: "Must not commit"},
-      })).status, "conflict");
-      const afterRace = await store.loadAuthority();
-      assert.equal(afterRace.status, "loaded");
-      if (afterRace.status !== "loaded") return;
-      assert.deepEqual(afterRace.head, recoveredHead.head);
-      assert.equal((await store.readReceipt("edit-race")).status, "missing");
-      for (const invalid of [{dry_run: "false"}, {patch: {}}, {patch: {text: ""}},
-        {registered_agents: ["agent-a", "agent-a"]}, {observed_at: "yesterday"},
-        {projection: recoveredHead.head}]) {
-        assert.equal((await editCoordinationTodo(store, {...request, ...invalid})).status, "failed");
-      }
-      assert.deepEqual(await store.loadAuthority(), afterRace);
     });
     test(`${providerName} conformance: Todo claim atomically acquires canonical ownership (${native ? "native" : "v0"})`, async (t) => {
       const {store} = await factory(t);

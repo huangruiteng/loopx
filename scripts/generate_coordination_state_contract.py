@@ -34,8 +34,6 @@ EXPECTED_COMPATIBILITY = {
     "markdown_role": "human_workbench_and_compatibility_projection",
 }
 LOCAL_AUTHORITY_PROTOCOL_KEYS = (
-    "mutation_request_schema",
-    "mutation_result_schema",
     "todo_read_request_schema",
     "todo_read_result_schema",
     "todo_list_request_schema",

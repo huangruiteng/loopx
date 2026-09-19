@@ -15,8 +15,6 @@ import {executeCoordinationMonitorPoll, COORDINATION_MONITOR_POLL_REQUEST_SCHEMA
   COORDINATION_MONITOR_POLL_RESULT_SCHEMA} from "./todo_monitor_poll.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
 import {
-  LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-  LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
   LOCAL_COORDINATION_PROMOTION_RECEIPT_SCHEMA,
   LOCAL_COORDINATION_PROMOTION_REQUEST_SCHEMA,
   LOCAL_COORDINATION_PROMOTION_RESULT_SCHEMA,
@@ -26,11 +24,9 @@ import {
   LOCAL_COORDINATION_TODO_READ_RESULT_SCHEMA,
 } from "./coordination_state_contract.generated.ts";
 import {
-  commitCoordinationProjectionMutation,
   indexCoordinationProjection,
   indexCoordinationProjectionTodos,
   validateCoordinationTodoReadModel,
-  type CoordinationProjectionMutation,
 } from "./coordination_projection.ts";
 import { authorityStoreSourceAuthority, type AuthorityStore, type AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
@@ -79,7 +75,6 @@ import {
   executeLocalArchiveAttempt,
   LOCAL_TODO_ARCHIVE_ACK_RESULT_SCHEMA,
 } from "./local_archive_attempt.ts";
-import { editCoordinationTodo, TODO_COMPATIBILITY_EDIT_RESULT_SCHEMA } from "./todo_compatibility_edit.ts";
 import {
   normalizeIdempotencyKey,
   normalizeTtl,
@@ -100,8 +95,6 @@ export const LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA =
 export const LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_archive_ack_request_v0";
 export {
-  LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-  LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
   LOCAL_COORDINATION_PROMOTION_RECEIPT_SCHEMA,
   LOCAL_COORDINATION_PROMOTION_REQUEST_SCHEMA,
   LOCAL_COORDINATION_PROMOTION_RESULT_SCHEMA,
@@ -590,91 +583,6 @@ export async function promoteLocalCoordinationAuthority(
   }
 }
 
-function decodeMutations(value: unknown): CoordinationProjectionMutation[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error("mutations must be a non-empty array");
-  }
-  return value.map((candidate, index) => {
-    const mutation = canonicalAuthorityObject(candidate, `mutations[${index}]`);
-    switch (mutation.kind) {
-      case "todo_upsert":
-        return {
-          kind: "todo_upsert",
-          todo: canonicalAuthorityObject(mutation.todo, `mutations[${index}].todo`),
-          ...(mutation.clear_fields === undefined ? {} : {
-            clear_fields: requiredUniqueStrings(
-              mutation.clear_fields, `mutations[${index}].clear_fields`,
-            ),
-          }),
-        };
-      case "todo_remove":
-        return {
-          kind: "todo_remove",
-          todo_id: requireAuthorityStoreId(mutation.todo_id, `mutations[${index}].todo_id`),
-        };
-      case "lease_upsert":
-        return {
-          kind: "lease_upsert",
-          lease: canonicalAuthorityObject(mutation.lease, `mutations[${index}].lease`),
-        };
-      case "lease_remove":
-        return {
-          kind: "lease_remove",
-          todo_id: requireAuthorityStoreId(mutation.todo_id, `mutations[${index}].todo_id`),
-        };
-      default:
-        throw new Error(`mutations[${index}].kind is unsupported`);
-    }
-  });
-}
-
-/** Provider-first mutation entry point. It never reads a legacy projection. */
-export async function mutateLocalCoordinationAuthority(
-  value: unknown,
-  dependencies: LocalAuthorityRuntimeDependencies = {},
-): Promise<JsonObject> {
-  let sourceAuthority = "file_v0";
-  try {
-    const input = requireJsonObject(value, "local coordination mutation request");
-    if (input.schema_version !== LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA) {
-      throw new Error("local coordination mutation request schema mismatch");
-    }
-    const root = runtimeRoot(input.runtime_root);
-    const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
-    return await withCanonicalWriter(root, goalId, false, async () => {
-      const store = await openRuntimeStore(root, goalId, dependencies);
-      sourceAuthority = sourceAuthorityFor(store);
-      const result = await commitCoordinationProjectionMutation(store, {
-        goal_id: goalId,
-        operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
-        expected_provider_revision: requireAuthorityStoreId(
-          input.expected_provider_revision,
-          "expected provider revision",
-        ),
-        mutations: decodeMutations(input.mutations),
-      });
-      return {
-        schema_version: LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
-        ...result,
-        source_authority: sourceAuthority,
-        decision_read_from_provider: true,
-        legacy_fallback_used: false,
-      };
-    });
-  } catch (error) {
-    return {
-      schema_version: LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
-      status: "failed",
-      reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_coordination_mutation_request",
-      reason: error instanceof Error ? error.message : "invalid mutation request",
-      source_authority: sourceAuthority,
-      decision_read_from_provider: true,
-      legacy_fallback_used: false,
-      ...localAuthorityOpenFailure(error),
-    };
-  }
-}
-
 /** Local provider adapter for the provider-neutral Todo claim transaction. */
 export async function claimLocalCoordinationTodo(
   value: unknown,
@@ -1088,32 +996,6 @@ export async function acknowledgeLocalCoordinationTodoArchive(
       reason_code: error instanceof ShadowManagementError ? error.reason_code :
         "invalid_local_coordination_todo_archive_ack_request",
       reason: error instanceof Error ? error.message : "invalid archive acknowledgement",
-      ...localAuthorityOpenFailure(error),
-    };
-  }
-}
-
-/** Embedded provider adapter; no Markdown input or projection write is accepted. */
-export async function editLocalCoordinationTodo(
-  value: unknown,
-  dependencies: LocalAuthorityRuntimeDependencies = {},
-): Promise<JsonObject> {
-  let sourceAuthority = "file_v0";
-  try {
-    const input = requireJsonObject(value, "local compatibility edit");
-    const {runtime_root, ...request} = input;
-    const root = runtimeRoot(runtime_root);
-    const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
-    return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = await openRuntimeStore(root, goalId, dependencies);
-      sourceAuthority = sourceAuthorityFor(store);
-      return {...await editCoordinationTodo(store, request),
-        source_authority: sourceAuthority, decision_read_from_provider: true, legacy_fallback_used: false};
-    });
-  } catch (error) {
-    return {schema_version: TODO_COMPATIBILITY_EDIT_RESULT_SCHEMA, status: "failed",
-      reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_compatibility_edit", changed: false,
-      reason: error instanceof Error ? error.message : "invalid local compatibility edit",
       ...localAuthorityOpenFailure(error),
     };
   }

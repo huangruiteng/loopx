@@ -4,14 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import type {
-  AuthorityStoreCommit,
-  AuthorityStoreCommitResult,
-} from "../../loopx/control_plane/coordination/authority_store.ts";
 import { canonicalAuthoritySha256 } from "../../loopx/control_plane/coordination/authority_store_codec.ts";
 import type { JsonObject } from "../../loopx/control_plane/effect_program.ts";
 import {
-  commitCoordinationProjectionMutation,
   indexCoordinationProjection,
   indexCoordinationProjectionTodos,
   prepareCoordinationProjectionCommit,
@@ -61,8 +56,14 @@ test("native provider Todo creation and archival need no Markdown address", asyn
     expected_provider_revision: initial.provider_revision,
     mutations: [{ kind: "todo_upsert" as const, todo }],
   };
-  assert.equal((await commitCoordinationProjectionMutation(store, input)).status, "applied");
-  assert.equal((await commitCoordinationProjectionMutation(store, input)).status, "replayed");
+  const seeded = await store.loadAuthority();
+  assert.equal(seeded.status, "loaded");
+  if (seeded.status !== "loaded") return;
+  const create = prepareCoordinationProjectionCommit({
+    ...input,
+    projection: seeded.head,
+  });
+  assert.equal((await store.commitAuthority(create)).status, "applied");
   const head = await store.loadAuthority();
   assert.equal(head.status, "loaded");
   if (head.status !== "loaded") return;
@@ -74,11 +75,13 @@ test("native provider Todo creation and archival need no Markdown address", asyn
   assert.throws(() => reduceCoordinationProjection(head.head, "goal-a", [{
     kind: "todo_upsert", todo: missingArchive,
   }]), /omits existing fields: archive_state/);
-  assert.equal((await commitCoordinationProjectionMutation(store, {
+  const archive = prepareCoordinationProjectionCommit({
     goal_id: "goal-a", operation_id: "archive:domain",
     expected_provider_revision: head.provider_revision,
+    projection: head.head,
     mutations: [{ kind: "todo_upsert", todo: { ...todo, archive_state: "archive" } }],
-  })).status, "applied");
+  });
+  assert.equal((await store.commitAuthority(archive)).status, "applied");
   const reopened = await new FileAuthorityStore(root, "goal-a").loadAuthority();
   assert.equal(reopened.status, "loaded");
   if (reopened.status === "loaded") {
@@ -342,162 +345,4 @@ test("coordination projection commit derives one auditable atomic transaction", 
   assert.deepEqual(commit.next_projection.leases, [
     { lease_epoch: 1, owner: "agent-a", todo_id: "todo_a" },
   ]);
-});
-
-test("provider-first coordination mutation applies, replays, and reads its receipt", async () => {
-  const root = await mkdtemp(join(tmpdir(), "loopx-coordination-mutation-"));
-  const store = new FileAuthorityStore(root, "goal-a");
-  const initial = await store.commitAuthority({
-    expected_provider_revision: null,
-    operation_id: "bootstrap:goal-a",
-    events: [{ schema_version: "bootstrap_v0" }],
-    next_projection: {
-      schema_version: "loopx_coordination_runtime_shadow_projection_v0",
-      goal_id: "goal-a",
-      source_authority: "file_v0",
-      todos: [{ todo_id: "todo_a", status: "open" }],
-      leases: [],
-    },
-    receipts: [],
-  });
-  assert.equal(initial.status, "applied");
-  if (initial.status !== "applied") return;
-
-  const input = {
-    goal_id: "goal-a",
-    operation_id: "claim:goal-a:todo_a:1",
-    expected_provider_revision: initial.provider_revision,
-    mutations: [
-      {
-        kind: "todo_upsert" as const,
-        todo: { todo_id: "todo_a", status: "open", claimed_by: "agent-a" },
-      },
-      {
-        kind: "lease_upsert" as const,
-        lease: { todo_id: "todo_a", owner: "agent-a", lease_epoch: 1 },
-      },
-    ],
-  };
-  const applied = await commitCoordinationProjectionMutation(store, input);
-  assert.equal(applied.status, "applied");
-  const replayed = await commitCoordinationProjectionMutation(store, input);
-  assert.equal(replayed.status, "replayed");
-
-  const head = await store.loadAuthority();
-  assert.equal(head.status, "loaded");
-  if (head.status === "loaded") {
-    assert.equal(
-      (head.head.todos as Array<Record<string, unknown>>)[0]?.claimed_by,
-      "agent-a",
-    );
-    assert.equal((head.head.leases as Array<Record<string, unknown>>)[0]?.owner, "agent-a");
-  }
-});
-
-test("provider-first coordination mutation fences stale revision and operation reuse", async () => {
-  const root = await mkdtemp(join(tmpdir(), "loopx-coordination-mutation-fence-"));
-  const store = new FileAuthorityStore(root, "goal-a");
-  const initial = await store.commitAuthority({
-    expected_provider_revision: null,
-    operation_id: "bootstrap:goal-a",
-    events: [{ schema_version: "bootstrap_v0" }],
-    next_projection: {
-      goal_id: "goal-a",
-      source_authority: "file_v0",
-      todos: [{ todo_id: "todo_a", status: "open" }],
-      leases: [],
-    },
-    receipts: [],
-  });
-  assert.equal(initial.status, "applied");
-  if (initial.status !== "applied") return;
-
-  const stale = await commitCoordinationProjectionMutation(store, {
-    goal_id: "goal-a",
-    operation_id: "claim:stale",
-    expected_provider_revision: "file:stale",
-    mutations: [{
-      kind: "todo_upsert",
-      todo: { todo_id: "todo_a", status: "open", claimed_by: "agent-a" },
-    }],
-  });
-  assert.equal(stale.status, "conflict");
-
-  const applied = await commitCoordinationProjectionMutation(store, {
-    goal_id: "goal-a",
-    operation_id: "claim:reused",
-    expected_provider_revision: initial.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: { todo_id: "todo_a", status: "open", claimed_by: "agent-a" },
-    }],
-  });
-  assert.equal(applied.status, "applied");
-  const mismatch = await commitCoordinationProjectionMutation(store, {
-    goal_id: "goal-a",
-    operation_id: "claim:reused",
-    expected_provider_revision: initial.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: { todo_id: "todo_a", status: "open", claimed_by: "agent-b" },
-    }],
-  });
-  assert.equal(mismatch.status, "failed");
-  if (mismatch.status === "failed") {
-    assert.equal(mismatch.reason_code, "coordination_operation_identity_mismatch");
-  }
-});
-
-test("provider-first coordination mutation recovers a lost applied response", async () => {
-  const root = await mkdtemp(join(tmpdir(), "loopx-coordination-mutation-recover-"));
-  class LostResponseStore extends FileAuthorityStore {
-    override async commitAuthority(
-      commit: AuthorityStoreCommit,
-    ): Promise<AuthorityStoreCommitResult> {
-      const result = await super.commitAuthority(commit);
-      return result.status === "applied"
-        ? {
-          status: "ambiguous",
-          reason_code: "simulated_response_loss",
-          reason: "commit response was lost",
-        }
-        : result;
-    }
-  }
-  const store = new LostResponseStore(root, "goal-a");
-  const bootstrap = await FileAuthorityStore.prototype.commitAuthority.call(store, {
-    expected_provider_revision: null,
-    operation_id: "bootstrap:goal-a",
-    events: [{ schema_version: "bootstrap_v0" }],
-    next_projection: {
-      goal_id: "goal-a",
-      source_authority: "file_v0",
-      todos: [{ todo_id: "todo_a", status: "open" }],
-      leases: [],
-    },
-    receipts: [],
-  });
-  assert.equal(bootstrap.status, "applied");
-  if (bootstrap.status !== "applied") return;
-
-  const recovered = await commitCoordinationProjectionMutation(store, {
-    goal_id: "goal-a",
-    operation_id: "claim:recover",
-    expected_provider_revision: bootstrap.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: { todo_id: "todo_a", status: "open", claimed_by: "agent-a" },
-    }],
-  });
-  assert.equal(recovered.status, "recovered");
-  const replayed = await commitCoordinationProjectionMutation(store, {
-    goal_id: "goal-a",
-    operation_id: "claim:recover",
-    expected_provider_revision: bootstrap.provider_revision,
-    mutations: [{
-      kind: "todo_upsert",
-      todo: { todo_id: "todo_a", status: "open", claimed_by: "agent-a" },
-    }],
-  });
-  assert.equal(replayed.status, "replayed");
 });

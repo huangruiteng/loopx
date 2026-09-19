@@ -96,8 +96,6 @@
     "required_fields": ["source_section"]
   },
   "local_authority_protocol": {
-    "mutation_request_schema": "loopx_local_coordination_mutation_request_v0",
-    "mutation_result_schema": "loopx_local_coordination_mutation_result_v0",
     "todo_read_request_schema": "loopx_local_coordination_todo_read_request_v0",
     "todo_read_result_schema": "loopx_local_coordination_todo_read_result_v0",
     "todo_list_request_schema": "loopx_local_coordination_todo_list_request_v0",

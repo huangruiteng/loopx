@@ -83,7 +83,7 @@ def test_generated_coordination_bindings_are_current() -> None:
 @pytest.mark.parametrize(
     ("source_family", "source_key", "message"),
     [
-        ("local_authority_protocol", "mutation_request_schema", "across families"),
+        ("local_authority_protocol", "todo_read_request_schema", "across families"),
         ("local_authority_protocol", "promotion_receipt_schema", "across families"),
         ("runtime_shadow_protocol", "inspect_request_schema", "must be unique"),
         ("local_authority_shadow_protocol", "outbox_entry_schema", "across families"),
